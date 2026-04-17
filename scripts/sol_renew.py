@@ -10,8 +10,9 @@ intersects them with $HOME/.solignore (gitignore-style patterns that
 mark directories to KEEP), and runs `touch -a -m -c` only on files
 inside the flagged directories. Never walks /scratch wholesale.
 
-Upstream policy (thresholds, CSV filenames, cadence) is the source of
-truth: https://docs.rc.asu.edu/scratch
+ASU Research Computing defines the deletion policy (thresholds, CSV
+filenames, cadence); their official doc is authoritative:
+https://docs.rc.asu.edu/scratch
 
 Usage:
     sol_renew.py                          # default: all non-removed stages
@@ -29,10 +30,10 @@ Stages (CSVs Sol writes into $HOME at time of writing):
 paths are KEPT, not ignored). Patterns are literal; no shell expansion.
 
     # comments and blank lines allowed
-    /scratch/alice/project         # bare path = everything under that dir
-    /scratch/alice/logs/*.log      # globs
-    /scratch/alice/data/**         # ** for recursive match
-    !/scratch/alice/data/tmp/**    # ! to exclude a sub-tree
+    /scratch/sparky/project         # bare path = everything under that dir
+    /scratch/sparky/logs/*.log      # globs
+    /scratch/sparky/data/**         # ** for recursive match
+    !/scratch/sparky/data/tmp/**    # ! to exclude a sub-tree
 """
 
 from __future__ import annotations

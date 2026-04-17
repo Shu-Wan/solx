@@ -41,11 +41,11 @@ username, not `$USER`.
 | Pattern                              | Meaning                                             |
 |--------------------------------------|-----------------------------------------------------|
 | `# comment`                          | ignored                                             |
-| `/scratch/alice/project`             | bare path = directory prefix; matches `path` and `path/**` |
-| `/scratch/alice/logs/*.log`          | glob; `*` does not cross `/`                        |
-| `/scratch/alice/data/**`             | `**` matches any depth                              |
-| `!/scratch/alice/data/tmp/**`        | `!` negates — carve out a subtree                   |
-| `/scratch/alice/cache/`              | trailing `/` matches only if it's a directory       |
+| `/scratch/sparky/project`             | bare path = directory prefix; matches `path` and `path/**` |
+| `/scratch/sparky/logs/*.log`          | glob; `*` does not cross `/`                        |
+| `/scratch/sparky/data/**`             | `**` matches any depth                              |
+| `!/scratch/sparky/data/tmp/**`        | `!` negates — carve out a subtree                   |
+| `/scratch/sparky/cache/`              | trailing `/` matches only if it's a directory       |
 
 Rules are evaluated top-to-bottom; the last matching rule wins (same
 as gitignore).

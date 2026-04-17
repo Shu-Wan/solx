@@ -7,7 +7,7 @@ description: Tips and conventions for working on ASU's Sol supercomputer. Use th
 
 Official doc: <https://docs.rc.asu.edu/>.
 
-This official doc is the source of truth.
+That official doc is authoritative; these notes are just a cache.
 
 ## Detecting the Environment
 
@@ -46,7 +46,8 @@ Always place large data files, model caches, and outputs under
 Sol deletes inactive `/scratch` files on a layered schedule and writes
 per-stage CSV warnings into `$HOME`. The thresholds, CSV filenames,
 and warning cadence are defined by ASU Research Computing; upstream is
-the source of truth: <https://docs.rc.asu.edu/scratch>.
+defined by ASU Research Computing; the official doc is authoritative:
+<https://docs.rc.asu.edu/scratch>.
 
 Use `scripts/sol_renew.py` to refresh timestamps driven by those CSVs
 and a user-maintained `.solignore` keep-list. See
@@ -92,17 +93,17 @@ $SKILL_DIR/scripts/sol_renew.py -j 16
 #### Example `.solignore`
 
 Patterns are literal strings — no shell expansion — so write your real
-username in place of `alice`.
+username in place of `sparky`.
 
 ```gitignore
 # keep project trees (bare path = recursive)
-/scratch/alice/my-project
-/scratch/alice/experiments
-/scratch/alice/datasets
+/scratch/sparky/my-project
+/scratch/sparky/experiments
+/scratch/sparky/datasets
 
 # carve out stale build artifacts
-!/scratch/alice/my-project/**/__pycache__
-!/scratch/alice/my-project/**/.venv/**
+!/scratch/sparky/my-project/**/__pycache__
+!/scratch/sparky/my-project/**/.venv/**
 ```
 
 #### Long-running behavior

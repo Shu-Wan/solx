@@ -7,9 +7,35 @@ A suite of tools for working on ASU's **Sol** supercomputer.
   on Sol on your behalf
 
 Both share the same helper scripts (`scripts/`) and reference notes
-(`references/`). The upstream source of truth for every policy and
-convention referenced here is the ASU Research Computing docs:
+(`references/`). The official doc for every policy and convention
+referenced here is the ASU Research Computing site:
 <https://docs.rc.asu.edu/>.
+
+## Intended use
+
+`sol_renew.py` exists to help you **extend the life of important files
+you still actively need** — source trees, paper drafts, in-progress
+datasets — when Sol's deletion pipeline would otherwise discard them
+while you are busy with something else.
+
+It is **not** a tool to bypass, defeat, or abuse Sol's scratch
+retention policy. Scratch is a shared, finite resource; the policy
+exists so every user gets a fair share. If a file does not deserve a
+spot on `/scratch` anymore, let it go. Use `.solignore` to describe
+what matters, not what you happen to have.
+
+Specifically:
+
+- Do **not** keep-list directories you no longer work on — move them
+  off `/scratch` (to `/home`, local archive, or cloud storage) or let
+  them age out.
+- Do **not** schedule `sol_renew.py` on an aggressive cron to keep
+  everything alive indefinitely. Run it when Sol sends you a warning.
+- Do **not** use it to sidestep your group's scratch quota. Quota and
+  retention are separate systems; this tool only touches timestamps.
+
+If you are unsure whether a file should stay on `/scratch`, contact
+ASU Research Computing rather than touching it.
 
 ## Who is this for
 
@@ -127,20 +153,20 @@ rules loaded (empty or missing `.solignore`).
 ### `.solignore` quickstart
 
 Patterns are literal strings — **no shell expansion** — so write your
-real username in place of `alice` below.
+real username in place of `sparky` below.
 
 ```gitignore
 # keep these trees (bare path = recursive match)
-/scratch/alice/my-project
-/scratch/alice/experiments
+/scratch/sparky/my-project
+/scratch/sparky/experiments
 
 # glob support
-/scratch/alice/logs/*.log
-/scratch/alice/data/**
+/scratch/sparky/logs/*.log
+/scratch/sparky/data/**
 
 # negation: carve subtrees out of an otherwise-protected parent
-!/scratch/alice/my-project/**/__pycache__
-!/scratch/alice/my-project/**/.venv/**
+!/scratch/sparky/my-project/**/__pycache__
+!/scratch/sparky/my-project/**/.venv/**
 ```
 
 Rules are evaluated top-to-bottom, last match wins (same as gitignore).
@@ -156,7 +182,7 @@ data, how to submit Slurm jobs, and how to use `sol_renew.py` to keep
 scratch data alive.
 
 The skill shares `scripts/` and `references/` with the human CLI —
-one source of truth for every behavior.
+one place for every behavior.
 
 ## References
 
@@ -168,4 +194,4 @@ Cleaned-up notes on the ASU Research Computing docs, for quick lookup:
 - [sharing.md](references/sharing.md) — sharing files between users
 - [slurm.md](references/slurm.md) — submitting and managing Slurm jobs
 
-Upstream (source of truth): <https://docs.rc.asu.edu/>.
+Official doc (authoritative): <https://docs.rc.asu.edu/>.
