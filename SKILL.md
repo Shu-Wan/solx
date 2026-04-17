@@ -50,9 +50,9 @@ defined by ASU Research Computing; the official doc is authoritative:
 <https://docs.rc.asu.edu/scratch>.
 
 Use `scripts/sol_renew.py` to refresh timestamps driven by those CSVs
-and a user-maintained `.solignore` keep-list. See
+and a user-maintained `.solkeep` keep-list. See
 [references/scratch.md](references/scratch.md) for the CSV schema,
-`.solignore` syntax, and performance notes.
+`.solkeep` syntax, and performance notes.
 
 #### Default strategy
 
@@ -60,13 +60,13 @@ Do not bulk-touch `/scratch/$USER` (for example,
 `find /scratch/$USER -exec touch {} +`). The default flow is driven by
 two inputs:
 
-1. `$HOME/.solignore` — a gitignore-style file listing what to
-   **keep** (semantics are inverted from gitignore; matched paths are
-   protected, not ignored). Bare paths are treated as `path/**`.
+1. `$HOME/.solkeep` — a gitignore-style file listing what to
+   **keep** (matched paths are protected). Bare paths are treated as
+   `path/**`.
 2. Sol's CSV warnings in `$HOME`.
 
 The script intersects the two: only directories that Sol has flagged
-**and** that match `.solignore` get touched. Nothing else is walked.
+**and** that match `.solkeep` get touched. Nothing else is walked.
 This keeps I/O bounded even when the inactive list has thousands of
 rows.
 
@@ -81,7 +81,7 @@ if you need to confirm).
 # Preview what would be touched (run this first)
 $SKILL_DIR/scripts/sol_renew.py --dry-run -v
 
-# Default: touch everything in .solignore that appears in any CSV
+# Default: touch everything in .solkeep that appears in any CSV
 $SKILL_DIR/scripts/sol_renew.py
 
 # Only chase the most urgent bucket
@@ -91,7 +91,7 @@ $SKILL_DIR/scripts/sol_renew.py --stage pending
 $SKILL_DIR/scripts/sol_renew.py -j 16
 ```
 
-#### Example `.solignore`
+#### Example `.solkeep`
 
 Patterns are literal strings — no shell expansion — so write your real
 username in place of `sparky`.

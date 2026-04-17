@@ -29,14 +29,14 @@ These CSVs are regenerated on Sol's own cadence. A dry-run may list
 directories that have already been refreshed in a previous run but
 not yet dropped from the CSV — this is expected.
 
-## `.solignore` syntax
+## `.solkeep` syntax
 
-Lives at `$HOME/.solignore`. Gitignore-style patterns, but the
-semantics are **inverted**: a matched path is *kept* (touched by
-`sol_renew.py`). Directories that do not match any rule are skipped.
+Lives at `$HOME/.solkeep`. Gitignore-style patterns; a matched path
+is *kept* (touched by `sol_renew.py`). Directories that do not match
+any rule are skipped.
 
 **Patterns match directory paths**, not files. `sol_renew.py` applies
-`.solignore` rules to the `Directory` column of Sol's CSVs — each row
+`.solkeep` rules to the `Directory` column of Sol's CSVs — each row
 is a directory Sol has flagged. You can't ask the tool to keep only
 `*.log` inside a directory while discarding the rest; matching decides
 which *whole flagged directories* get touched.
@@ -62,14 +62,14 @@ as gitignore).
 # preview the plan
 sol_renew.py --dry-run -v
 
-# default: .solignore ∩ all non-removed stages
+# default: .solkeep ∩ all non-removed stages
 sol_renew.py
 
 # only chase the most urgent bucket
 sol_renew.py --stage pending
 
 # override input locations
-sol_renew.py --csv-dir /tmp/sol-csvs --solignore /tmp/keep.ignore
+sol_renew.py --csv-dir /tmp/sol-csvs --solkeep /tmp/my-keep-list
 
 # raise parallelism explicitly
 sol_renew.py -j 16
@@ -79,14 +79,14 @@ Exit codes:
 
 - `0` — every flagged-and-kept directory was touched successfully
 - `1` — at least one directory failed
-- `2` — no rules loaded (empty or missing `.solignore`)
+- `2` — no rules loaded (empty or missing `.solkeep`)
 
 ## Performance notes
 
 - Each CSV row is already a directory identified by Sol's scan.
   `sol_renew.py` runs exactly one `find | xargs touch` pipeline per
   row — it does not start from `/scratch` and recurse. Scope is
-  bounded by what Sol flagged and what `.solignore` keeps, so an
+  bounded by what Sol flagged and what `.solkeep` keeps, so an
   overly broad keep-list or a large CSV-listed subtree will still
   produce a large touch pass.
 - `touch -a -m -c` refreshes both `atime` and `mtime` (`-c` avoids

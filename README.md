@@ -21,7 +21,7 @@ while you are busy with something else.
 It is **not** a tool to bypass, defeat, or abuse Sol's scratch
 retention policy. Scratch is a shared, finite resource; the policy
 exists so every user gets a fair share. If a file does not deserve a
-spot on `/scratch` anymore, let it go. Use `.solignore` to describe
+spot on `/scratch` anymore, let it go. Use `.solkeep` to describe
 what matters, not what you happen to have.
 
 Specifically:
@@ -62,7 +62,7 @@ Read these before installing.
 - **The renewal CLI changes file timestamps** (`atime` + `mtime`) on
   files under `/scratch`. It never deletes, moves, or reads file
   contents. It only walks directories that **both** (a) appear in
-  Sol's own warning CSVs and (b) match your `.solignore`. Always run
+  Sol's own warning CSVs and (b) match your `.solkeep`. Always run
   `--dry-run` once to verify the plan before the real pass.
 - **Sol's deletion policy is set by ASU Research Computing, not this
   tool.** The policy (thresholds, CSV filenames, warning cadence) is
@@ -88,7 +88,7 @@ sol-skill/
 │   └── sol_renew.py         # CLI: renew scratch files flagged by Sol
 └── references/
     ├── module.md            # Environment Modules cheatsheet
-    ├── scratch.md           # Scratch pipeline, .solignore, sol_renew details
+    ├── scratch.md           # Scratch pipeline, .solkeep, sol_renew details
     ├── sharing.md           # File sharing between cluster users
     └── slurm.md             # Slurm / SBATCH reference
 ```
@@ -101,9 +101,9 @@ stage of the pipeline announces itself via a CSV file dropped in your
 docs](https://docs.rc.asu.edu/scratch)). `sol_renew.py`:
 
 - reads those CSVs,
-- intersects them with `$HOME/.solignore` — a gitignore-style keep-list
-  (inverted semantics: matched paths are **protected**, not ignored;
-  bare paths mean "this directory and everything under it"),
+- intersects them with `$HOME/.solkeep` — a gitignore-style keep-list
+  (matched paths are the ones to **keep**; bare paths mean "this
+  directory and everything under it"),
 - runs `touch -a -m -c` only on files inside the flagged-and-protected
   directories.
 
@@ -141,16 +141,16 @@ sol_renew.py --stage pending
 # Other flags
 sol_renew.py --stage {pending,over90,inactive,all}
 sol_renew.py --csv-dir DIR          # default: $HOME
-sol_renew.py --solignore PATH       # default: $HOME/.solignore
+sol_renew.py --solkeep PATH       # default: $HOME/.solkeep
 sol_renew.py -j N                   # parallel workers
 sol_renew.py -v                     # verbose plan + progress
 sol_renew.py -n                     # alias for --dry-run
 ```
 
 Exit codes: `0` all good · `1` at least one directory failed · `2` no
-rules loaded (empty or missing `.solignore`).
+rules loaded (empty or missing `.solkeep`).
 
-### `.solignore` quickstart
+### `.solkeep` quickstart
 
 Rules match against the **directory paths** listed in Sol's warning
 CSVs, not against individual files — matching decides which whole
@@ -192,7 +192,7 @@ Cleaned-up notes on the ASU Research Computing docs, for quick lookup:
 
 - [module.md](references/module.md) — loading/unloading software modules
 - [scratch.md](references/scratch.md) — scratch deletion pipeline,
-  `.solignore` syntax, `sol_renew.py` internals
+  `.solkeep` syntax, `sol_renew.py` internals
 - [sharing.md](references/sharing.md) — sharing files between users
 - [slurm.md](references/slurm.md) — submitting and managing Slurm jobs
 
