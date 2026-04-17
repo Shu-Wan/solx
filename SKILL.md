@@ -43,15 +43,77 @@ Always place large data files, model caches, and outputs under
 
 ### Renewing the Scratch Timestamp
 
-Files untouched for 180 days are automatically deleted. Use the
-bundled helper script to refresh timestamps:
+Sol uses a **layered deletion pipeline** (45 / 90 / <7 days). It also
+writes per-stage CSVs into `$HOME` listing the flagged directories:
+
+- `scratch-dirs-pending-removal.csv` — <7 days to deletion (most urgent)
+- `scratch-dirs-over-90days.csv`     — past 90 days
+- `scratch-dirs-inactive.csv`        — 45+ days (early warning)
+- `scratch-dirs-removed.csv`         — already deleted (post-facto)
+
+See [references/scratch.md](references/scratch.md) for the full
+reference on pipeline stages, CSV schema, `.solignore` syntax, and
+performance notes.
+
+#### Default strategy
+
+Do **not** blindly `touch -r` across `/scratch/$USER`. The default flow
+is surgical and driven by two inputs:
+
+1. `$HOME/.solignore` — a gitignore-style file listing what to
+   **keep** (semantics are inverted from gitignore; matched paths are
+   protected, not ignored). Bare paths are treated as `path/**`.
+2. The Sol CSVs in `$HOME`.
+
+The orchestrator intersects the two: only directories that Sol has
+flagged **and** that match `.solignore` get touched. Nothing else is
+walked. This keeps I/O bounded even when inactive.csv has thousands of
+rows.
+
+#### Commands
+
+The script runs via `uv` (PEP 723 inline metadata in the shebang).
+Prefer `uv`-managed Python on Sol; do not rely on `/usr/bin/python3`
+(system python is 3.6.8).
 
 ```shell
-$SKILL_DIR/scripts/touch.sh -r /scratch/$USER/my_project
+# Preview what would be touched (always run this first)
+$SKILL_DIR/scripts/sol_renew.py --dry-run -v
+
+# Default: touch everything in .solignore that appears in any CSV
+$SKILL_DIR/scripts/sol_renew.py
+
+# Only chase the most urgent bucket
+$SKILL_DIR/scripts/sol_renew.py --stage pending
+
+# Bump parallelism on a slow NFS night
+$SKILL_DIR/scripts/sol_renew.py -j 16
 ```
 
-Run `scripts/touch.sh -h` for all options (dry-run, verbose,
-parallel jobs).
+#### Example `.solignore`
+
+```gitignore
+# keep project trees (bare path = recursive)
+# (patterns are literal — no shell expansion, so use your real username here)
+/scratch/alice/my-project
+/scratch/alice/experiments
+/scratch/alice/datasets
+
+# but don't revive stale build artifacts inside them
+!/scratch/alice/my-project/**/__pycache__
+!/scratch/alice/my-project/**/.venv/**
+```
+
+#### Do not cancel early (agent note)
+
+`touch` over NFS on a directory with tens of thousands of small files
+can take **minutes per directory** with no interleaved output — progress
+is printed per-directory, not per-file. Agents running this script
+must not interpret a silent stretch as a hang or kill the job. A full
+run covering an inactive.csv with ~800 dirs can legitimately take
+tens of minutes. If you truly need to check progress, run with `-v`
+in a separate shell or inspect `lsof`/`ps` for the child `find`/`touch`
+processes.
 
 ### Sharing Files
 
@@ -79,12 +141,17 @@ For large transfers, prefer `rsync --progress` or `scp -r`.
 
 ## Python
 
+- System `/usr/bin/python3` is **3.6.8** — too old for most modern code.
+  Don't rely on it. Use `uv` for every Python workflow on Sol.
 - Use `uv` to manage Python environments on the cluster.
 - Point the `uv` cache to `/scratch` to avoid filling `/home`:
 
   ```shell
   export UV_CACHE_DIR=/scratch/$USER/.cache/uv
   ```
+- For small utility scripts, prefer PEP 723 inline metadata and a
+  `#!/usr/bin/env -S uv run --script` shebang so the script
+  self-bootstraps its interpreter (`scripts/sol_renew.py` uses this).
 
 ## LaTeX
 
