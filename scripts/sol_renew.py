@@ -4,31 +4,41 @@
 # dependencies = ["rich>=13.0"]
 # ///
 """
-Renew scratch files on ASU Sol before the 45/90/<7-day deletion pipeline
-removes them. Reads the CSVs Sol drops in $HOME, intersects with
-$HOME/.solignore (gitignore-style patterns that mark dirs to KEEP), and runs
-`touch -a -m -c` only on files inside the flagged directories. Surgical by
-design: it never sweeps /scratch wholesale.
+Renew scratch files on ASU Sol before Sol's layered deletion pipeline
+removes them. Reads the per-stage CSV warnings Sol drops in $HOME,
+intersects them with $HOME/.solkeep (gitignore-style patterns that
+mark directories to KEEP), and runs `touch -a -m -c` only on files
+inside the flagged directories. The script walks each flagged
+directory once per run; the scope of work is bounded by Sol's CSVs and
+your .solkeep -- it does not start from /scratch and recurse. If you
+keep-list a very large subtree, the touch pass will still be large.
+
+ASU Research Computing defines the deletion policy (thresholds, CSV
+filenames, cadence); their official doc is authoritative:
+https://docs.rc.asu.edu/scratch
 
 Usage:
     sol_renew.py                          # default: all non-removed stages
-    sol_renew.py --stage pending          # only scratch-dirs-pending-removal.csv
+    sol_renew.py --stage pending          # only the most urgent CSV
     sol_renew.py --dry-run                # show planned work, touch nothing
     sol_renew.py --jobs 16 -v             # 16 worker processes, verbose
 
-Stages (CSVs Sol writes into $HOME):
-    pending   -> scratch-dirs-pending-removal.csv  (<7 days left, most urgent)
+Stages (CSVs Sol writes into $HOME at time of writing):
+    pending   -> scratch-dirs-pending-removal.csv  (most urgent)
     over90    -> scratch-dirs-over-90days.csv
-    inactive  -> scratch-dirs-inactive.csv         (45+ days)
+    inactive  -> scratch-dirs-inactive.csv         (earliest warning)
     all       -> pending + over90 + inactive (default)
 
-.solignore syntax (gitignore-like, but semantics are INVERTED -- matched paths
-are KEPT, not ignored):
+.solkeep syntax (gitignore-like, but semantics are INVERTED -- matched
+paths are KEPT, not ignored). Rules are matched against the Directory
+column of Sol's CSVs -- i.e. directory paths -- not individual files.
+Patterns are literal; no shell expansion.
+
     # comments and blank lines allowed
-    /scratch/alice/project         # bare path = everything under that dir
-    /scratch/alice/logs/*.log      # globs
-    /scratch/alice/data/**         # ** for recursive match
-    !/scratch/alice/data/tmp/**    # ! to exclude a sub-tree from protection
+    /scratch/sparky/project         # bare path = everything under that dir
+    /scratch/sparky/runs/*          # glob on directory names
+    /scratch/sparky/data/**         # ** for recursive match
+    !/scratch/sparky/data/tmp/**    # ! to exclude a sub-tree
 """
 
 from __future__ import annotations
@@ -64,7 +74,7 @@ STAGE_FILES = {
 STAGE_ORDER = ("pending", "over90", "inactive")
 
 
-# ---------- .solignore matcher (gitignore-style, stdlib only) ----------
+# ---------- .solkeep matcher (gitignore-style, stdlib only) ----------
 
 @dataclass
 class Rule:
@@ -124,7 +134,7 @@ def _compile_rule(raw: str) -> Rule | None:
     return Rule(raw=raw.rstrip("\n"), negate=negate, regex=re.compile(full))
 
 
-def load_solignore(path: Path) -> list[Rule]:
+def load_solkeep(path: Path) -> list[Rule]:
     if not path.exists():
         return []
     rules: list[Rule] = []
@@ -246,7 +256,7 @@ def main() -> int:
         default="all",
     )
     ap.add_argument("--csv-dir", default=os.path.expanduser("~"))
-    ap.add_argument("--solignore", default=os.path.expanduser("~/.solignore"))
+    ap.add_argument("--solkeep", default=os.path.expanduser("~/.solkeep"))
     ap.add_argument(
         "--jobs", "-j", type=int,
         # NFS is the bottleneck; too many concurrent walkers hurt more than
@@ -260,10 +270,10 @@ def main() -> int:
     console = Console()
     is_tty = console.is_terminal
 
-    rules = load_solignore(Path(args.solignore))
+    rules = load_solkeep(Path(args.solkeep))
     if not rules:
         console.print(
-            f"[yellow]warning:[/] no rules loaded from {args.solignore}",
+            f"[yellow]warning:[/] no rules loaded from {args.solkeep}",
             style="yellow",
         )
         console.print(
@@ -340,7 +350,7 @@ def _print_plan_summary(console, args, rules, stages, plan) -> None:
         f"[bold dim]{len(plan.skipped)}",
     )
     console.print()
-    console.print(f"rules from [cyan]{args.solignore}[/]: {len(rules)}")
+    console.print(f"rules from [cyan]{args.solkeep}[/]: {len(rules)}")
     console.print(table)
 
     if args.verbose:

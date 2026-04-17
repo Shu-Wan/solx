@@ -1,0 +1,5 @@
+# NFS silly-rename leftovers
+.nfs*
+
+# Claude Code local settings (per-user, never commit)
+.claude/
