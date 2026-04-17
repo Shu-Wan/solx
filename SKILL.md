@@ -33,51 +33,50 @@ naming conventions.
 
 Sol provides two main storage areas:
 
-| Location   | Purpose                      | Policy                        |
-|------------|------------------------------|-------------------------------|
-| `/home/$USER`    | Config, small files          | Limited space, backed up      |
-| `/scratch/$USER` | Large data, caches, outputs  | **180-day deletion policy**   |
+| Location         | Purpose                      | Policy                          |
+|------------------|------------------------------|---------------------------------|
+| `/home/$USER`    | Config, small files          | Limited space, backed up        |
+| `/scratch/$USER` | Large data, caches, outputs  | Layered deletion — see Sol docs |
 
 Always place large data files, model caches, and outputs under
 `/scratch/$USER`.
 
 ### Renewing the Scratch Timestamp
 
-Sol uses a **layered deletion pipeline** (45 / 90 / <7 days). It also
-writes per-stage CSVs into `$HOME` listing the flagged directories:
+Sol deletes inactive `/scratch` files on a layered schedule and writes
+per-stage CSV warnings into `$HOME`. The thresholds, CSV filenames,
+and warning cadence are defined by ASU Research Computing; upstream is
+the source of truth: <https://docs.rc.asu.edu/scratch>.
 
-- `scratch-dirs-pending-removal.csv` — <7 days to deletion (most urgent)
-- `scratch-dirs-over-90days.csv`     — past 90 days
-- `scratch-dirs-inactive.csv`        — 45+ days (early warning)
-- `scratch-dirs-removed.csv`         — already deleted (post-facto)
-
-See [references/scratch.md](references/scratch.md) for the full
-reference on pipeline stages, CSV schema, `.solignore` syntax, and
-performance notes.
+Use `scripts/sol_renew.py` to refresh timestamps driven by those CSVs
+and a user-maintained `.solignore` keep-list. See
+[references/scratch.md](references/scratch.md) for the CSV schema,
+`.solignore` syntax, and performance notes.
 
 #### Default strategy
 
-Do **not** blindly `touch -r` across `/scratch/$USER`. The default flow
-is surgical and driven by two inputs:
+Do not blindly `touch -r` across `/scratch/$USER`. The default flow is
+driven by two inputs:
 
 1. `$HOME/.solignore` — a gitignore-style file listing what to
    **keep** (semantics are inverted from gitignore; matched paths are
    protected, not ignored). Bare paths are treated as `path/**`.
-2. The Sol CSVs in `$HOME`.
+2. Sol's CSV warnings in `$HOME`.
 
-The orchestrator intersects the two: only directories that Sol has
-flagged **and** that match `.solignore` get touched. Nothing else is
-walked. This keeps I/O bounded even when inactive.csv has thousands of
+The script intersects the two: only directories that Sol has flagged
+**and** that match `.solignore` get touched. Nothing else is walked.
+This keeps I/O bounded even when the inactive list has thousands of
 rows.
 
 #### Commands
 
-The script runs via `uv` (PEP 723 inline metadata in the shebang).
-Prefer `uv`-managed Python on Sol; do not rely on `/usr/bin/python3`
-(system python is 3.6.8).
+The script is self-bootstrapping via `uv` (PEP 723 inline metadata in
+the shebang). The system `python3` on Sol is generally older than
+modern code expects — rely on `uv` instead (check `python3 --version`
+if you need to confirm).
 
 ```shell
-# Preview what would be touched (always run this first)
+# Preview what would be touched (run this first)
 $SKILL_DIR/scripts/sol_renew.py --dry-run -v
 
 # Default: touch everything in .solignore that appears in any CSV
@@ -86,34 +85,35 @@ $SKILL_DIR/scripts/sol_renew.py
 # Only chase the most urgent bucket
 $SKILL_DIR/scripts/sol_renew.py --stage pending
 
-# Bump parallelism on a slow NFS night
+# Raise parallelism explicitly if the filesystem can handle it
 $SKILL_DIR/scripts/sol_renew.py -j 16
 ```
 
 #### Example `.solignore`
 
+Patterns are literal strings — no shell expansion — so write your real
+username in place of `alice`.
+
 ```gitignore
 # keep project trees (bare path = recursive)
-# (patterns are literal — no shell expansion, so use your real username here)
 /scratch/alice/my-project
 /scratch/alice/experiments
 /scratch/alice/datasets
 
-# but don't revive stale build artifacts inside them
+# carve out stale build artifacts
 !/scratch/alice/my-project/**/__pycache__
 !/scratch/alice/my-project/**/.venv/**
 ```
 
-#### Do not cancel early (agent note)
+#### Long-running behavior
 
-`touch` over NFS on a directory with tens of thousands of small files
-can take **minutes per directory** with no interleaved output — progress
-is printed per-directory, not per-file. Agents running this script
-must not interpret a silent stretch as a hang or kill the job. A full
-run covering an inactive.csv with ~800 dirs can legitimately take
-tens of minutes. If you truly need to check progress, run with `-v`
-in a separate shell or inspect `lsof`/`ps` for the child `find`/`touch`
-processes.
+A touch pass over a directory holding many small files on a shared
+cluster filesystem can take a long time, with no per-file output —
+progress is reported per-directory. Do not interpret a silent stretch
+as a hang. A full pass over a large inactive list can legitimately
+take tens of minutes. Use `-v` in a separate shell, or inspect the
+child `find`/`touch` processes via `ps`, if you need a liveness
+check.
 
 ### Sharing Files
 
@@ -141,15 +141,16 @@ For large transfers, prefer `rsync --progress` or `scp -r`.
 
 ## Python
 
-- System `/usr/bin/python3` is **3.6.8** — too old for most modern code.
-  Don't rely on it. Use `uv` for every Python workflow on Sol.
-- Use `uv` to manage Python environments on the cluster.
-- Point the `uv` cache to `/scratch` to avoid filling `/home`:
+- The system `python3` on Sol is typically older than modern code
+  expects. Check with `python3 --version` before relying on it.
+  Prefer [`uv`](https://docs.astral.sh/uv/) to manage interpreters and
+  environments.
+- Point the `uv` cache to `/scratch` so it does not fill `/home`:
 
   ```shell
   export UV_CACHE_DIR=/scratch/$USER/.cache/uv
   ```
-- For small utility scripts, prefer PEP 723 inline metadata and a
+- For small utility scripts, prefer PEP 723 inline metadata with a
   `#!/usr/bin/env -S uv run --script` shebang so the script
   self-bootstraps its interpreter (`scripts/sol_renew.py` uses this).
 
