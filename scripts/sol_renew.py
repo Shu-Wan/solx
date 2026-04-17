@@ -8,7 +8,10 @@ Renew scratch files on ASU Sol before Sol's layered deletion pipeline
 removes them. Reads the per-stage CSV warnings Sol drops in $HOME,
 intersects them with $HOME/.solignore (gitignore-style patterns that
 mark directories to KEEP), and runs `touch -a -m -c` only on files
-inside the flagged directories. Never walks /scratch wholesale.
+inside the flagged directories. The script walks each flagged
+directory once per run; the scope of work is bounded by Sol's CSVs and
+your .solignore -- it does not start from /scratch and recurse. If you
+keep-list a very large subtree, the touch pass will still be large.
 
 ASU Research Computing defines the deletion policy (thresholds, CSV
 filenames, cadence); their official doc is authoritative:
@@ -27,11 +30,13 @@ Stages (CSVs Sol writes into $HOME at time of writing):
     all       -> pending + over90 + inactive (default)
 
 .solignore syntax (gitignore-like, but semantics are INVERTED -- matched
-paths are KEPT, not ignored). Patterns are literal; no shell expansion.
+paths are KEPT, not ignored). Rules are matched against the Directory
+column of Sol's CSVs -- i.e. directory paths -- not individual files.
+Patterns are literal; no shell expansion.
 
     # comments and blank lines allowed
     /scratch/sparky/project         # bare path = everything under that dir
-    /scratch/sparky/logs/*.log      # globs
+    /scratch/sparky/runs/*          # glob on directory names
     /scratch/sparky/data/**         # ** for recursive match
     !/scratch/sparky/data/tmp/**    # ! to exclude a sub-tree
 """

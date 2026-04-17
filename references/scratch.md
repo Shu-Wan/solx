@@ -35,6 +35,12 @@ Lives at `$HOME/.solignore`. Gitignore-style patterns, but the
 semantics are **inverted**: a matched path is *kept* (touched by
 `sol_renew.py`). Directories that do not match any rule are skipped.
 
+**Patterns match directory paths**, not files. `sol_renew.py` applies
+`.solignore` rules to the `Directory` column of Sol's CSVs — each row
+is a directory Sol has flagged. You can't ask the tool to keep only
+`*.log` inside a directory while discarding the rest; matching decides
+which *whole flagged directories* get touched.
+
 Patterns are literal — no shell expansion — so write your real
 username, not `$USER`.
 
@@ -77,9 +83,12 @@ Exit codes:
 
 ## Performance notes
 
-- Each CSV row is already a leaf directory identified by Sol's scan.
+- Each CSV row is already a directory identified by Sol's scan.
   `sol_renew.py` runs exactly one `find | xargs touch` pipeline per
-  row. It does not walk `/scratch` wholesale.
+  row — it does not start from `/scratch` and recurse. Scope is
+  bounded by what Sol flagged and what `.solignore` keeps, so an
+  overly broad keep-list or a large CSV-listed subtree will still
+  produce a large touch pass.
 - `touch -a -m -c` refreshes both `atime` and `mtime` (`-c` avoids
   creating files that do not exist).
 - A `touch` pass over a directory with many small files on a shared

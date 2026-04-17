@@ -56,8 +56,9 @@ and a user-maintained `.solignore` keep-list. See
 
 #### Default strategy
 
-Do not blindly `touch -r` across `/scratch/$USER`. The default flow is
-driven by two inputs:
+Do not bulk-touch `/scratch/$USER` (for example,
+`find /scratch/$USER -exec touch {} +`). The default flow is driven by
+two inputs:
 
 1. `$HOME/.solignore` — a gitignore-style file listing what to
    **keep** (semantics are inverted from gitignore; matched paths are

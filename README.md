@@ -152,16 +152,18 @@ rules loaded (empty or missing `.solignore`).
 
 ### `.solignore` quickstart
 
-Patterns are literal strings — **no shell expansion** — so write your
-real username in place of `sparky` below.
+Rules match against the **directory paths** listed in Sol's warning
+CSVs, not against individual files — matching decides which whole
+flagged directories get touched. Patterns are literal (no shell
+expansion) so write your real username in place of `sparky` below.
 
 ```gitignore
 # keep these trees (bare path = recursive match)
 /scratch/sparky/my-project
 /scratch/sparky/experiments
 
-# glob support
-/scratch/sparky/logs/*.log
+# glob support (matches a directory path; * does not cross /)
+/scratch/sparky/runs/*
 /scratch/sparky/data/**
 
 # negation: carve subtrees out of an otherwise-protected parent
