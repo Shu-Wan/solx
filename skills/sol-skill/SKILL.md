@@ -1,6 +1,7 @@
 ---
 name: sol-skill
 description: Tips and conventions for working on ASU's Sol supercomputer. Use this skill when the agent is operating on Sol, submitting SLURM jobs, managing modules, or transferring data on the cluster.
+license: MIT
 ---
 
 # Sol skills

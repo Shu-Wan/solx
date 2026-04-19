@@ -81,16 +81,17 @@ Read these before installing.
 ## Layout
 
 ```text
-sol-skill/
-├── README.md                # You are here
-├── SKILL.md                 # Agent skill entry point
-├── scripts/
-│   └── sol_renew.py         # CLI: renew scratch files flagged by Sol
-└── references/
-    ├── module.md            # Environment Modules cheatsheet
-    ├── scratch.md           # Scratch pipeline, .solkeep, sol_renew details
-    ├── sharing.md           # File sharing between cluster users
-    └── slurm.md             # Slurm / SBATCH reference
+sol-skills/
+├── README.md                    # You are here
+└── skills/sol-skill/            # Agent skill (per agentskills.io layout)
+    ├── SKILL.md                 # Agent skill entry point
+    ├── scripts/
+    │   └── sol_renew.py         # CLI: renew scratch files flagged by Sol
+    └── references/
+        ├── module.md            # Environment Modules cheatsheet
+        ├── scratch.md           # Scratch pipeline, .solkeep, sol_renew details
+        ├── sharing.md           # File sharing between cluster users
+        └── slurm.md             # Slurm / SBATCH reference
 ```
 
 ## CLI: `sol_renew.py`
@@ -123,7 +124,7 @@ PEP 723 metadata and caches them. Ensure `uv` is on your `$PATH`.
 Optional: symlink the script so it is globally callable.
 
 ```shell
-ln -s "$PWD/scripts/sol_renew.py" ~/.local/bin/sol-renew
+ln -s "$PWD/skills/sol-skill/scripts/sol_renew.py" ~/.local/bin/sol-renew
 ```
 
 ### Usage
@@ -173,27 +174,82 @@ expansion) so write your real username in place of `sparky` below.
 
 Rules are evaluated top-to-bottom, last match wins (same as gitignore).
 
-Full syntax + performance notes: [references/scratch.md](references/scratch.md).
+Full syntax + performance notes:
+[skills/sol-skill/references/scratch.md](skills/sol-skill/references/scratch.md).
 
 ## Agent skill
 
-`SKILL.md` is the entry point an AI coding assistant reads when this
-directory is installed as a skill. It tells the assistant how to detect
-whether it is on Sol, how to manage Environment Modules, where to keep
-data, how to submit Slurm jobs, and how to use `sol_renew.py` to keep
-scratch data alive.
+[`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md) is the entry
+point an AI coding assistant reads when this directory is installed as
+a skill. It tells the assistant how to detect whether it is on Sol, how
+to manage Environment Modules, where to keep data, how to submit Slurm
+jobs, and how to use `sol_renew.py` to keep scratch data alive.
 
-The skill shares `scripts/` and `references/` with the human CLI —
-one place for every behavior.
+### Install
+
+Pick whichever installer you already use. Both read the same
+`skills/sol-skill/SKILL.md` and install it into the target agent's skill
+directory.
+
+#### Option A — GitHub CLI (`gh skill`)
+
+Requires [GitHub CLI](https://cli.github.com/) **≥ 2.90.0** (which
+introduces the preview `gh skill` command).
+
+```shell
+# Claude Code, available in every project (recommended)
+gh skill install Shu-Wan/sol-skills sol-skill --agent claude-code --scope user
+
+# Or scope to the current repo only
+gh skill install Shu-Wan/sol-skills sol-skill --agent claude-code --scope project
+
+# Other supported agents: github-copilot, cursor, codex, gemini, antigravity
+gh skill install Shu-Wan/sol-skills sol-skill --agent github-copilot --scope user
+
+# Preview before installing
+gh skill preview Shu-Wan/sol-skills sol-skill
+
+# Pin to a specific release
+gh skill install Shu-Wan/sol-skills sol-skill@v0.1.0 --agent claude-code --scope user
+
+# Upgrade later
+gh skill update --all
+```
+
+Run `gh skill install --help` for the full flag list.
+
+#### Option B — Vercel Skills CLI (`skills`)
+
+Requires the
+[`skills`](https://github.com/vercel-labs/agent-skills) CLI
+(`npm i -g @vercel/skills` or via `pnpm`/`npx`).
+
+```shell
+# Global install into your default agent (prompts for scope)
+skills add Shu-Wan/sol-skills -g
+
+# Non-interactive: install sol-skill globally into Claude Code
+skills add Shu-Wan/sol-skills -s sol-skill -a claude-code -g -y
+
+# List without installing
+skills add Shu-Wan/sol-skills --list
+
+# Update later
+skills update -g
+```
+
+Run `skills --help` for the full flag list. See the
+[Agent Skills specification](https://agentskills.io/specification) for
+how skills are discovered and installed.
 
 ## References
 
 Cleaned-up notes on the ASU Research Computing docs, for quick lookup:
 
-- [module.md](references/module.md) — loading/unloading software modules
-- [scratch.md](references/scratch.md) — scratch deletion pipeline,
+- [module.md](skills/sol-skill/references/module.md) — loading/unloading software modules
+- [scratch.md](skills/sol-skill/references/scratch.md) — scratch deletion pipeline,
   `.solkeep` syntax, `sol_renew.py` internals
-- [sharing.md](references/sharing.md) — sharing files between users
-- [slurm.md](references/slurm.md) — submitting and managing Slurm jobs
+- [sharing.md](skills/sol-skill/references/sharing.md) — sharing files between users
+- [slurm.md](skills/sol-skill/references/slurm.md) — submitting and managing Slurm jobs
 
 Official doc (authoritative): <https://docs.rc.asu.edu/>.
