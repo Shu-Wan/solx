@@ -132,6 +132,27 @@ See [references/slurm.md](references/slurm.md) for submission
 commands, example scripts (serial, MPI, job arrays),
 troubleshooting, and exit codes.
 
+## Sessions and Tunneling
+
+To work on Sol from a laptop you need (a) a running Slurm allocation
+and (b) SSH tunnels back to the laptop for any localhost server
+(Jupyter, dev server, OAuth callback).
+
+**Detect the tooling first.** Run `command -v solx` on the side
+you're operating from.
+
+- If `solx` is installed →
+  [references/solx.md](references/solx.md) (one-command flow).
+- If not →
+  [references/sessions.md](references/sessions.md) (manual
+  `ssh -L … -J …` chain).
+
+**Personalize examples.** Run `whoami` once at the start of the
+session and substitute the result into every command before
+showing it. Never emit angle-bracket username placeholders to the
+user. Do not read `~/.ssh/config` or `~/.ssh/known_hosts` — if the
+user has a custom `Host` alias they will tell you.
+
 ## Transferring Data
 
 Use `rsync` for efficient transfers between local and Sol:
