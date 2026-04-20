@@ -3,3 +3,12 @@
 
 # Claude Code local settings (per-user, never commit)
 .claude/
+
+# Python build / cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
