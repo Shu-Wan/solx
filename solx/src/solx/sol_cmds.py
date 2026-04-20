@@ -142,6 +142,7 @@ def wait_for_running(
 
     deadline = now_fn() + timeout
     last_state: str | None = None
+    seen_in_queue = False
 
     while now_fn() < deadline:
         state, node = poll_fn(job_id)
@@ -154,9 +155,20 @@ def wait_for_running(
                 f"job {job_id} ended in state {state} before reaching RUNNING"
             )
 
-        if state and state != last_state:
-            console.print(f"[dim]job {job_id}: {state}[/dim]")
-            last_state = state
+        if state:
+            seen_in_queue = True
+            if state != last_state:
+                console.print(f"[dim]job {job_id}: {state}[/dim]")
+                last_state = state
+        elif seen_in_queue:
+            # We saw the job in squeue earlier and now it's gone — almost
+            # always means cancelled or aged out before reaching RUNNING.
+            # Without this, an out-of-band scancel would silently hang the
+            # poll loop until the global timeout.
+            raise RuntimeError(
+                f"job {job_id} disappeared from squeue before reaching RUNNING "
+                f"(cancelled or completed out-of-band)"
+            )
 
         sleep_fn(interval)
 

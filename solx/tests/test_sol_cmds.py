@@ -125,6 +125,36 @@ def test_wait_for_running_times_out():
         )
 
 
+def test_wait_for_running_raises_when_job_disappears_after_being_seen():
+    """If we saw the job in squeue and then it's gone, treat as out-of-band cancel."""
+    clock = FakeClock()
+    states = iter([("PENDING", ""), ("PENDING", ""), ("", "")])
+    with pytest.raises(RuntimeError, match="disappeared from squeue"):
+        sol_cmds.wait_for_running(
+            "1",
+            poll=lambda _: next(states),
+            sleep=clock.sleep,
+            now=clock.now,
+            timeout=60,
+            interval=1,
+        )
+
+
+def test_wait_for_running_tolerates_initial_empty_polls_before_job_appears():
+    """sbatch-to-squeue propagation race: empty state before first sighting is fine."""
+    clock = FakeClock()
+    states = iter([("", ""), ("", ""), ("PENDING", ""), ("RUNNING", "cg001")])
+    node = sol_cmds.wait_for_running(
+        "1",
+        poll=lambda _: next(states),
+        sleep=clock.sleep,
+        now=clock.now,
+        timeout=60,
+        interval=1,
+    )
+    assert node == "cg001"
+
+
 # ---------------------------------------------------------------------------
 # session_start happy path
 # ---------------------------------------------------------------------------
