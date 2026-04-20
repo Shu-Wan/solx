@@ -38,22 +38,26 @@ Out of scope: any laptop-side command (`init`, `up`, `down`, `forward`, `info`),
 | `solx/src/solx/side.py` | NEW | `detect()` reads `hostname -a`; returns `"sol"` if it matches `*.sol.rc.asu.edu`, else `"not-sol"`. Login-vs-compute distinction deferred. |
 | `solx/src/solx/config.py` | NEW | Load `~/.config/solx/profiles.toml`; resolve `[shared]` + profile merge. |
 | `solx/src/solx/session.py` | NEW | `~/.local/share/solx/session.json` r/w; stale-session detection. |
-| `solx/src/solx/sol_cmds.py` | NEW | `session start/info/stop`, `config init/show`. Wraps `/usr/local/bin/vscode` for `kind=vscode`. |
+| `solx/src/solx/sol_cmds.py` | NEW | `session start/info/stop` (sbatch-wrapping for `kind=bare`), `config init/show`. |
 | `solx/tests/` | NEW | pytest with subprocess mocked. Sol-side coverage only. |
-| `solx/README.md` | NEW | Lead with "SSH to Sol first (see `skills/sol-skill/references/sessions.md`), then `solx`." Install + Sol-side examples. |
+| `solx/README.md` | NEW | Minimal — install + link to `docs/solx.md` + `docs/solx-smoke.md`. |
+| `docs/solx.md` | NEW | User manual for the CLI: install, profile schema, command reference, limitations. |
+| `docs/solx-smoke.md` | NEW | Manual end-to-end smoke checklist (debug profile on `htc`). |
 
-Notably **not** in this PR: `ssh.py`, `laptop_cmds.py`, `~/.config/solx/laptop.toml` schema. They land in Stage 2b.
+Notably **not** in this PR: `ssh.py`, `laptop_cmds.py`, `~/.config/solx/laptop.toml` schema, `kind=vscode` and `kind=sbatch-script` wrappers. They land in Stage 2b (or a follow-up).
+
+> **Scope refinement during implementation.** Originally Stage 2a planned to wrap `/usr/local/bin/vscode` for `kind=vscode` profiles. While implementing, this turned out to break the model: vscode is a long-running interactive process, so we'd never get back to populate `session.json` cleanly. Cut to `kind=bare` only; vscode/sbatch-script kinds raise a clear "not yet supported" error. Single-user starter config now uses `kind=bare` for `default`, `gpu`, and `debug`.
 
 ### Implementation notes (Stage 2a)
 
 - **CLI stack**: Typer + Rich. Defer Textual.
 - **TOML**: stdlib `tomllib` only (no `tomli` dep). Python 3.11+ is enforced in `pyproject.toml`.
-- **Side detection**: `hostname -a` matching `*.sol.rc.asu.edu` → `"sol"`; otherwise `"not-sol"`. On `not-sol`, every subcommand exits 2 with `solx is only useful on Sol in this release. SSH to Sol first — see skills/sol-skill/references/sessions.md.` No silent fallback.
+- **Side detection**: `hostname -a` matching `*.sol.rc.asu.edu` → `"sol"`; otherwise `"not-sol"` (with a `socket.getfqdn()` fallback). On `not-sol`, every Sol-side subcommand exits 2 with a redirect message. `solx where` is always safe to run on either side.
 - **`[shared]` merge semantics**: scalars (`partition`, `qos`, `time`) — profile overrides shared. Lists (`forward`, `srun_args`) — concatenate `[shared]` first, then profile. Lets a profile *extend* the shared baseline rather than replace it.
 - **CLI passthrough**: anything after `--` on `solx session start` is appended to the underlying `srun` command, after profile `srun_args`. `[shared]` `srun_args` still apply unless the user re-specifies the same flag in the tail.
-- **Stale-session detection**: `solx session start` checks for an existing `session.json`. If the recorded `job_id` is no longer in `squeue -j`, offer to clean up; if it *is* still queued/running, refuse with a message pointing at `solx session info`. No silent overwrite.
-- **VSCode wrapper**: `kind=vscode` profiles invoke `/usr/local/bin/vscode` rather than reimplementing the tunnel logic. Preserves muscle memory and any future ASU-side changes.
-- **`--dry-run`**: `solx session start --dry-run` prints the literal `srun`/`vscode` argv without executing. Snapshot-tested so flag changes are reviewed deliberately.
+- **Stale-session detection**: `solx session start` checks for an existing `session.json`. If the recorded `job_id` is no longer in `squeue -j`, clear the orphan and proceed; if it *is* still queued/running, refuse with exit 2 and point at `solx session info` / `solx session stop`. Malformed JSON is treated as stale and cleared. No silent overwrite of a live session.
+- **`sbatch --parsable --wrap='sleep infinity'`**: lets us land an allocation that persists in the background and capture the job_id deterministically, instead of `srun --pty` (which would block the calling shell). User joins manually with `srun --jobid=<id> --pty bash`; a `solx session shell` shortcut is future work.
+- **`--dry-run`**: `solx session start --dry-run` prints the literal sbatch argv without executing. Test suite asserts argv structure per profile / passthrough combo so flag changes are reviewed deliberately.
 - **No laptop-side state**: Stage 2a never reads or writes `~/.config/solx/laptop.toml`, never invokes `ssh`, never reads `~/.ssh/*`. The security model is trivially upheld by construction in this stage.
 - **Exit codes**: 0 ok / 1 failure / 2 conditional (wrong side, missing config, stale session present). Mirrors `skills/sol-skill/scripts/sol_renew.py`.
 
@@ -61,7 +65,7 @@ Notably **not** in this PR: `ssh.py`, `laptop_cmds.py`, `~/.config/solx/laptop.t
 
 1. **Installs on Sol**: `uv tool install ./solx` succeeds on a Sol login node; `solx --version` works in a fresh shell.
 2. **Side guard works**: `solx where` returns `"sol mode"` on Sol; on a non-Sol shell every Sol-side subcommand exits 2 with the redirect message — no stack trace.
-3. **Laptop-side stubs are honest**: `solx up`/`down`/`forward`/`info` exist in `--help` but exit 2 with "Stage 2b — use the manual flow in skills/sol-skill/references/sessions.md".
+3. **Laptop-side stubs are honest**: `solx up`/`down`/`forward`/`info` (top-level) and `solx init` exist in `--help` but exit 2 with a deferral message pointing at the manual SSH flow.
 4. **`[shared]` merge correctness**: a profile that omits `qos` while `[shared]` provides `qos = "public"` resolves to `"public"`. A profile with `srun_args = ["--mem=64G"]` plus `[shared]` `srun_args = ["--mail-type=TIME_LIMIT_90,END,FAIL"]` resolves to both, in that order (shared first).
 5. **Dry-run snapshots are stable**: `solx session start <profile> --dry-run` output is snapshot-tested per profile (default, gpu, debug). Diffs require explicit reviewer sign-off.
 6. **Stale-session detection**: starting a session when an old `session.json` references a no-longer-queued job offers cleanup; when it references a still-running job, refuses and points at `solx session info`.
