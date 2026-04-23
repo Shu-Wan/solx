@@ -1,0 +1,10 @@
+# Sanitized .solkeep used by the mock environment.
+# Replace `sparky` with your real ASURITE in your private evals/evals.json.
+
+# Keep these trees (bare path = recursive)
+/scratch/sparky/my-project
+/scratch/sparky/experiments
+
+# Carve out stale build artifacts
+!/scratch/sparky/my-project/**/__pycache__
+!/scratch/sparky/my-project/**/.venv/**

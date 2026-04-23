@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Mock ssh — never actually connects. Logs the would-be invocation so an eval
+# can assert "agent built `ssh -L 8888:localhost:8888 -J ... user@cg001`".
+# Returns 0 immediately.
+set -u
+
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s ssh %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+echo "[mock-ssh] would connect: ssh $*" >&2
+exit 0

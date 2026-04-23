@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Mock sbatch — logs args, parses the script for #SBATCH headers (so an eval
+# can assert on them indirectly via the log), prints a fake job id, exits 0.
+set -u
+
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s sbatch %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+
+# Last positional arg is conventionally the script path.
+script=""
+for arg in "$@"; do script="$arg"; done
+
+if [ -n "$script" ] && [ -r "$script" ]; then
+    # Echo the SBATCH headers to the log so assertions can grep them.
+    grep -E '^#SBATCH' "$script" 2>/dev/null \
+        | sed "s|^|$(date -u +%FT%TZ) sbatch-header |" >> "$mock_log"
+fi
+
+job_id=$(( (RANDOM % 90000) + 10000000 ))
+echo "Submitted batch job $job_id"
+exit 0

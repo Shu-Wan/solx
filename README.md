@@ -83,16 +83,32 @@ Read these before installing.
 ```text
 sol-skills/
 ├── README.md                    # You are here
-└── skills/sol-skill/            # Agent skill (per agentskills.io layout)
-    ├── SKILL.md                 # Agent skill entry point
-    ├── scripts/
-    │   └── sol_renew.py         # CLI: renew scratch files flagged by Sol
-    └── references/
-        ├── module.md            # Environment Modules cheatsheet
-        ├── scratch.md           # Scratch pipeline, .solkeep, sol_renew details
-        ├── sharing.md           # File sharing between cluster users
-        └── slurm.md             # Slurm / SBATCH reference
+├── DEVELOPMENT.md               # Contributor guide + eval harness internals
+├── docs/
+│   ├── PLAN.md                  # roadmap (in development)
+│   ├── name.md
+│   └── coverage.md              # Public test methodology + coverage matrix
+├── skills/sol-skill/            # Agent skill (per agentskills.io layout)
+│   ├── SKILL.md                 # Agent skill entry point
+│   ├── scripts/
+│   │   └── sol_renew.py         # CLI: renew scratch files flagged by Sol
+│   └── references/              # module, scratch, sharing, slurm, sessions
+└── evals/                       # Eval harness (not shipped with the skill)
+    ├── README.md
+    ├── evals.example.json       # Sanitized template; copy to evals.json
+    ├── mocks/                   # Userland Sol mock environment
+    └── runner/                  # Wrapper over skill-creator (in development)
 ```
+
+## Verification and contributing
+
+- **Version history** — see [`CHANGELOG.md`](CHANGELOG.md). Current
+  release: v0.2.0.
+- **What's tested and how** — see [`docs/coverage.md`](docs/coverage.md)
+  for the public methodology and per-area coverage matrix.
+- **Contributing / eval harness internals** — see
+  [`DEVELOPMENT.md`](DEVELOPMENT.md) for the layered (L0–L3) eval
+  framework, the mock Sol environment, and the release process.
 
 ## CLI: `sol_renew.py`
 
@@ -210,7 +226,7 @@ gh skill install Shu-Wan/sol-skills sol-skill --agent github-copilot --scope use
 gh skill preview Shu-Wan/sol-skills sol-skill
 
 # Pin to a specific release
-gh skill install Shu-Wan/sol-skills sol-skill@v0.1.0 --agent claude-code --scope user
+gh skill install Shu-Wan/sol-skills sol-skill@v0.2.0 --agent claude-code --scope user
 
 # Upgrade later
 gh skill update --all
