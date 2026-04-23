@@ -47,14 +47,18 @@ revisitable; nothing below is final.
   specifically.
 - **Collisions**: none known in the HPC / developer-tooling space.
 
-### `soldev`
+### Mogollon / `mog`
 
-- **Read as**: "Sol dev" to anyone; "Sun Devil" to ASU folks.
-- **For**: dual meaning (Sol developer tool + ASU Sun Devil), short, obvious
-  intent.
-- **Against**: slightly less "experimental" sounding than `solx`; commits to
-  the ASU flavor.
-- **Collisions**: none known.
+- **Read as**: "Mogollon" for the project name; `mog` for the CLI binary.
+- **For**: Mogollon grounds the tool in Arizona's geography (the Mogollon
+  Rim), giving it a distinctive and locally meaningful identity. This
+  separation balances professionalism and practicality: "Mogollon" works well
+  for documentation, repositories, and presentation, whereas `mog` is concise,
+  memorable, and efficient for frequent command-line use.
+- **Against**: `mog` has minor naming overlap in unrelated domains, though the
+  risk is negligible in the intended HPC context, making the pairing expressive
+  and pragmatic for a school project.
+- **Collisions**: minor overlap outside HPC; no blocking collision known.
 
 ### `pitchfork` / `pfork`
 
