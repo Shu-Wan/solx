@@ -1,8 +1,9 @@
 # Sessions and tunneling — manual SSH
 
-Use this reference when `command -v solx` finds nothing. It walks the
-laptop ↔ Sol dev loop entirely through the user's existing `ssh`
-client — no extra tooling, no reads of `~/.ssh/*`.
+The laptop ↔ Sol dev loop, entirely through the user's existing
+`ssh` client — no extra tooling, no reads of `~/.ssh/*`. Use this
+when Open OnDemand isn't the right fit (terminal-driven workflow,
+custom env vars, multiple ports, scripts that wrap the allocation).
 
 > **Substitute the username once.** At the start of the session, run
 > `whoami` and reuse the result throughout. The examples below set
@@ -19,14 +20,22 @@ To work on Sol from a laptop you need two things:
 
 The login node (`sol.asu.edu`) is reachable from the internet; compute
 nodes are not. Every laptop ↔ compute-node connection therefore has to
-chain through the login node with `-J` (ProxyJump).
+chain through the login node with `-J` (ProxyJump). The single command
+on the laptop builds the whole chain — SSH dials the login node, hops
+to the compute node via ProxyJump, and the `-L` flag forwards the
+compute-node port back to the laptop:
 
-```text
-   laptop  ── ssh ──▶  sol.asu.edu (login)  ── ssh ──▶  cXXX (compute)
-                       │  ProxyJump (-J)  │
-   localhost:8888  ◀────────  -L 8888:localhost:8888  ────────┐
-                                                              ▼
-                                                       jupyter on cXXX
+```mermaid
+flowchart LR
+    laptop["your laptop<br/>localhost:8888"]
+    login["sol.asu.edu<br/>(login node,<br/>internet-reachable)"]
+    compute["cXXX<br/>(compute node,<br/>not internet-reachable)"]
+    jupyter(("jupyter<br/>on :8888"))
+
+    laptop -- "ssh -L 8888:localhost:8888 -J $ME@$SOL $ME@cXXX" --> login
+    login -. "ProxyJump (-J) hop" .-> compute
+    compute --- jupyter
+    jupyter -. "forwarded back via -L" .-> laptop
 ```
 
 ## 0. One-time per shell
@@ -47,19 +56,29 @@ From the laptop, SSH to the login node:
 ssh $ME@$SOL
 ```
 
-On the login node, request an allocation. Pick the wrapper that
-matches what you need:
+On the login node, request an allocation. **Match the partition to
+the workload size**, not the request size — Sol's `htc` partition is
+the right home for short, lightweight, debug-class shells (anything
+under ~1 hour, modest CPU/RAM, no GPU). Save `general` for real
+work that genuinely needs the larger nodes. Picking `general` for a
+30-minute debug shell wastes capacity that someone else is queued for.
 
 ```shell
-# General-purpose interactive shell
+# Lightweight debug — short shell, no GPU, modest resources.
+# Use this for "I just want to test a command" or "I need to inspect
+# something on a compute node for a few minutes."
+interactive -p htc -t 0-01:00 -c 4 --mem=16G
+
+# General-purpose interactive shell — hours of CPU work
 interactive -p general -t 0-04:00 -c 8 --mem=32G
 
 # GPU
 interactive -p general -t 0-04:00 -c 8 --mem=64G -G a100:1
-
-# Lightweight debug
-interactive -p htc -t 0-01:00 -c 4 --mem=16G
 ```
+
+If the user describes the work as "quick", "debug", "lightweight",
+"just need to check", or specifies under an hour with no GPU — that's
+an `htc` request. Don't default to `general` in those cases.
 
 When the allocation lands, the prompt changes and you are now on a
 compute node. **Capture the node hostname** — you will need it from
@@ -174,17 +193,17 @@ Useful when a tunnel hangs and you want a clean slate.
 
 A `-L` issued from the **compute node** binds the compute node's
 loopback, not the laptop's. If `http://localhost:8888` on the laptop
-still 404s, check the prompt of the shell you ran `-L` in. The chained
-form in step 3 must be issued **from the laptop**.
+still 404s, check which side the shell you ran `-L` in is actually
+on. The chained form in step 3 must be issued **from the laptop**.
 
 Quick sanity check:
 
 ```shell
-hostname -a
+command -v sacctmgr   # nothing → laptop. A path → you're on Sol.
 ```
 
-If it ends in `.sol.rc.asu.edu` you are on Sol — abort and re-run the
-`-L` from a laptop terminal.
+If `sacctmgr` resolves to a path you are on Sol — abort and re-run
+the `-L` from a laptop terminal.
 
 ### Tunnel established but page won't load
 
@@ -207,9 +226,6 @@ In order, check:
 
 ## See also
 
-- `command -v solx` returns a path → use
-  [solx.md](solx.md) instead. It collapses steps 1–3 into a single
-  command on the laptop.
 - [slurm.md](slurm.md) — non-interactive job submission via SBATCH.
 - [module.md](module.md) — loading software inside the interactive
   shell before starting a server.

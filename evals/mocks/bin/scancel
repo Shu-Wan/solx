@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Mock scancel — logs and exits 0.
+set -u
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s scancel %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+exit 0

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Mock squeue — logs args and prints a single fake row matching $USER.
+set -u
+
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s squeue %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+
+cat <<EOF
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+          12345678   general     mock $(whoami)  R       0:42      1 sc001
+EOF
+exit 0

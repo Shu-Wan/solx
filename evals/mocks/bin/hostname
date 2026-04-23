@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Mock hostname — returns whatever $MOCK_HOSTNAME is set to.
+# Honors -s (short), -a (all), and no-arg invocations the way SKILL.md uses it.
+set -u
+
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s hostname %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+
+full="${MOCK_HOSTNAME:-sc001.sol.rc.asu.edu}"
+
+case "${1:-}" in
+    -s|--short) echo "${full%%.*}" ;;
+    -a|-A|--all-fqdns|--all-ip-addresses) echo "$full" ;;
+    -f|-d|"") echo "$full" ;;
+    *) echo "$full" ;;
+esac
