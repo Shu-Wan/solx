@@ -103,7 +103,7 @@ sol-skills/
 ## Verification and contributing
 
 - **Version history** — see [`CHANGELOG.md`](CHANGELOG.md). Current
-  release: v0.1.0.
+  release: v0.2.0.
 - **What's tested and how** — see [`docs/coverage.md`](docs/coverage.md)
   for the public methodology and per-area coverage matrix.
 - **Contributing / eval harness internals** — see
@@ -226,7 +226,7 @@ gh skill install Shu-Wan/sol-skills sol-skill --agent github-copilot --scope use
 gh skill preview Shu-Wan/sol-skills sol-skill
 
 # Pin to a specific release
-gh skill install Shu-Wan/sol-skills sol-skill@v0.1.0 --agent claude-code --scope user
+gh skill install Shu-Wan/sol-skills sol-skill@v0.2.0 --agent claude-code --scope user
 
 # Upgrade later
 gh skill update --all

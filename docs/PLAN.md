@@ -16,13 +16,13 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
 
 | Stage | Outcome |
 |---|---|
-| 1 — Skill manual-SSH path | Shipped in v0.1.0 (see CHANGELOG). |
+| 1 — Skill manual-SSH path | Shipped in v0.2.0 (see CHANGELOG). |
 | 2 — `solx` CLI package | `solx/` standalone package, `uv tool install`-able, every mutating subcommand supports `--dry-run`. Designed below. |
 | 3 — Skill ↔ `solx` integration | Add `command -v solx` detection branch into SKILL.md; populate `references/solx.md` with the one-command flow. Depends on Stage 2. |
 
 ## Why a `solx` CLI
 
-The current dev loop on Sol from a laptop, even with the v0.1.0
+The current dev loop on Sol from a laptop, even with the v0.2.0
 skill teaching the right commands:
 
 1. SSH into Sol → start `interactive` (or `vscode`).
@@ -93,7 +93,7 @@ status); default to simple Typer prompts.
 
 ### Side detection (`solx where`)
 
-Use the same SLURM-side signals the v0.1.0 skill teaches (see
+Use the same SLURM-side signals the v0.2.0 skill teaches (see
 `SKILL.md` "Detecting the Environment"):
 
 1. `command -v sacctmgr` — empty → not on a Slurm cluster → must be
