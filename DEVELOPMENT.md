@@ -201,7 +201,7 @@ Inside the sandboxed session:
 To hide a different skill (e.g., when iterating on a sibling skill):
 
 ```shell
-HIDE_SKILL=other-skill ./evals/runner/build_sandbox_home.sh
+./evals/runner/build_sandbox_home.sh --hide-skill other-skill
 ```
 
 To verify the sandbox is taking effect, start a `claude -p` against

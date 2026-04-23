@@ -10,8 +10,10 @@
 #   - $HOME points at evals/mocks/home (fake .solkeep + Sol warning CSVs)
 #   - $MOCK_HOSTNAME controls what `hostname` returns (default: Sol login)
 #
-# Toggle the side under test:
-#   MOCK_HOSTNAME=macbook.local source evals/mocks/activate.sh
+# Toggle the side under test (export first; inline assignment with
+# `source` isn't reliable across shells):
+#   export MOCK_HOSTNAME=macbook.local
+#   source evals/mocks/activate.sh
 #
 # Toggle the solx-present branch by symlinking your real solx into bin/:
 #   ln -s "$(command -v solx)" evals/mocks/bin/solx

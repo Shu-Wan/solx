@@ -65,6 +65,26 @@ if [ ! -d "$SOURCE_DIR" ]; then
     exit 1
 fi
 
+# Refuse to wipe anything that isn't an obviously throwaway sandbox path.
+# We're about to `rm -rf "$SANDBOX"`, so we want strong guarantees that
+# the target is (a) absolute, (b) under /tmp, (c) not the user's real
+# config dir or anything else load-bearing. A typo like an empty TARGET
+# or `/` would otherwise be catastrophic.
+case "$SANDBOX" in
+    "" | "/" | "/tmp" | "/tmp/")
+        echo "build_sandbox_home: refusing to operate on '$SANDBOX'" >&2
+        exit 1 ;;
+    /tmp/*) ;;
+    *)
+        echo "build_sandbox_home: target must be an absolute path under /tmp/" >&2
+        echo "                    got: '$SANDBOX'" >&2
+        exit 1 ;;
+esac
+if [ "$SANDBOX" = "$SOURCE_DIR" ] || [ "$SANDBOX" = "$HOME" ] || [ "$SANDBOX" = "$HOME/" ]; then
+    echo "build_sandbox_home: refusing to wipe real config dir '$SANDBOX'" >&2
+    exit 1
+fi
+
 # Wipe any prior sandbox so symlinks reflect the current real state.
 rm -rf "$SANDBOX"
 mkdir -p "$SANDBOX/skills"
