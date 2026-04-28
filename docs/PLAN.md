@@ -134,7 +134,7 @@ forward = [8888]
 
 [gpu]
 kind = "bare"
-partition = "general"
+partition = "public"
 gres = "gpu:a100:1"
 time = "0-4"
 forward = [8888, 6006]  # jupyter + tensorboard

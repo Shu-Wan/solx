@@ -59,8 +59,8 @@ ssh $ME@$SOL
 On the login node, request an allocation. **Match the partition to
 the workload size**, not the request size — Sol's `htc` partition is
 the right home for short, lightweight, debug-class shells (anything
-under ~1 hour, modest CPU/RAM, no GPU). Save `general` for real
-work that genuinely needs the larger nodes. Picking `general` for a
+under ~1 hour, modest CPU/RAM, no GPU). Save `public` for real
+work that genuinely needs the larger nodes. Picking `public` for a
 30-minute debug shell wastes capacity that someone else is queued for.
 
 ```shell
@@ -70,15 +70,15 @@ work that genuinely needs the larger nodes. Picking `general` for a
 interactive -p htc -t 0-01:00 -c 4 --mem=16G
 
 # General-purpose interactive shell — hours of CPU work
-interactive -p general -t 0-04:00 -c 8 --mem=32G
+interactive -p public -t 0-04:00 -c 8 --mem=32G
 
 # GPU
-interactive -p general -t 0-04:00 -c 8 --mem=64G -G a100:1
+interactive -p public -t 0-04:00 -c 8 --mem=64G -G a100:1
 ```
 
 If the user describes the work as "quick", "debug", "lightweight",
 "just need to check", or specifies under an hour with no GPU — that's
-an `htc` request. Don't default to `general` in those cases.
+an `htc` request. Don't default to `public` in those cases.
 
 When the allocation lands, the prompt changes and you are now on a
 compute node. **Capture the node hostname** — you will need it from
