@@ -1,6 +1,6 @@
 ---
 name: sol-skill
-version: 0.2.0
+version: 0.2.1
 description: Tips and conventions for working on ASU's Sol supercomputer. Use this skill when the agent is operating on Sol, submitting SLURM jobs, managing modules, or transferring data on the cluster.
 license: MIT
 ---
@@ -246,17 +246,17 @@ the `interactive` wrapper for interactive shells.
 -c 1 -t 0-4`.** Bare `interactive` (no flags) gets you a 4-hour `htc`
 shell — the right shape for most debug or "just need to check
 something on a compute node" sessions. Override only when the
-workload genuinely needs more (e.g., `interactive -p general -G a100:1`
-for a GPU shell, `interactive -p general -c 16 --mem=64G` for heavy
+workload genuinely needs more (e.g., `interactive -p public -G a100:1`
+for a GPU shell, `interactive -p public -c 16 --mem=64G` for heavy
 CPU work).
 
 **Match the partition to the workload size, not the request size.**
 Sol's `htc` partition is the right home for short, lightweight,
-debug-class work. Use `general` for real workloads that genuinely
+debug-class work. Use `public` for real workloads that genuinely
 need the larger nodes. If the user describes the work as "quick",
 "debug", "lightweight", "just need to check", or specifies under an
 hour with no GPU — that's an `htc` request. Don't default to
-`general` in those cases: defaulting wastes capacity that someone
+`public` in those cases: defaulting wastes capacity that someone
 else is queued for.
 
 **Don't write SBATCH scripts from scratch when a template fits.**
@@ -270,7 +270,7 @@ See [references/slurm.md](references/slurm.md) for submission
 commands, example scripts (serial, MPI, job arrays),
 troubleshooting, and exit codes; and
 [references/sessions.md](references/sessions.md) for the
-`interactive` wrapper variants by workload type (debug, general,
+`interactive` wrapper variants by workload type (debug, public,
 GPU).
 
 ## Asking the Cluster About Yourself and Your Jobs

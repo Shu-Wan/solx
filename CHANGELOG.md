@@ -11,7 +11,25 @@ tag for that release.
 
 ## [Unreleased]
 
-(Changes since v0.2.0 land here. Move them under a new heading on release.)
+(Changes since v0.2.1 land here. Move them under a new heading on release.)
+
+## [0.2.1] — 2026-04-28
+
+Partition rename: ASU Research Computing retired the `general`
+partition in favor of `public`. All SBATCH examples,
+`interactive` wrapper variants, and partition-choice guidance now
+use `-p public` for non-`htc` workloads. Closes #12.
+
+### Changed
+
+- `skills/sol-skill/SKILL.md`, `references/slurm.md`,
+  `references/sessions.md`: replace `-p general` with `-p public`
+  in serial / MPI / job-array templates and interactive-shell
+  examples; update the "save the larger partition for real
+  workloads" guidance to name `public` instead of `general`.
+- `evals/evals.example.json`: GPU PyTorch eval expects `-p public`.
+- `docs/PLAN.md`: planned `solx` `[gpu]` profile uses
+  `partition = "public"`.
 
 ## [0.2.0] — 2026-04-23
 
@@ -114,6 +132,7 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/sol-skills/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Shu-Wan/sol-skills/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.1.0

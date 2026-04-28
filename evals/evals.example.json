@@ -94,7 +94,7 @@
       "id": 4,
       "name": "slurm-gpu-pytorch-job",
       "prompt": "Write me an sbatch script that trains a PyTorch model on 2 A100s for 4 hours, in a conda env called `vision`.",
-      "expected_output": "SBATCH script with -p general, -G a100:2 (or --gres=gpu:a100:2), -t 0-04:00:00, module load mamba/latest + source activate vision, no sudo.",
+      "expected_output": "SBATCH script with -p public, -G a100:2 (or --gres=gpu:a100:2), -t 0-04:00:00, module load mamba/latest + source activate vision, no sudo.",
       "setup": {
         "mock_hostname": "sc001.sol.rc.asu.edu",
         "include_solx": false

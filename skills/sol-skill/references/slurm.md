@@ -65,7 +65,7 @@ Additional templates live on the cluster at:
 #SBATCH -N 1            # number of nodes
 #SBATCH -c 8            # number of cores
 #SBATCH -t 0-01:00:00   # time in d-hh:mm:ss
-#SBATCH -p general      # partition
+#SBATCH -p public       # partition
 #SBATCH -q public       # QOS
 #SBATCH -o slurm.%j.out # STDOUT (%j = JobId)
 #SBATCH -e slurm.%j.err # STDERR (%j = JobId)
@@ -93,7 +93,7 @@ to tasks across one or more nodes.
 #SBATCH -n 8            # number of tasks
 #SBATCH -c 1            # cores per task (default 1)
 #SBATCH -t 0-01:00:00
-#SBATCH -p general
+#SBATCH -p public
 #SBATCH -q public
 #SBATCH -o slurm.%j.out
 #SBATCH -e slurm.%j.err
@@ -119,7 +119,7 @@ parameters. A **manifest file** lists the input parameters.
 #SBATCH -c 1
 #SBATCH --array=1-20
 #SBATCH -t 0-01:00:00
-#SBATCH -p general
+#SBATCH -p public
 #SBATCH -q public
 #SBATCH -o slurm.%j.out
 #SBATCH -e slurm.%j.err
