@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Sol-side session and config CLI for ASU's Sol supercomputer."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT"
+license = { text = "MIT" }
 authors = [
   { name = "Shu Wan" },
 ]
