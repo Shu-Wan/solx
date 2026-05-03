@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Mock `module` — emits canned avail/list output, logs every invocation.
+# Real Sol uses Lmod; this mock supports avail/load/list/unload/purge enough
+# to test agent decision logic without loading anything.
+set -u
+
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s module %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+
+# State file tracks "loaded" modules so list/unload behave consistently
+# within an eval. Lives under /tmp so it never leaks back into the repo
+# even if MOCK_ROOT points inside the source tree.
+state="${MOCK_STATE_DIR:-/tmp}/sol-skill-mock-modules-${UID:-$$}"
+touch "$state"
+
+cmd="${1:-help}"; shift || true
+
+case "$cmd" in
+    avail)
+        # Filter the canned list by the keyword if one is given.
+        canned="r-4.4.0
+r-4.3.2
+mamba/latest
+openmpi/4.1.5
+lammps/2023.08.02
+aspect/2.3.0
+gcc-11.2.0
+cuda-12.1
+ffmpeg/6.0"
+        if [ $# -gt 0 ]; then
+            echo "$canned" | grep -i -- "$1" || true
+        else
+            echo "$canned"
+        fi
+        ;;
+    load|add|ml)
+        for m in "$@"; do echo "$m" >> "$state"; done
+        ;;
+    list)
+        if [ -s "$state" ]; then
+            sort -u "$state" | nl -ba
+        else
+            echo "No modules loaded."
+        fi
+        ;;
+    unload|rm)
+        for m in "$@"; do
+            grep -vF -- "$m" "$state" > "$state.tmp" || true
+            mv "$state.tmp" "$state" 2>/dev/null || : > "$state"
+        done
+        ;;
+    purge)
+        : > "$state"
+        ;;
+    help|--help|-h|"")
+        echo "mock module: subcommands avail|load|list|unload|purge"
+        ;;
+    *)
+        echo "mock module: unknown subcommand '$cmd'" >&2
+        exit 1
+        ;;
+esac

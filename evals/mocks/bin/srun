@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Mock srun — never actually runs anything; logs args and exits 0.
+# An eval that wants to assert "agent invoked srun with -p general" greps
+# $MOCK_LOG for the recorded line.
+set -u
+
+mock_log="${MOCK_LOG:-/dev/null}"
+printf '%s srun %s\n' "$(date -u +%FT%TZ)" "$*" >> "$mock_log"
+
+# If invoked with `--mock-fail=N` (synthetic), exit with that code.
+for arg in "$@"; do
+    case "$arg" in
+        --mock-fail=*) exit "${arg#--mock-fail=}" ;;
+    esac
+done
+
+# Pretend to allocate and immediately succeed.
+echo "[mock-srun] would run: $*" >&2
+exit 0

@@ -3,6 +3,22 @@
 
 # Claude Code local settings (per-user, never commit)
 .claude/
+.claude/worktrees/
+
+# Eval harness — private maintainer state (see DEVELOPMENT.md)
+evals/evals.json
+evals/results/
+sol-skill-workspace/
+/tmp/sol-skill-mock-*.log
+
+# Eval mock leftovers: Lmod and other shell init may scribble into
+# the fake $HOME when a subshell loads the user profile under the
+# mock environment. None of these belong in version control.
+evals/mocks/home/.cache/
+evals/mocks/home/.lmod.d/
+evals/mocks/home/.bash_history
+evals/mocks/home/.zsh_history
+evals/mocks/.module_loaded
 
 # Python build / cache
 __pycache__/
