@@ -57,7 +57,7 @@ Defaults wherever a sensible default exists.
 | `solx job stop [JOBID]` | Cancel a job | `scancel` |
 | `solx job jump [JOBID]` (also `solx jump`) | Drop into `default_shell` on the job's compute node | `srun --jobid=… --pty $shell` |
 | `solx job time [JOBID]` | Print time remaining in Slurm `D-HH:MM:SS` format | `squeue -h -j … -O TimeLeft` |
-| `solx keep [--dry-run]` | Touch mtimes on `[keep]` paths in config | `touch -a -m -c` |
+| `solx keep [--stage S] [--csv-dir DIR] [-j N] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` | `touch -a -m -c` |
 | `solx config show [--json]` | Print resolved config | — |
 | `solx config edit` | Open `config.toml` in `$EDITOR` | — |
 | `solx completions <bash\|zsh\|fish>` | Emit shell completion script | Typer built-in |
@@ -126,10 +126,11 @@ qos = "public"
 partition = "htc"
 time = "0-1"
 
-# Scratch paths to keep alive when `solx keep` runs.
+# Scratch paths to keep alive when Sol flags them in a warning CSV
+# *and* `solx keep` runs. Replace `sparky` with your ASURITE.
 # Examples (uncomment + edit):
 # [keep]
-# include = ["/scratch/<asurite>/your-project", "/scratch/<asurite>/experiments/**"]
+# include = ["/scratch/sparky/your-project", "/scratch/sparky/experiments/**"]
 # exclude = ["**/__pycache__", "**/.venv"]
 ```
 
@@ -169,13 +170,47 @@ run.
 | `side.py` | KEEP, simplify | Internal Sol-vs-not-Sol guard; no longer a top-level command. |
 | `slurm.py` | NEW | Thin `squeue`/`scancel`/`sbatch`/`srun` wrappers; `Job` dataclass; `resolve_jobid()` per the rules above. |
 | `jobs.py` | NEW | `list`, `start`, `stop`, `jump`, `time` command bodies. |
-| `keep.py` | NEW | Reads `[keep]` from config, walks include∖exclude with `pathspec`, calls `touch -a -m -c`. `--dry-run`. |
+| `keep.py` | NEW | Port of `sol_renew.py`. Reads Sol's warning CSVs from `--csv-dir`, intersects flagged paths with `[keep]` include/exclude (via `pathspec`), `touch -a -m -c` on the intersection. Mirrors `sol_renew.py`'s flag surface (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`); drops `--solkeep` since `[keep]` lives in the main config. |
 | `init.py` | NEW | First-run: write starter config (no `whoami` substitution; placeholders only). |
 | `session.py` | DELETE | No more `session.json`; `squeue` is the source of truth. |
 | `sol_cmds.py` | DELETE | Logic split across `jobs.py` / `keep.py` / `init.py`. |
 
 `pyproject.toml` adds `pathspec` to runtime deps. Python ≥ 3.11
 unchanged.
+
+### Scratch renewal mechanism
+
+`solx keep` is a port of the existing `sol_renew.py` script. The
+mechanism is unchanged — only the keep-list source moves.
+
+1. Reads Sol's warning CSVs from `--csv-dir` (default `$HOME`):
+   - `scratch-dirs-pending-removal.csv` (most urgent)
+   - `scratch-dirs-over-90days.csv`
+   - `scratch-dirs-inactive.csv`
+2. Filters the flagged directories through `[keep]` include/exclude
+   from `config.toml` (via `pathspec`). Replaces `sol_renew.py`'s
+   `~/.solkeep` filter — same matching semantics, lives in the main
+   config now.
+3. `touch -a -m -c` only the directories that **both** appear in a
+   CSV and match `[keep]`. Never walks `/scratch` wholesale.
+
+Flag surface mirrors `sol_renew.py`:
+
+| Flag | Meaning |
+|---|---|
+| `--stage {pending,over90,inactive,all}` | Default `all`. Limits which CSVs are read. |
+| `--csv-dir DIR` | Default `$HOME`. Where Sol drops the warning CSVs. |
+| `-j N`, `--jobs N` | Default `min(8, ncpu//4)`. Parallel workers — NFS is the bottleneck so the default is conservative. |
+| `-n`, `--dry-run` | Print the plan without touching anything. |
+| `-v`, `--verbose` | Verbose plan + progress. |
+
+Dropped vs `sol_renew.py`: `--solkeep PATH` (the keep list now lives
+in `[keep]` in the main config, not a separate file).
+
+This preserves `sol_renew.py`'s ethical posture: only touches files
+Sol has explicitly flagged. `solx keep` cannot be used to bypass
+the scratch-retention policy by keeping arbitrary files alive on a
+cron — there's nothing to do until Sol drops a warning CSV.
 
 ## State tracking — none
 
@@ -210,9 +245,12 @@ per-run.
 7. **Default-jobid resolution**: on a compute node, `solx job time`
    (no arg) uses `$SLURM_JOB_ID`. On a login node with one job, no
    arg → that job. With ≥2 jobs, no arg → table + exit 2.
-8. **`solx keep --dry-run`** prints which paths would be touched per
-   `[keep]` include∖exclude; without `--dry-run`, mtimes update for
-   matched files only.
+8. **`solx keep`** mirrors `sol_renew.py`: reads Sol's warning CSVs
+   from `--csv-dir`, intersects flagged dirs with `[keep]`
+   include/exclude, `touch -a -m -c` on the intersection. Flag
+   surface (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`) matches
+   `sol_renew.py` verbatim except the dropped `--solkeep`. With
+   `--dry-run`, prints the plan and touches nothing.
 9. **No `[keep]` block** → `solx keep` exits 2 with "no `[keep]`
    block in config; run `solx config edit` to add one".
 10. **`solx completions zsh`** emits a script that, when sourced,
@@ -249,7 +287,7 @@ Coverage targets:
 - **CLI dispatch**: every subcommand wired correctly via
   `typer.testing.CliRunner`.
 
-### Manual smoke on Sol (after `ssh swan16@sol.asu.edu`)
+### Manual smoke on Sol (after `ssh sparky@sol.asu.edu`, with your ASURITE)
 
 Tight on purpose — `htc`/`debug` queues in seconds.
 

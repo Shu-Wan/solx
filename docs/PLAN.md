@@ -116,7 +116,7 @@ genuinely needs TUI.
 | `solx job stop [JOBID]` | Cancel a job |
 | `solx job jump [JOBID]` (also `solx jump`) | Drop into a shell on the job's compute node |
 | `solx job time [JOBID]` | Remaining time (Slurm `D-HH:MM:SS`) |
-| `solx keep [--dry-run]` | Extend `/scratch` file mtimes for paths declared in config |
+| `solx keep [--stage S] [--csv-dir D] [-j N] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` (port of `sol_renew.py`) |
 | `solx config show` / `edit` | Inspect / edit the single TOML config |
 | `solx completions <shell>` | Emit shell completions |
 | `solx --version` / `--help` | — |
