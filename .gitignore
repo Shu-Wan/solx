@@ -1,6 +1,13 @@
 # NFS silly-rename leftovers
 .nfs*
 
+# Python build / cache (solx/ and any future packages)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
 # Claude Code local settings (per-user, never commit)
 .claude/
 .claude/worktrees/
