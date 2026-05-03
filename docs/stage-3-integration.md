@@ -39,8 +39,9 @@ the time comes, against the actual stable state of `solx`.
 
 - **`skills/sol-skill/references/solx.md`** — new reference doc
   walking the agent through the `solx`-driven workflow: `solx init`,
-  `solx job list/start/shell/time/stop`, `solx keep`. Includes a
-  config example and the `--dry-run`-first ethos.
+  `solx job list/start/jump/time/stop`, `solx keep`. Includes a
+  config example and the `-y`/`-n` confirmation contract for
+  destructive ops.
 - **`skills/sol-skill/SKILL.md`** — add a `command -v solx`
   detection branch under "Sessions" / "Submitting Jobs" / "Scratch
   Renewal" sections so the agent prefers `solx` when present and
@@ -50,11 +51,11 @@ the time comes, against the actual stable state of `solx`.
   removed. The skill's no-CLI flow stays viable as a fallback. May
   get a note pointing at `solx keep` for users who have the CLI.
 - **`solx skill install/remove/list` subcommands** — the deferred
-  CLI verbs that `solx config init` / `solx init` couldn't include
-  in Stage 2. Likely a thin shell-out to `gh skill install` / Vercel
-  `skills add`, supporting `claude` and `codex` agents. Implementation
-  details (own path mapping vs delegate to existing CLI) decided at
-  the time.
+  CLI verbs that `solx init` couldn't include in Stage 2. Likely a
+  thin shell-out to `gh skill install` / Vercel `skills add`,
+  supporting `claude` and `codex` agents. Implementation details
+  (own path mapping vs delegate to existing CLI) decided at the
+  time.
 - **Root `README.md`** — possibly reframed to lead with both `solx`
   and the skill as paired tools. Or left skill-primary if `solx`
   hasn't earned top billing yet. Decided when Stage 3 starts.
@@ -100,7 +101,7 @@ Treat Stage 3 as a closed door:
 
 - Do not edit `skills/sol-skill/SKILL.md`.
 - Do not add `references/solx.md`.
-- Do not remove or modify `scripts/sol_renew.py`.
+- Do not remove or modify `skills/sol-skill/scripts/sol_renew.py`.
 - Do not reframe root `README.md`.
 - Do not bump skill version in `CHANGELOG.md`.
 

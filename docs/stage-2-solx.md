@@ -146,8 +146,8 @@ Schema:
 | `[jobs.<name>].time` | string | yes | `-t` |
 | `[jobs.<name>].qos` | string | no | `-q` |
 | `[jobs.<name>].gres` | string | no | `--gres` |
-| `[jobs.<name>].extra_args` | array of strings | no | Verbatim sbatch flags (e.g. `["--mem=64G", "--mail-type=END"]`). |
-| `[keep]` | table | no | Scratch renewal config; absent = `solx keep` is a no-op. |
+| `[jobs.<name>].extra_args` | array of strings | no | Verbatim Slurm flags passed to `salloc` (e.g. `["--mem=64G", "--mail-type=END"]`). |
+| `[keep]` | table | no | Scratch renewal config. If absent, `solx keep` exits 2 with "no `[keep]` block; run `solx config edit`" (see success criterion #9). |
 | `[keep].include` | array of glob strings | yes when `[keep]` present | Recursive globs (`**` supported via `pathspec`). |
 | `[keep].exclude` | array of glob strings | no | Carve-outs from `include`. |
 
@@ -155,7 +155,7 @@ No `[shared]` merge. Each `[jobs.<name>]` is self-contained — repeat
 flags across templates if needed. Simpler config is the trade.
 
 CLI passthrough: anything after `--` on `solx job start` is appended
-to the underlying sbatch command after `extra_args`. Sbatch's
+to the underlying `salloc` command after `extra_args`. Slurm's
 last-flag-wins lets the tail override template defaults for one
 run.
 
@@ -168,7 +168,7 @@ run.
 | `cli.py` | REWRITE | Typer root with `job` subgroup, top-level `keep`, `init`, `config` subgroup, `completions`. Drop `where`, `session` group, all laptop stubs. |
 | `config.py` | REWRITE | Load `$XDG_CONFIG_HOME/solx/config.toml`. New schema (above). No `[shared]` merge. |
 | `side.py` | KEEP, simplify | Internal Sol-vs-not-Sol guard; no longer a top-level command. |
-| `slurm.py` | NEW | Thin `squeue`/`scancel`/`sbatch`/`srun` wrappers; `Job` dataclass; `resolve_jobid()` per the rules above. |
+| `slurm.py` | NEW | Thin `squeue`/`scancel`/`salloc`/`srun` wrappers; `Job` dataclass; `resolve_jobid()` per the rules above. |
 | `jobs.py` | NEW | `list`, `start`, `stop`, `jump`, `time` command bodies. |
 | `keep.py` | NEW | Port of `sol_renew.py`. Reads Sol's warning CSVs from `--csv-dir`, intersects flagged paths with `[keep]` include/exclude (via `pathspec`), `touch -a -m -c` on the intersection. Mirrors `sol_renew.py`'s flag surface (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`); drops `--solkeep` since `[keep]` lives in the main config. |
 | `init.py` | NEW | First-run: write starter config (no `whoami` substitution; placeholders only). |
@@ -261,12 +261,13 @@ per-run.
 4. **`solx job list`** prints a Rich table matching `squeue -u
    $USER` content (jobid, name, state, time, time-left, partition).
 5. **`solx job start <template> --dry-run`** prints the literal
-   sbatch argv without submitting; structure is snapshot-tested per
-   template.
+   `salloc` argv without submitting; structure is snapshot-tested
+   per template.
 6. **`solx job start <template>`** lifecycle on `htc`/`debug`
-   completes in <2 min: submit → poll → print jobid. `solx job
-   shell` drops into `default_shell` on the compute node. `solx job
-   time` prints remaining. `solx job stop` cancels.
+   completes in <2 min: submit → wait for grant → print jobid.
+   `solx job jump` drops into `default_shell` on the compute node.
+   `solx job time` prints remaining. `solx job stop` cancels (with
+   confirmation prompt; `-y` skips).
 7. **Default-jobid resolution**: on a compute node, `solx job time`
    (no arg) uses `$SLURM_JOB_ID`. On a login node with one job, no
    arg → that job. With ≥2 jobs, no arg → table + exit 2.
@@ -305,7 +306,7 @@ Coverage targets:
   compilation via `pathspec`.
 - **Side detection**: faked `hostname -a` outputs for Sol login,
   Sol compute, not-Sol. All three branches.
-- **Argv construction**: snapshot-test the rendered `sbatch` argv
+- **Argv construction**: snapshot-test the rendered `salloc` argv
   per template × `--dry-run` × `-- passthrough` combinations.
 - **Default jobid resolution**: arg / env / single-job / multi-job
   branches with mocked `squeue`.
@@ -326,8 +327,9 @@ Tight on purpose — `htc`/`debug` queues in seconds.
    it.
 3. `$EDITOR ~/.config/solx/config.toml` — fill in a real `[keep]`
    include path you actually own.
-4. `solx job start debug --dry-run` — prints sbatch argv.
-5. `solx job start debug` — submits, polls, prints jobid in <30s.
+4. `solx job start debug --dry-run` — prints `salloc` argv.
+5. `solx job start debug` — submits, waits for the queue grant,
+   prints jobid in <30s.
 6. `solx job list` — table includes the new job, state RUNNING.
 7. `solx job time` — prints remaining (no arg, login node, one job
    → uses it).

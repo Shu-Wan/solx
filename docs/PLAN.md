@@ -54,7 +54,7 @@ below derives from them.
    commands. `solx job list`, `solx job start`, `solx keep`. No
    surprising side effects. Mutating commands support `--dry-run`.
 3. **Common CLI conventions.** Noun-verb command groups (`solx job
-   list/start/stop/shell/time`) for related operations; flags for
+   list/start/stop/jump/time`) for related operations; flags for
    leaf commands (`solx keep --dry-run`). Shell completions provided
    for bash, zsh, fish.
 4. **Read config, don't infer.** A single TOML config under
@@ -93,7 +93,7 @@ sol-skill/
     │   ├── cli.py                  # Typer root
     │   ├── config.py               # XDG TOML loader
     │   ├── side.py                 # Sol-vs-not-Sol guard
-    │   ├── slurm.py                # squeue/scancel/sbatch wrappers; jobid resolution
+    │   ├── slurm.py                # squeue/scancel/salloc/srun wrappers; jobid resolution
     │   ├── jobs.py                 # `solx job *`
     │   ├── keep.py                 # `solx keep`
     │   └── init.py                 # `solx init`
@@ -155,9 +155,14 @@ the existing `solx/` source tree live in
 - `solx keep` only touches files under directories the user has
   declared in `[keep]`. Mutates `atime`/`mtime` only — never reads,
   moves, or deletes content.
-- Mutating commands (`job start`, `job stop`, `keep`) print the
-  underlying Slurm/`touch` invocations they would run with
-  `--dry-run` first.
+- Destructive commands (`job stop`, `keep`) prompt for confirmation
+  by default; `-y` skips the prompt for scripts; `-n` / `--dry-run`
+  prints the planned action without executing (and without
+  prompting). `-y` and `-n` are mutually exclusive.
+- `job start` also has a `--dry-run` mode, but its purpose is
+  different — it prints the underlying `salloc` argv so the user can
+  preview the allocation request. No prompt either way (starting an
+  allocation isn't destructive in the data-loss sense).
 
 When laptop-side work returns (deferred), a fresh security review of
 that surface comes with it. Nothing in this stage commits us to a
