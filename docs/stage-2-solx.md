@@ -54,10 +54,10 @@ Defaults wherever a sensible default exists.
 | `solx init` | First-run: write a starter `config.toml` | — |
 | `solx job list` (alias `ls`) | Print my Sol jobs as a Rich table | `squeue -u $USER` |
 | `solx job start [TEMPLATE]` | Submit an interactive allocation, wait for `RUNNING`, print the jobid | `salloc --no-shell` (Slurm ≥ 22.05; Sol runs 25.x) |
-| `solx job stop [JOBID]` | Cancel a job | `scancel` |
+| `solx job stop [JOBID] [-y] [-n]` | Cancel a job (prompts unless `-y`; `-n` previews) | `scancel` |
 | `solx job jump [JOBID]` (also `solx jump`) | Drop into `default_shell` on the job's compute node | `srun --jobid=… --pty $shell` |
 | `solx job time [JOBID]` | Print time remaining in Slurm `D-HH:MM:SS` format | `squeue -h -j … -O TimeLeft` |
-| `solx keep [--stage S] [--csv-dir DIR] [-j N] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` | `touch -a -m -c` |
+| `solx keep [--stage S] [--csv-dir DIR] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` (prompts unless `-y`; `-n` previews) | `touch -a -m -c` |
 | `solx config show [--json]` | Print resolved config | — |
 | `solx config edit` | Open `config.toml` in `$EDITOR` | — |
 | `solx completions <bash\|zsh\|fish>` | Emit shell completion script | Typer built-in |
@@ -212,6 +212,31 @@ Sol has explicitly flagged. `solx keep` cannot be used to bypass
 the scratch-retention policy by keeping arbitrary files alive on a
 cron — there's nothing to do until Sol drops a warning CSV.
 
+### Destructive commands
+
+`solx job stop` and `solx keep` mutate cluster or filesystem state
+— cancelling a running allocation, or `touch`ing mtimes under
+`/scratch`. Both follow the same prompt-by-default contract:
+
+| Flag | Behavior |
+|---|---|
+| (none) | Print what's about to happen, then prompt `Proceed? [y/N]` (Rich `Confirm.ask`, default no). User must type `y` to continue. |
+| `-y`, `--yes` | Skip the prompt and execute. For scripts and unattended automation. |
+| `-n`, `--dry-run` | Print the plan without executing. **No prompt** — nothing destructive is about to happen, so confirming would be noise. |
+
+`-y` and `-n` are mutually exclusive — passing both exits 2 with a
+"can't both confirm and dry-run" error.
+
+The other commands (`init`, `job start`, `job list`, `job jump`,
+`job time`, `config show`, `config edit`, `completions`) are
+non-destructive or self-evidently interactive (the user typed
+`solx job start gpu` — they're not surprised when something starts).
+They don't prompt.
+
+`solx init` does prompt before overwriting an existing
+`config.toml`, but that's specific to that command and not part of
+the general destructive-command contract.
+
 ## State tracking — none
 
 `squeue -u $USER` is queried each invocation. No persistent state
@@ -253,13 +278,17 @@ per-run.
    `--dry-run`, prints the plan and touches nothing.
 9. **No `[keep]` block** → `solx keep` exits 2 with "no `[keep]`
    block in config; run `solx config edit` to add one".
-10. **`solx completions zsh`** emits a script that, when sourced,
+10. **Destructive-command confirmation contract**: `solx job stop`
+    and `solx keep` prompt by default; `-y` skips; `-n` previews
+    without prompt; `-y -n` together exits 2. Covered by
+    `typer.testing.CliRunner` tests with mocked `Confirm.ask`.
+11. **`solx completions zsh`** emits a script that, when sourced,
     autocompletes subcommands and template names.
-11. **Alias coverage**: `solx jobs list`, `solx jobs ls`, `solx job
+12. **Alias coverage**: `solx jobs list`, `solx jobs ls`, `solx job
     ls`, and `solx jump` all dispatch to the right command (covered
     by `typer.testing.CliRunner` tests).
-12. **Tests pass**: `cd solx && uv run pytest -v` is green.
-13. **Skill untouched**: `git diff main..HEAD -- skills/` is empty.
+13. **Tests pass**: `cd solx && uv run pytest -v` is green.
+14. **Skill untouched**: `git diff main..HEAD -- skills/` is empty.
 
 ## Testing
 
@@ -304,11 +333,13 @@ Tight on purpose — `htc`/`debug` queues in seconds.
    → uses it).
 8. `solx job jump` — drops into `default_shell` on the compute
    node. `exit` returns to login.
-9. `solx job stop` — `scancel`s; `solx job list` shows the job
-   gone.
-10. `solx keep --dry-run` — prints paths that would be touched.
-11. `solx keep` — touches mtimes; `stat` on a sample file shows
-    updated mtime.
+9. `solx job stop` — prompts `Cancel job N? [y/N]`; type `y`;
+   `scancel` runs; `solx job list` shows the job gone. Re-run with
+   `-y` once and confirm no prompt.
+10. `solx keep --dry-run` — prints paths that would be touched. No
+    prompt (dry-run skips it).
+11. `solx keep` — prompts `Touch mtimes on N directories? [y/N]`;
+    type `y`; `stat` on a sample file shows updated mtime.
 12. Wrong-side guard: same commands on a laptop → all exit 2 with
     the redirect message. `solx --version` and `solx --help` work
     anywhere.

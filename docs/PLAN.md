@@ -113,10 +113,10 @@ genuinely needs TUI.
 | `solx init` | First-run: write a starter `config.toml` |
 | `solx job list` (alias `ls`) | List my Sol jobs |
 | `solx job start [TEMPLATE]` | Start an interactive allocation (`salloc --no-shell`) from a config template |
-| `solx job stop [JOBID]` | Cancel a job |
+| `solx job stop [JOBID] [-y] [-n]` | Cancel a job (prompts unless `-y`; `-n` previews) |
 | `solx job jump [JOBID]` (also `solx jump`) | Drop into a shell on the job's compute node |
 | `solx job time [JOBID]` | Remaining time (Slurm `D-HH:MM:SS`) |
-| `solx keep [--stage S] [--csv-dir D] [-j N] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` (port of `sol_renew.py`) |
+| `solx keep [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` (prompts unless `-y`; `-n` previews; port of `sol_renew.py`) |
 | `solx config show` / `edit` | Inspect / edit the single TOML config |
 | `solx completions <shell>` | Emit shell completions |
 | `solx --version` / `--help` | — |
@@ -129,6 +129,10 @@ Defaults and aliases:
 - `jump` is also reachable at the top level — `solx jump [JOBID]` is
   shorthand for `solx job jump [JOBID]`. (It's the verb you reach for
   most; the shortcut earns its keep.)
+- Destructive commands (`solx job stop`, `solx keep`) prompt for
+  confirmation by default. `-y` / `--yes` skips the prompt for
+  scripts; `-n` / `--dry-run` previews the action without executing
+  it (and without prompting — nothing is about to happen).
 - Anywhere a `[JOBID]` is omitted, `solx` resolves it: `$SLURM_JOB_ID`
   on a compute node, the user's only running job on a login node, or
   a Rich table of all jobs (with exit 2) when ambiguous.
