@@ -153,13 +153,10 @@ Environment](#detecting-the-environment)), then branch:
   - a **batch job**: submit a short `htc` job whose payload is the
     renewal, for an unattended pass.
 
-Match `-j` to where it actually runs: a 4-core compute node can't feed
-more than a couple of workers, while the DTN has many. Because work is
-sharded at the **file** level (the run enumerates kept directories,
-then touches their files in batches across the pool), raising `-j`
-speeds up even a single huge directory — not just a long list of small
-ones. See [references/scratch.md](references/scratch.md) for the
-non-interactive `uv`-on-`PATH` gotcha when invoking over `ssh soldtn`.
+Match `-j` (parallel workers) to where it actually runs: a 4-core
+compute node can't feed more than a couple, while the DTN has many. See
+[references/scratch.md](references/scratch.md) for the non-interactive
+`uv`-on-`PATH` gotcha when invoking over `ssh soldtn`.
 
 #### Commands
 
@@ -204,13 +201,10 @@ username in place of `sparky`.
 
 #### Long-running behavior
 
-A touch pass over many small files on a shared cluster filesystem can
-take a long time, with no per-file output — progress is reported per
-file-batch as each completes. Do not interpret a silent stretch as a
-hang. A full pass over a large inactive list can legitimately take
-tens of minutes; the tail is bounded by the largest single directory's
-files divided across `-j` workers. Inspect the child `find`/`touch`
-processes via `ps` if you need a liveness check.
+A full pass over a large inactive list can take tens of minutes. It
+reports progress as it goes — a live progress bar in a terminal, or
+one line per completed file-batch otherwise — so you can watch it
+advance. Run `--dry-run -v` first to preview the plan.
 
 ### Sharing Files
 

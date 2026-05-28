@@ -77,8 +77,9 @@ sol_renew.py -j 16
 
 Exit codes:
 
-- `0` — every flagged-and-kept directory was touched successfully
-- `1` — at least one directory failed
+- `0` — all kept files touched successfully
+- `1` — at least one directory failed to enumerate, or at least one
+  touch batch failed
 - `2` — no rules loaded (empty or missing `.solkeep`)
 
 ## Where to run it
@@ -104,21 +105,20 @@ ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; \
 
 ## Performance notes
 
-- Work is sharded at the **file** level, in two phases, both run
-  across the `-j` worker pool: (1) enumerate every kept directory,
-  then (2) `touch -a -m -c` the resulting files in evenly-sized
-  batches. A single 50k-file directory becomes many batches spread
-  over all workers instead of one work unit pinned to one worker — so
-  `-j` scales the slowest single directory, not just the count of
-  directories.
-- Enumeration prefers [`fd`](https://github.com/sharkdp/fd) (then
+- Execution is a streaming pipeline on one `-j`-sized worker pool:
+  enumerate a kept directory, split its files into evenly-sized
+  batches, and `touch -a -m -c` the batches across the pool. A bounded
+  window of in-flight tasks keeps peak memory a small multiple of `-j`
+  regardless of the total file count. A large directory spreads its
+  batches over every worker, so `-j` sets the parallelism of the whole
+  run including its largest directory.
+- Enumeration uses [`fd`](https://github.com/sharkdp/fd) (then
   `rg --files`) when on `PATH`, falling back to `find`. `fd`/`rg`
-  walk a large tree multithreaded and beat single-threaded `find` on
-  the one giant directory whose enumeration would otherwise serialize
-  a worker. The tool is run with `--hidden --no-ignore` so it lists
-  *every* file — without those flags `fd`/`rg` skip dotfiles and
-  honor `.gitignore`, which would silently under-protect files. The
-  touch phase is always `touch` via `xargs`.
+  walk a tree multithreaded, so they enumerate a large directory
+  faster than `find`. They are run with `--hidden --no-ignore` so they
+  list *every* file — without those flags `fd`/`rg` skip dotfiles and
+  honor `.gitignore`, which would under-protect files. The touch step
+  always uses `touch` via `xargs`.
 - Scope stays bounded by what Sol flagged ∩ `.solkeep`; the tool does
   not start from `/scratch` and recurse. An overly broad keep-list or
   a large CSV-listed subtree still produces a large touch pass.
@@ -127,9 +127,9 @@ ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; \
   enumeration and touch is silently skipped (`-c` exits 0 on a
   missing path), so it is not counted as a failure; a per-batch
   failure means a real error such as a permission or I/O problem.
-- Progress is reported per file-batch as each completes; a single
-  line may sit on screen for minutes on a large batch. Do not cancel
-  the run based on a silent stretch.
+- Progress is reported as the run proceeds: a live bar on a terminal
+  (`rich` auto-refreshes the elapsed timer), or one line per completed
+  file-batch in non-interactive output (e.g. over `ssh`).
 - The default parallelism is conservative to avoid hammering the
   shared filesystem. Raise it with `-j N` once you know the node it
   runs on has the cores to feed the workers (a 4-core compute node

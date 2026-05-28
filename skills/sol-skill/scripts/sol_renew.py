@@ -13,17 +13,16 @@ directory once per run; the scope of work is bounded by Sol's CSVs and
 your .solkeep -- it does not start from /scratch and recurse. If you
 keep-list a very large subtree, the touch pass will still be large.
 
-Work is sharded at the FILE level, not the directory level: the run
-first enumerates every kept directory in parallel, then touches the
-resulting files in evenly-sized batches across the worker pool. A
-single huge directory therefore uses the whole pool instead of pinning
-one worker -- `-j` scales the slowest single directory, not just the
-count of directories. Enumeration prefers `fd` (or `rg`) when present
--- both walk a large tree multithreaded and beat `find` on the one
-giant directory whose enumeration would otherwise serialize a worker
--- and falls back to `find`. This is metadata-heavy I/O: on Sol, run it
-on a compute node or the DTN (`ssh soldtn`), not a throttled login node
-(see SKILL.md).
+Execution is a streaming pipeline over one worker pool: enumerate a
+kept directory, split its files into evenly-sized batches, and run
+`touch -a -m -c` on the batches across the pool. A bounded window of
+in-flight tasks keeps peak memory a small multiple of `-j`, and lets
+one large directory spread its batches over every worker, so `-j` sets
+the parallelism of the whole run including its largest directory.
+Enumeration uses `fd` (or `rg`) when on `PATH` -- both walk a tree
+multithreaded -- and `find` otherwise. This is metadata-heavy I/O: on
+Sol, run it on a compute node or the DTN (`ssh soldtn`), not a
+throttled login node (see SKILL.md).
 
 ASU Research Computing defines the deletion policy (thresholds, CSV
 filenames, cadence); their official doc is authoritative:
@@ -63,7 +62,8 @@ import shutil
 import subprocess
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -189,22 +189,19 @@ def load_csv_dirs(csv_path: Path) -> list[str]:
 
 # ---------- touching ----------
 #
-# Two phases, both run across the worker pool:
-#   1. enumerate_dir -- one walk per kept directory, returns its files
-#   2. touch_files   -- `touch -a -m -c` a batch of those files
-# Phase 2 is the expensive half (one metadata write per file); sharding it at
-# the file level is what lets a single 50k-file directory use the whole pool
-# instead of pinning one worker. Paths are kept as bytes end-to-end so a
-# non-UTF-8 filename can't crash the run.
+# Two task kinds run on one worker pool:
+#   enumerate_dir -- walk a kept directory, return its files
+#   touch_files   -- `touch -a -m -c` a batch of those files
+# touch is the expensive half (one metadata write per file), so it is sharded
+# into file batches and spread across the pool. Paths are kept as bytes
+# end-to-end so a non-UTF-8 filename can't crash the run.
 
 
 def _pick_lister() -> tuple[str, str]:
     """Choose the fastest available file lister: (kind, binary path).
 
-    `fd` and `rg` walk a directory tree multithreaded and are markedly faster
-    than `find` on a single huge directory -- which is exactly the
-    enumeration that would otherwise serialize one worker on the tail of a
-    run. `find` is the always-present fallback.
+    `fd` and `rg` walk a directory tree multithreaded, faster than `find` on
+    a large directory; `find` is the always-present fallback.
 
     The `--hidden --no-ignore` flags are LOAD-BEARING, not cosmetic: both fd
     and rg skip dotfiles and honor .gitignore/.fdignore/global-ignore by
@@ -231,8 +228,7 @@ def enumerate_dir(directory: str) -> tuple[str, list[bytes], str]:
     """List every regular file under `directory` in one walk.
 
     Returns (directory, file_paths, message). A path that isn't a directory
-    (e.g. flagged then removed) is reported as a benign skip, not an error,
-    mirroring the old per-directory behaviour.
+    (e.g. flagged then removed) is reported as a benign skip, not an error.
     """
     if not os.path.isdir(directory):
         return (directory, [], "skipped: not a directory")
@@ -370,30 +366,16 @@ def main() -> int:
         return 0
 
     start = time.time()
-
-    # Phase 1: enumerate every kept directory in parallel.
     console.print(
-        f"\n[bold]enumerating[/] [cyan]{len(plan.kept)}[/] directories "
+        f"\n[bold]renewing[/] files in [cyan]{len(plan.kept)}[/] directories "
         f"with [cyan]{args.jobs}[/] workers..."
     )
-    work, n_files, enum_fail = _enumerate(console, plan, args.jobs)
-
-    # Phase 2: touch the enumerated files, sharded into batches across the pool
-    # so one huge directory doesn't pin a single worker.
     console.print(
-        f"[bold]touching[/] [cyan]{n_files:,}[/] files in "
-        f"[cyan]{len(work)}[/] batches across [cyan]{args.jobs}[/] workers..."
-    )
-    console.print(
-        "[dim]a large touch pass can take minutes with no per-file output. "
+        "[dim]a large pass can take minutes with little output. "
         "do not cancel early.[/]"
     )
 
-    if is_tty:
-        fail, total_files = _run_with_progress(console, work, args.jobs)
-    else:
-        fail, total_files = _run_plain(console, work, args.jobs)
-    fail += enum_fail
+    total_files, fail = _execute(console, plan, args.jobs, is_tty)
 
     elapsed = time.time() - start
     _print_final_summary(console, len(plan.kept), total_files, fail, elapsed)
@@ -455,80 +437,94 @@ def _preview_bucket(console, stage, label, items, style) -> None:
         )
 
 
-def _enumerate(console, plan, jobs):
-    """Phase 1: walk every kept dir in parallel into file batches.
+def _execute(console, plan, jobs, is_tty):
+    """Run the renewal as a bounded streaming pipeline.
 
-    Returns (work, n_files, enum_failures) where `work` is a list of
-    (directory, batch) pairs -- each directory's files split into shards but
-    tagged with their source dir so progress output stays recognizable.
+    One worker pool runs both halves: enumerate a kept directory, shard its
+    files, submit those batches as `touch` tasks, and top up enumeration only
+    while the in-flight set has room. The bounded window keeps peak memory a
+    small multiple of `jobs` batches, and touching starts as soon as the
+    first directory is walked. Returns (files_touched, failures).
     """
     dirs = [d for _, d in plan.kept]
-    work: list[tuple[str, list[bytes]]] = []
-    n_files = 0
-    fail = 0
-    with ProcessPoolExecutor(max_workers=jobs) as pool:
-        for directory, files, msg in pool.map(enumerate_dir, dirs):
-            if msg.startswith("skipped"):
-                continue  # flagged but no longer a directory -- benign
-            if msg != "ok":
-                fail += 1
-                console.print(f"[red]FAIL[/] enumerate {directory} :: {msg}")
-                continue
-            n_files += len(files)
-            for batch in shard(files):
-                work.append((directory, batch))
-    return work, n_files, fail
-
-
-def _run_with_progress(console, work, jobs):
-    fail = total_files = 0
+    n_dirs = len(dirs)
+    # Soft cap on outstanding tasks: enough to keep every worker fed and run
+    # enumeration ahead of touch, small enough to bound memory. A single huge
+    # directory can briefly push past it (it submits all its batches at once),
+    # after which we stop enumerating until the backlog drains.
+    window = max(2 * jobs, jobs + 8)
     width = max(40, console.width - 60)
+    enum_fail = touch_fail = total_files = 0
+    pending: dict = {}
+    di = iter(dirs)
 
-    progress = Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=None),
-        MofNCompleteColumn(),
-        TextColumn("files={task.fields[files]} fail={task.fields[fail]}"),
-        TimeElapsedColumn(),
-        TextColumn("ETA"),
-        TimeRemainingColumn(),
-        console=console,
-        transient=False,
+    progress = (
+        Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=None),
+            MofNCompleteColumn(),
+            TextColumn("files={task.fields[files]} fail={task.fields[fail]}"),
+            TimeElapsedColumn(),
+            TextColumn("ETA"),
+            TimeRemainingColumn(),
+            console=console,
+            transient=False,
+        )
+        if is_tty
+        else None
     )
-    task_id = progress.add_task("touching", total=len(work), files=0, fail=0)
+    out = progress.console if progress else console
 
-    with progress, ProcessPoolExecutor(max_workers=jobs) as pool:
-        futs = {pool.submit(touch_files, batch): d for d, batch in work}
-        for fut in as_completed(futs):
-            d = futs[fut]
-            touched, errors, msg = fut.result()
-            total_files += touched
-            if errors:
-                fail += 1
-                progress.console.print(
-                    f"[red]FAIL[/] {_shorten(d, width)} :: {msg}"
-                )
-            progress.update(task_id, advance=1, files=total_files, fail=fail,
-                            description=f"touching [dim]{_shorten(d, width)}[/]")
-    return fail, total_files
-
-
-def _run_plain(console, work, jobs):
-    """Non-TTY output: one concise line per completed file batch."""
-    fail = total_files = 0
-    total = len(work)
     with ProcessPoolExecutor(max_workers=jobs) as pool:
-        futs = {pool.submit(touch_files, batch): d for d, batch in work}
-        for i, fut in enumerate(as_completed(futs), 1):
-            d = futs[fut]
-            touched, errors, msg = fut.result()
-            total_files += touched
-            if errors:
-                fail += 1
-                console.print(f"[{i}/{total}] FAIL {d} :: {msg}")
-            else:
-                console.print(f"[{i}/{total}] ok   {touched:>7d} files  {d}")
-    return fail, total_files
+
+        def fill() -> None:
+            # Top up enumeration tasks while the in-flight set has room.
+            while len(pending) < window:
+                d = next(di, None)
+                if d is None:
+                    return
+                pending[pool.submit(enumerate_dir, d)] = ("enum", d)
+
+        with (progress if progress else nullcontext()):
+            task = (
+                progress.add_task("renewing", total=n_dirs, files=0, fail=0)
+                if progress
+                else None
+            )
+            fill()
+            while pending:
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    kind, d = pending.pop(fut)
+                    if kind == "enum":
+                        _, files, msg = fut.result()
+                        if msg == "ok":
+                            for batch in shard(files):
+                                pending[pool.submit(touch_files, batch)] = (
+                                    "touch", d)
+                        elif not msg.startswith("skipped"):
+                            enum_fail += 1
+                            out.print(
+                                f"[red]FAIL[/] enumerate "
+                                f"{_shorten(d, width)} :: {msg}")
+                        if progress:
+                            progress.update(
+                                task, advance=1, fail=enum_fail + touch_fail,
+                                description=f"renewing [dim]{_shorten(d, width)}[/]")
+                    else:  # touch batch
+                        touched, errors, msg = fut.result()
+                        total_files += touched
+                        if errors:
+                            touch_fail += 1
+                            out.print(f"[red]FAIL[/] {_shorten(d, width)} :: {msg}")
+                        elif not progress:
+                            console.print(f"  ok {touched:>7d} files  {d}")
+                        if progress:
+                            progress.update(
+                                task, files=total_files,
+                                fail=enum_fail + touch_fail)
+                fill()
+    return total_files, enum_fail + touch_fail
 
 
 def _print_final_summary(console, n_dirs, total_files, fail, elapsed) -> None:

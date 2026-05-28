@@ -16,25 +16,31 @@ tag for that release.
 ### Changed
 
 - `scripts/sol_renew.py`: shard the touch pass at the **file** level
-  instead of per directory. The run now enumerates every kept
-  directory in parallel, then touches the resulting files in
-  evenly-sized batches across the worker pool, so a single huge
-  directory uses the whole pool instead of pinning one worker — `-j`
-  now scales the slowest single directory, not just the count of
-  directories. Plan/dry-run output and exit codes are unchanged.
-  Addresses #17.
-- `scripts/sol_renew.py`: enumeration now prefers `fd` (then
-  `rg --files`) when on `PATH`, falling back to `find` — the
-  multithreaded walk is faster on a single huge directory. Run with
-  `--hidden --no-ignore` so the fast listers match `find -type f`
-  exactly (they skip dotfiles / honor `.gitignore` by default, which
-  would otherwise under-protect files).
-- `skills/sol-skill/SKILL.md`, `references/scratch.md`: add a "Where
-  to run it" decision rule — a renewal is metadata-heavy I/O that Sol
-  login nodes throttle, so on a login node run the heavy pass on the
-  DTN (`ssh soldtn`), a compute node, or a short `htc` job; document
-  the file-level sharding and the non-interactive `uv`-on-`PATH`
-  gotcha for `ssh soldtn`.
+  instead of per directory, as a streaming pipeline — enumerate a kept
+  directory, then `touch` its files in evenly-sized batches across the
+  worker pool, with a bounded in-flight window so peak memory stays a
+  small multiple of `-j` regardless of total file count. A single huge
+  directory now spreads across the whole pool, so `-j` scales the
+  slowest single directory, not just the count of directories.
+  Plan/dry-run output is unchanged; exit codes stay `0`/`1`/`2`, with
+  `1` now reflecting an enumeration or touch-batch failure rather than
+  a per-directory one. Addresses #17.
+- `scripts/sol_renew.py`: enumeration prefers `fd` (then `rg --files`)
+  when on `PATH`, falling back to `find` — the multithreaded walk is
+  faster on a large directory. Run with `--hidden --no-ignore` so the
+  fast listers match `find -type f` exactly (they skip dotfiles /
+  honor `.gitignore` by default, which would otherwise under-protect
+  files).
+- `skills/sol-skill/SKILL.md`: add a "Where to run it" decision rule —
+  a renewal is metadata-heavy I/O that Sol login nodes throttle, so on
+  a login node run the heavy pass on the DTN (`ssh soldtn`), a compute
+  node, or a short `htc` job; match `-j` to the node's cores. (Keeps
+  implementation detail out of the skill — that lives in the
+  reference.)
+- `references/scratch.md`: document the streaming/file-level design,
+  the `fd`/`rg`/`find` lister selection, the per-batch failure
+  granularity, and the non-interactive `uv`-on-`PATH` gotcha for
+  `ssh soldtn`.
 
 ### Deferred
 
