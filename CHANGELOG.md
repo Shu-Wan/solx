@@ -23,6 +23,12 @@ tag for that release.
   now scales the slowest single directory, not just the count of
   directories. Plan/dry-run output and exit codes are unchanged.
   Addresses #17.
+- `scripts/sol_renew.py`: enumeration now prefers `fd` (then
+  `rg --files`) when on `PATH`, falling back to `find` — the
+  multithreaded walk is faster on a single huge directory. Run with
+  `--hidden --no-ignore` so the fast listers match `find -type f`
+  exactly (they skip dotfiles / honor `.gitignore` by default, which
+  would otherwise under-protect files).
 - `skills/sol-skill/SKILL.md`, `references/scratch.md`: add a "Where
   to run it" decision rule — a renewal is metadata-heavy I/O that Sol
   login nodes throttle, so on a login node run the heavy pass on the

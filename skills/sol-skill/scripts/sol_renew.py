@@ -18,8 +18,11 @@ first enumerates every kept directory in parallel, then touches the
 resulting files in evenly-sized batches across the worker pool. A
 single huge directory therefore uses the whole pool instead of pinning
 one worker -- `-j` scales the slowest single directory, not just the
-count of directories. This is metadata-heavy I/O: on Sol, run it on a
-compute node or the DTN (`ssh soldtn`), not a throttled login node
+count of directories. Enumeration prefers `fd` (or `rg`) when present
+-- both walk a large tree multithreaded and beat `find` on the one
+giant directory whose enumeration would otherwise serialize a worker
+-- and falls back to `find`. This is metadata-heavy I/O: on Sol, run it
+on a compute node or the DTN (`ssh soldtn`), not a throttled login node
 (see SKILL.md).
 
 ASU Research Computing defines the deletion policy (thresholds, CSV
@@ -56,7 +59,7 @@ import argparse
 import csv
 import os
 import re
-import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -187,7 +190,7 @@ def load_csv_dirs(csv_path: Path) -> list[str]:
 # ---------- touching ----------
 #
 # Two phases, both run across the worker pool:
-#   1. enumerate_dir -- one `find` walk per kept directory, returns its files
+#   1. enumerate_dir -- one walk per kept directory, returns its files
 #   2. touch_files   -- `touch -a -m -c` a batch of those files
 # Phase 2 is the expensive half (one metadata write per file); sharding it at
 # the file level is what lets a single 50k-file directory use the whole pool
@@ -195,8 +198,37 @@ def load_csv_dirs(csv_path: Path) -> list[str]:
 # non-UTF-8 filename can't crash the run.
 
 
+def _pick_lister() -> tuple[str, str]:
+    """Choose the fastest available file lister: (kind, binary path).
+
+    `fd` and `rg` walk a directory tree multithreaded and are markedly faster
+    than `find` on a single huge directory -- which is exactly the
+    enumeration that would otherwise serialize one worker on the tail of a
+    run. `find` is the always-present fallback.
+
+    The `--hidden --no-ignore` flags are LOAD-BEARING, not cosmetic: both fd
+    and rg skip dotfiles and honor .gitignore/.fdignore/global-ignore by
+    default, so without them a renewal would silently skip hidden and
+    git-ignored files and under-protect them. With both flags, each matches
+    `find -type f`.
+    """
+    for name in ("fd", "fdfind"):  # fdfind = the binary name on Debian/Ubuntu
+        binary = shutil.which(name)
+        if binary:
+            return ("fd", binary)
+    binary = shutil.which("rg")
+    if binary:
+        return ("rg", binary)
+    return ("find", "find")
+
+
+# Resolved once at import; ProcessPoolExecutor workers inherit it (fork) or
+# recompute it cheaply (spawn).
+LISTER_KIND, LISTER_BIN = _pick_lister()
+
+
 def enumerate_dir(directory: str) -> tuple[str, list[bytes], str]:
-    """List every regular file under `directory` in one NFS walk.
+    """List every regular file under `directory` in one walk.
 
     Returns (directory, file_paths, message). A path that isn't a directory
     (e.g. flagged then removed) is reported as a benign skip, not an error,
@@ -205,19 +237,27 @@ def enumerate_dir(directory: str) -> tuple[str, list[bytes], str]:
     if not os.path.isdir(directory):
         return (directory, [], "skipped: not a directory")
 
-    q = shlex.quote(directory)
+    if LISTER_KIND == "fd":
+        argv = [LISTER_BIN, "--hidden", "--no-ignore", "--type", "f",
+                "--print0", "--search-path", directory]
+    elif LISTER_KIND == "rg":
+        argv = [LISTER_BIN, "--files", "--hidden", "--no-ignore", "--null",
+                directory]
+    else:
+        argv = ["find", directory, "-type", "f", "-print0"]
+
     try:
-        proc = subprocess.run(
-            ["bash", "-c", f"find {q} -type f -print0"],
-            capture_output=True,
-            check=False,
-        )
+        proc = subprocess.run(argv, capture_output=True, check=False)
     except Exception as e:  # noqa: BLE001
         return (directory, [], f"exec failed: {e}")
 
-    if proc.returncode != 0:
+    # rg exits 1 when it lists no files -- that's an empty (but valid)
+    # directory, not an error. fd/find return 0 in that case; for all three a
+    # genuinely bad walk (permission, I/O) is rg>=2 / fd!=0 / find!=0.
+    empty_ok = LISTER_KIND == "rg" and proc.returncode == 1 and not proc.stdout
+    if proc.returncode != 0 and not empty_ok:
         err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
-        return (directory, [], err[-1] if err else "find: nonzero exit")
+        return (directory, [], err[-1] if err else f"{LISTER_KIND}: nonzero exit")
     files = [p for p in proc.stdout.split(b"\0") if p]
     return (directory, files, "ok")
 

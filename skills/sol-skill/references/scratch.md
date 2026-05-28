@@ -105,12 +105,20 @@ ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; \
 ## Performance notes
 
 - Work is sharded at the **file** level, in two phases, both run
-  across the `-j` worker pool: (1) enumerate every kept directory
-  (`find -type f -print0`), then (2) `touch -a -m -c` the resulting
-  files in evenly-sized batches. A single 50k-file directory becomes
-  many batches spread over all workers instead of one work unit
-  pinned to one worker — so `-j` scales the slowest single directory,
-  not just the count of directories.
+  across the `-j` worker pool: (1) enumerate every kept directory,
+  then (2) `touch -a -m -c` the resulting files in evenly-sized
+  batches. A single 50k-file directory becomes many batches spread
+  over all workers instead of one work unit pinned to one worker — so
+  `-j` scales the slowest single directory, not just the count of
+  directories.
+- Enumeration prefers [`fd`](https://github.com/sharkdp/fd) (then
+  `rg --files`) when on `PATH`, falling back to `find`. `fd`/`rg`
+  walk a large tree multithreaded and beat single-threaded `find` on
+  the one giant directory whose enumeration would otherwise serialize
+  a worker. The tool is run with `--hidden --no-ignore` so it lists
+  *every* file — without those flags `fd`/`rg` skip dotfiles and
+  honor `.gitignore`, which would silently under-protect files. The
+  touch phase is always `touch` via `xargs`.
 - Scope stays bounded by what Sol flagged ∩ `.solkeep`; the tool does
   not start from `/scratch` and recurse. An overly broad keep-list or
   a large CSV-listed subtree still produces a large touch pass.
