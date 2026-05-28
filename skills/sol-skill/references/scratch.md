@@ -81,23 +81,51 @@ Exit codes:
 - `1` — at least one directory failed
 - `2` — no rules loaded (empty or missing `.solkeep`)
 
+## Where to run it
+
+A renewal is metadata-heavy I/O — the kind of load Sol's login nodes
+throttle. Decision rule (see SKILL.md's "Where to run it"):
+
+- **Compute node** (`$SLURM_JOB_ID` set): run it directly.
+- **Login node** (`$SLURM_JOB_ID` unset): move the heavy pass to the
+  **DTN** (`ssh soldtn`, many cores, not throttled), a compute node
+  via `interactive`, or a short `htc` batch job.
+
+**`uv`-on-`PATH` gotcha over `ssh soldtn`.** The script's shebang is
+`#!/usr/bin/env -S uv run --script`, so `uv` must be on `PATH`. A
+non-interactive `ssh soldtn '<cmd>'` may not source the profile that
+adds `~/.local/bin`, so prepend it explicitly:
+
+```shell
+ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; \
+  export UV_CACHE_DIR=/scratch/$USER/.cache/uv; \
+  /path/to/sol_renew.py --stage inactive -j 24'
+```
+
 ## Performance notes
 
-- Each CSV row is already a directory identified by Sol's scan.
-  `sol_renew.py` runs exactly one `find | xargs touch` pipeline per
-  row — it does not start from `/scratch` and recurse. Scope is
-  bounded by what Sol flagged and what `.solkeep` keeps, so an
-  overly broad keep-list or a large CSV-listed subtree will still
-  produce a large touch pass.
+- Work is sharded at the **file** level, in two phases, both run
+  across the `-j` worker pool: (1) enumerate every kept directory
+  (`find -type f -print0`), then (2) `touch -a -m -c` the resulting
+  files in evenly-sized batches. A single 50k-file directory becomes
+  many batches spread over all workers instead of one work unit
+  pinned to one worker — so `-j` scales the slowest single directory,
+  not just the count of directories.
+- Scope stays bounded by what Sol flagged ∩ `.solkeep`; the tool does
+  not start from `/scratch` and recurse. An overly broad keep-list or
+  a large CSV-listed subtree still produces a large touch pass.
 - `touch -a -m -c` refreshes both `atime` and `mtime` (`-c` avoids
-  creating files that do not exist).
-- A `touch` pass over a directory with many small files on a shared
-  cluster filesystem can take a long time. The script reports progress
-  per-directory, not per-file — a single line may sit on screen for
-  minutes. Do not cancel the run based on a silent stretch.
+  creating files that do not exist). A file deleted between
+  enumeration and touch is silently skipped (`-c` exits 0 on a
+  missing path), so it is not counted as a failure; a per-batch
+  failure means a real error such as a permission or I/O problem.
+- Progress is reported per file-batch as each completes; a single
+  line may sit on screen for minutes on a large batch. Do not cancel
+  the run based on a silent stretch.
 - The default parallelism is conservative to avoid hammering the
-  shared filesystem. Raise it with `-j N` once you know the cluster
-  can absorb the concurrent walks.
+  shared filesystem. Raise it with `-j N` once you know the node it
+  runs on has the cores to feed the workers (a 4-core compute node
+  can't, the DTN can).
 
 ## Emergency single-path touch
 

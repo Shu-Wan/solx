@@ -135,6 +135,32 @@ The script intersects the two: only directories that Sol has flagged
 This keeps I/O bounded even when the inactive list has thousands of
 rows.
 
+#### Where to run it
+
+A renewal is metadata-heavy I/O, not compute — but a touch pass over
+tens of thousands of files is exactly the load Sol's **login nodes
+throttle**. Check the environment first (see [Detecting the
+Environment](#detecting-the-environment)), then branch:
+
+- **On a compute node** (`$SLURM_JOB_ID` set) — run it directly; you
+  already hold dedicated resources.
+- **On a login node** (`$SLURM_JOB_ID` unset) — don't run the heavy
+  pass here. Move it to one of, in rough order of convenience:
+  - the **DTN**: `ssh soldtn '<cmd>'` (the `dtn` wrapper is literally
+    `ssh soldtn`). It's tuned for I/O, isn't throttled, and has many
+    cores — the best home for a large renewal.
+  - a **compute node**: grab one with `interactive` and run it there.
+  - a **batch job**: submit a short `htc` job whose payload is the
+    renewal, for an unattended pass.
+
+Match `-j` to where it actually runs: a 4-core compute node can't feed
+more than a couple of workers, while the DTN has many. Because work is
+sharded at the **file** level (the run enumerates kept directories,
+then touches their files in batches across the pool), raising `-j`
+speeds up even a single huge directory — not just a long list of small
+ones. See [references/scratch.md](references/scratch.md) for the
+non-interactive `uv`-on-`PATH` gotcha when invoking over `ssh soldtn`.
+
 #### Commands
 
 The script is self-bootstrapping via `uv` (PEP 723 inline metadata in
@@ -152,8 +178,12 @@ $SKILL_DIR/scripts/sol_renew.py
 # Only chase the most urgent bucket
 $SKILL_DIR/scripts/sol_renew.py --stage pending
 
-# Raise parallelism explicitly if the filesystem can handle it
+# Raise parallelism explicitly when running where the cores exist
 $SKILL_DIR/scripts/sol_renew.py -j 16
+
+# From a login node: run the heavy pass on the DTN instead (many cores,
+# not throttled). Ensure ~/.local/bin is on PATH so the uv shebang resolves.
+ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; '"$SKILL_DIR"'/scripts/sol_renew.py -j 24'
 ```
 
 #### Example `.solkeep`
@@ -174,13 +204,13 @@ username in place of `sparky`.
 
 #### Long-running behavior
 
-A touch pass over a directory holding many small files on a shared
-cluster filesystem can take a long time, with no per-file output —
-progress is reported per-directory. Do not interpret a silent stretch
-as a hang. A full pass over a large inactive list can legitimately
-take tens of minutes. Use `-v` in a separate shell, or inspect the
-child `find`/`touch` processes via `ps`, if you need a liveness
-check.
+A touch pass over many small files on a shared cluster filesystem can
+take a long time, with no per-file output — progress is reported per
+file-batch as each completes. Do not interpret a silent stretch as a
+hang. A full pass over a large inactive list can legitimately take
+tens of minutes; the tail is bounded by the largest single directory's
+files divided across `-j` workers. Inspect the child `find`/`touch`
+processes via `ps` if you need a liveness check.
 
 ### Sharing Files
 

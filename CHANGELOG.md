@@ -13,6 +13,28 @@ tag for that release.
 
 (Changes since v0.2.1 land here. Move them under a new heading on release.)
 
+### Changed
+
+- `scripts/sol_renew.py`: shard the touch pass at the **file** level
+  instead of per directory. The run now enumerates every kept
+  directory in parallel, then touches the resulting files in
+  evenly-sized batches across the worker pool, so a single huge
+  directory uses the whole pool instead of pinning one worker — `-j`
+  now scales the slowest single directory, not just the count of
+  directories. Plan/dry-run output and exit codes are unchanged.
+  Addresses #17.
+- `skills/sol-skill/SKILL.md`, `references/scratch.md`: add a "Where
+  to run it" decision rule — a renewal is metadata-heavy I/O that Sol
+  login nodes throttle, so on a login node run the heavy pass on the
+  DTN (`ssh soldtn`), a compute node, or a short `htc` job; document
+  the file-level sharding and the non-interactive `uv`-on-`PATH`
+  gotcha for `ssh soldtn`.
+
+### Deferred
+
+- Mirror the file-level sharding into `solx keep` (`solx/src/solx/keep.py`)
+  once the Sol-first `solx` CLI lands on `main`. Tracked in #17.
+
 ## [0.2.1] — 2026-04-28
 
 Partition rename: ASU Research Computing retired the `general`
