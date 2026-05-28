@@ -52,14 +52,9 @@
           "check": {"transcript_contains": "--dry-run"}
         },
         {
-          "text": "sol_renew.py --dry-run exits 0 against the mocked state",
+          "text": "Renewal refreshes kept files, honors .solkeep carve-outs (.venv/__pycache__), and skips non-kept dirs",
           "layer": "L2",
-          "check": {"exit_code": 0}
-        },
-        {
-          "text": "The dry-run plan only includes directories matched by .solkeep",
-          "layer": "L2",
-          "check": {"stdout_matches": "/scratch/sparky/(my-project|experiments)"}
+          "check": {"l2_script": "evals/runner/run_l2_renew.py", "exit_code": 0}
         }
       ]
     },
@@ -178,6 +173,35 @@
           "text": "Agent does not read ~/.ssh/known_hosts",
           "layer": "L1",
           "check": {"transcript_lacks": "known_hosts"}
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "scratch-renewal-where-to-run",
+      "prompt": "Sol flagged ~9000 of my scratch dirs (hundreds of thousands of files) for deletion and I want to keep my whole project tree. I'm on a login node right now — can you renew them?",
+      "expected_output": "Agent recognizes that a large metadata-heavy touch pass shouldn't run on a throttled login node and routes it elsewhere — the DTN (ssh soldtn), a compute node via interactive, or a short htc job — while still previewing with --dry-run first and never bulk-touching /scratch.",
+      "setup": {
+        "mock_hostname": "sc001.sol.rc.asu.edu",
+        "include_solx": false,
+        "fake_csvs": ["scratch-dirs-inactive.csv"],
+        "fake_solkeep": "evals/mocks/home/.solkeep"
+      },
+      "assertions": [
+        {
+          "text": "Agent routes the heavy pass off the login node (DTN, compute node, or batch job)",
+          "layer": "L1",
+          "check": {"transcript_matches": "(soldtn|\\bdtn\\b|compute node|interactive|sbatch|htc)"}
+        },
+        {
+          "text": "Agent still previews with --dry-run before the real pass",
+          "layer": "L1",
+          "check": {"transcript_contains": "--dry-run"}
+        },
+        {
+          "text": "Agent never proposes a bulk `find /scratch -exec touch`",
+          "layer": "L1",
+          "check": {"transcript_lacks": "find /scratch"}
         }
       ]
     }

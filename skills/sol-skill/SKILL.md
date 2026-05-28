@@ -109,10 +109,9 @@ Always place large data files, model caches, and outputs under
 ### Renewing the Scratch Timestamp
 
 Sol deletes inactive `/scratch` files on a layered schedule and writes
-per-stage CSV warnings into `$HOME`. The thresholds, CSV filenames,
-and warning cadence are defined by ASU Research Computing; upstream is
-defined by ASU Research Computing; the official doc is authoritative:
-<https://docs.rc.asu.edu/scratch>.
+per-stage CSV warnings into `$HOME`. ASU Research Computing defines the
+thresholds, CSV filenames, and warning cadence; their doc is
+authoritative: <https://docs.rc.asu.edu/scratch>.
 
 Use `scripts/sol_renew.py` to refresh timestamps driven by those CSVs
 and a user-maintained `.solkeep` keep-list. See
@@ -186,7 +185,9 @@ ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; '"$SKILL_DIR"'/scripts/sol_renew
 #### Example `.solkeep`
 
 Patterns are literal strings — no shell expansion — so write your real
-username in place of `sparky`.
+username in place of `sparky`. Carve out regenerable trees (`.venv`,
+`.git`, caches, `node_modules`): renewing them spends the pass on files
+that rebuild for free, and letting them expire costs nothing.
 
 ```gitignore
 # keep project trees (bare path = recursive)
@@ -194,9 +195,11 @@ username in place of `sparky`.
 /scratch/sparky/experiments
 /scratch/sparky/datasets
 
-# carve out stale build artifacts
-!/scratch/sparky/my-project/**/__pycache__
-!/scratch/sparky/my-project/**/.venv/**
+# don't spend the renewal on regenerable junk (applies under every keep above)
+!/scratch/sparky/**/.venv/**
+!/scratch/sparky/**/__pycache__
+!/scratch/sparky/**/.git/**
+!/scratch/sparky/**/node_modules/**
 ```
 
 #### Long-running behavior
