@@ -1,7 +1,7 @@
 ---
 name: sol-skill
 version: 0.2.1
-description: Tips and conventions for working on ASU's Sol supercomputer. Use this skill when the agent is operating on Sol, submitting SLURM jobs, managing modules, or transferring data on the cluster.
+description: Conventions and ready-to-run tooling for ASU's Sol supercomputer. Use whenever a task is happening on Sol — the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). Covers: renewing /scratch files Sol has flagged for deletion (purge/inactivity warning emails, .solkeep keep-lists, sol_renew.py) and where to store datasets and model caches; writing and managing SLURM jobs (sbatch, GPU and partition/QOS choice, why a job is pending, fairshare); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, …), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---
 
@@ -117,6 +117,13 @@ Use `scripts/sol_renew.py` to refresh timestamps driven by those CSVs
 and a user-maintained `.solkeep` keep-list. See
 [references/scratch.md](references/scratch.md) for the CSV schema,
 `.solkeep` syntax, and performance notes.
+
+**Preview or confirm before the real pass.** The script rewrites
+timestamps on every kept file — potentially hundreds of thousands —
+directly, with no undo and no built-in confirmation prompt. So never
+fire the mutating run blind: run `--dry-run` first and check the plan
+(which directories, how many), *or* get the user's go-ahead on the
+scope. `--dry-run` touches nothing; the real run starts immediately.
 
 #### Default strategy
 
