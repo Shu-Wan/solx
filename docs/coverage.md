@@ -109,7 +109,7 @@ to the skill should mean adding a row here in the same group.
 | Multi-port forwarding (stacked `-L`) | 🟡 documented | |
 | OAuth callback reverse tunnel (`-R`) | 🟡 documented | |
 | Tunnel diagnostics (port-in-use, ControlMaster, wrong-side `-L`) | 🟡 documented | |
-| One-command laptop CLI (`solx`) | ⚪ roadmap | Not in v0.2.1; see [`PLAN.md`](PLAN.md) |
+| One-command laptop CLI (`solx`) | ⚪ roadmap | Not yet shipped; see [`PLAN.md`](PLAN.md) |
 | VS Code wrapper (`/usr/local/bin/vscode`) integration | 🔴 gap | Manual smoke only; wrapper itself maintained by ASU |
 
 ### Transferring Data
