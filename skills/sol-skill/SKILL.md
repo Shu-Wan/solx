@@ -1,7 +1,7 @@
 ---
 name: sol-skill
 version: 0.2.1
-description: Tips and conventions for working on ASU's Sol supercomputer. Use this skill when the agent is operating on Sol, submitting SLURM jobs, managing modules, or transferring data on the cluster.
+description: Conventions and ready-to-run tooling for ASU's Sol supercomputer. Use whenever a task is happening on Sol — the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). Covers: renewing /scratch files Sol has flagged for deletion (purge/inactivity warning emails, .solkeep keep-lists, sol_renew.py) and where to store datasets and model caches; writing and managing SLURM jobs (sbatch, GPU and partition/QOS choice, why a job is pending, fairshare); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, …), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---
 
@@ -109,15 +109,21 @@ Always place large data files, model caches, and outputs under
 ### Renewing the Scratch Timestamp
 
 Sol deletes inactive `/scratch` files on a layered schedule and writes
-per-stage CSV warnings into `$HOME`. The thresholds, CSV filenames,
-and warning cadence are defined by ASU Research Computing; upstream is
-defined by ASU Research Computing; the official doc is authoritative:
-<https://docs.rc.asu.edu/scratch>.
+per-stage CSV warnings into `$HOME`. ASU Research Computing defines the
+thresholds, CSV filenames, and warning cadence; their doc is
+authoritative: <https://docs.rc.asu.edu/scratch>.
 
 Use `scripts/sol_renew.py` to refresh timestamps driven by those CSVs
 and a user-maintained `.solkeep` keep-list. See
 [references/scratch.md](references/scratch.md) for the CSV schema,
 `.solkeep` syntax, and performance notes.
+
+**Preview or confirm before the real pass.** The script rewrites
+timestamps on every kept file — potentially hundreds of thousands —
+directly, with no undo and no built-in confirmation prompt. So never
+fire the mutating run blind: run `--dry-run` first and check the plan
+(which directories, how many), *or* get the user's go-ahead on the
+scope. `--dry-run` touches nothing; the real run starts immediately.
 
 #### Default strategy
 
@@ -134,6 +140,29 @@ The script intersects the two: only directories that Sol has flagged
 **and** that match `.solkeep` get touched. Nothing else is walked.
 This keeps I/O bounded even when the inactive list has thousands of
 rows.
+
+#### Where to run it
+
+A renewal is metadata-heavy I/O, not compute — but a touch pass over
+tens of thousands of files is exactly the load Sol's **login nodes
+throttle**. Check the environment first (see [Detecting the
+Environment](#detecting-the-environment)), then branch:
+
+- **On a compute node** (`$SLURM_JOB_ID` set) — run it directly; you
+  already hold dedicated resources.
+- **On a login node** (`$SLURM_JOB_ID` unset) — don't run the heavy
+  pass here. Move it to one of, in rough order of convenience:
+  - the **DTN**: `ssh soldtn '<cmd>'` (the `dtn` wrapper is literally
+    `ssh soldtn`). It's tuned for I/O, isn't throttled, and has many
+    cores — the best home for a large renewal.
+  - a **compute node**: grab one with `interactive` and run it there.
+  - a **batch job**: submit a short `htc` job whose payload is the
+    renewal, for an unattended pass.
+
+Match `-j` (parallel workers) to where it actually runs: a 4-core
+compute node can't feed more than a couple, while the DTN has many. See
+[references/scratch.md](references/scratch.md) for the non-interactive
+`uv`-on-`PATH` gotcha when invoking over `ssh soldtn`.
 
 #### Commands
 
@@ -152,14 +181,20 @@ $SKILL_DIR/scripts/sol_renew.py
 # Only chase the most urgent bucket
 $SKILL_DIR/scripts/sol_renew.py --stage pending
 
-# Raise parallelism explicitly if the filesystem can handle it
+# Raise parallelism explicitly when running where the cores exist
 $SKILL_DIR/scripts/sol_renew.py -j 16
+
+# From a login node: run the heavy pass on the DTN instead (many cores,
+# not throttled). Ensure ~/.local/bin is on PATH so the uv shebang resolves.
+ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; '"$SKILL_DIR"'/scripts/sol_renew.py -j 24'
 ```
 
 #### Example `.solkeep`
 
 Patterns are literal strings — no shell expansion — so write your real
-username in place of `sparky`.
+username in place of `sparky`. Carve out regenerable trees (`.venv`,
+`.git`, caches, `node_modules`): renewing them spends the pass on files
+that rebuild for free, and letting them expire costs nothing.
 
 ```gitignore
 # keep project trees (bare path = recursive)
@@ -167,20 +202,19 @@ username in place of `sparky`.
 /scratch/sparky/experiments
 /scratch/sparky/datasets
 
-# carve out stale build artifacts
-!/scratch/sparky/my-project/**/__pycache__
-!/scratch/sparky/my-project/**/.venv/**
+# don't spend the renewal on regenerable junk (applies under every keep above)
+!/scratch/sparky/**/.venv/**
+!/scratch/sparky/**/__pycache__
+!/scratch/sparky/**/.git/**
+!/scratch/sparky/**/node_modules/**
 ```
 
 #### Long-running behavior
 
-A touch pass over a directory holding many small files on a shared
-cluster filesystem can take a long time, with no per-file output —
-progress is reported per-directory. Do not interpret a silent stretch
-as a hang. A full pass over a large inactive list can legitimately
-take tens of minutes. Use `-v` in a separate shell, or inspect the
-child `find`/`touch` processes via `ps`, if you need a liveness
-check.
+A full pass over a large inactive list can take tens of minutes. It
+reports progress as it goes — a live progress bar in a terminal, or
+one line per completed file-batch otherwise — so you can watch it
+advance. Run `--dry-run -v` first to preview the plan.
 
 ### Sharing Files
 

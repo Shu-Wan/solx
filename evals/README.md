@@ -21,7 +21,9 @@ evals/
 │   ├── bin/                        # PATH shims
 │   ├── home/                       # fake $HOME (CSVs + .solkeep)
 │   └── scratch/                    # fake /scratch tree
-├── runner/                         # thin wrapper over skill-creator
+├── runner/
+│   ├── build_sandbox_home.sh       # hides the skill for fair baselines
+│   └── run_l2_renew.py             # runnable L2 for the renewal feature
 └── results/                        # gitignored — per-iteration benchmarks
 ```
 
@@ -37,10 +39,17 @@ source evals/mocks/activate.sh
 hostname -a                          # → sc001.sol.rc.asu.edu (mocked)
 echo "$MOCK_LOG"                     # path to per-session invocation log
 
-# 3. Run an L2 sanity check end-to-end
-skills/sol-skill/scripts/sol_renew.py --dry-run -v
-cat "$MOCK_LOG"                      # see what got invoked
+# 3. Run the L2 renewal eval end-to-end. It builds its own sandbox
+#    (real files + stale mtimes) and asserts the touch pass refreshes
+#    kept files, honors .solkeep carve-outs, and leaves the rest alone.
+#    Exits non-zero if any assertion fails.
+evals/runner/run_l2_renew.py            # add -v to echo the script's output
 ```
+
+> The static `mocks/` CSVs list absolute `/scratch/sparky/...` paths
+> for L1 (parsing/plan) checks, so they can't prove real touching on a
+> test box. `run_l2_renew.py` builds a self-contained tree under `$TMPDIR`
+> and points the script at it, so it can assert filesystem mutations.
 
 ## Eval entry schema
 
@@ -73,14 +82,9 @@ machine-checkable `check`.
           "check": {"transcript_lacks": "find /scratch"}
         },
         {
-          "text": "sol_renew.py exits 0 against the mocked CSV+.solkeep state",
+          "text": "Renewal refreshes kept files, honors .solkeep carve-outs, and skips the rest",
           "layer": "L2",
-          "check": {"exit_code": 0}
-        },
-        {
-          "text": "Touch ran exclusively on directories matched by .solkeep",
-          "layer": "L2",
-          "check": {"mock_log_contains": "touch -a -m -c"}
+          "check": {"l2_script": "evals/runner/run_l2_renew.py", "exit_code": 0}
         }
       ]
     }

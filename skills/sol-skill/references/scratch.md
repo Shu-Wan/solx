@@ -77,27 +77,63 @@ sol_renew.py -j 16
 
 Exit codes:
 
-- `0` — every flagged-and-kept directory was touched successfully
-- `1` — at least one directory failed
+- `0` — all kept files touched successfully
+- `1` — at least one directory failed to enumerate, or at least one
+  touch batch failed
 - `2` — no rules loaded (empty or missing `.solkeep`)
+
+## Where to run it
+
+A renewal is metadata-heavy I/O — the kind of load Sol's login nodes
+throttle. Decision rule (see SKILL.md's "Where to run it"):
+
+- **Compute node** (`$SLURM_JOB_ID` set): run it directly.
+- **Login node** (`$SLURM_JOB_ID` unset): move the heavy pass to the
+  **DTN** (`ssh soldtn`, many cores, not throttled), a compute node
+  via `interactive`, or a short `htc` batch job.
+
+**`uv`-on-`PATH` gotcha over `ssh soldtn`.** The script's shebang is
+`#!/usr/bin/env -S uv run --script`, so `uv` must be on `PATH`. A
+non-interactive `ssh soldtn '<cmd>'` may not source the profile that
+adds `~/.local/bin`, so prepend it explicitly:
+
+```shell
+ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; \
+  export UV_CACHE_DIR=/scratch/$USER/.cache/uv; \
+  /path/to/sol_renew.py --stage inactive -j 24'
+```
 
 ## Performance notes
 
-- Each CSV row is already a directory identified by Sol's scan.
-  `sol_renew.py` runs exactly one `find | xargs touch` pipeline per
-  row — it does not start from `/scratch` and recurse. Scope is
-  bounded by what Sol flagged and what `.solkeep` keeps, so an
-  overly broad keep-list or a large CSV-listed subtree will still
-  produce a large touch pass.
+- Execution is a streaming pipeline on one `-j`-sized worker pool:
+  enumerate a kept directory, split its files into evenly-sized
+  batches, and `touch -a -m -c` the batches across the pool. A bounded
+  window of in-flight tasks keeps peak memory a small multiple of `-j`
+  regardless of the total file count. A large directory spreads its
+  batches over every worker, so `-j` sets the parallelism of the whole
+  run including its largest directory.
+- Enumeration uses [`fd`](https://github.com/sharkdp/fd) (then
+  `rg --files`) when on `PATH`, falling back to `find`. `fd`/`rg`
+  walk a tree multithreaded, so they enumerate a large directory
+  faster than `find`. They are run with `--hidden --no-ignore` so they
+  list *every* file — without those flags `fd`/`rg` skip dotfiles and
+  honor `.gitignore`, which would under-protect files. The touch step
+  always uses `touch` via `xargs`.
+- Scope stays bounded by what Sol flagged ∩ `.solkeep`; the tool does
+  not start from `/scratch` and recurse. An overly broad keep-list or
+  a large CSV-listed subtree still produces a large touch pass.
 - `touch -a -m -c` refreshes both `atime` and `mtime` (`-c` avoids
-  creating files that do not exist).
-- A `touch` pass over a directory with many small files on a shared
-  cluster filesystem can take a long time. The script reports progress
-  per-directory, not per-file — a single line may sit on screen for
-  minutes. Do not cancel the run based on a silent stretch.
+  creating files that do not exist). A file deleted between
+  enumeration and touch is silently skipped (`-c` exits 0 on a
+  missing path), so it is not counted as a failure; a per-batch
+  failure means a real error such as a permission or I/O problem.
+- Progress is reported as the run proceeds: a live bar on a terminal
+  (`rich` auto-refreshes the elapsed timer), or one line per completed
+  file-batch in non-interactive output (e.g. over `ssh`).
 - The default parallelism is conservative to avoid hammering the
-  shared filesystem. Raise it with `-j N` once you know the cluster
-  can absorb the concurrent walks.
+  shared filesystem. Raise it with `-j N` once you know the node it
+  runs on has the cores to feed the workers (a 4-core compute node
+  can't, the DTN can).
 
 ## Emergency single-path touch
 

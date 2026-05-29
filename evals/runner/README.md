@@ -13,6 +13,20 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   user-scope `sol-skill` install. Run it once before each eval
   session. See `DEVELOPMENT.md` ("Baseline isolation") for the why
   and how.
+- **`run_l2_renew.py`** — a standalone, runnable L2 check for the
+  renewal feature. It builds its own sandbox (real files with stale
+  mtimes, including `.venv`/`__pycache__`), points a `.solkeep` and a
+  warning CSV at it, runs `sol_renew.py`, and asserts the filesystem
+  mutations: dry-run touches nothing, kept files (recursively) are
+  refreshed, `.solkeep` carve-outs are left alone, non-kept dirs are
+  skipped. Exits non-zero on any failure, so it works standalone, in
+  CI, or as the L2 grader for the `scratch-renewal-*` evals
+  (`check.l2_script`). Self-bootstraps via `uv`; needs no sandbox, no
+  subagents, no `claude` CLI:
+
+  ```shell
+  evals/runner/run_l2_renew.py        # -v to echo the script's output
+  ```
 
 ## What the runner will do (iteration 1)
 

@@ -13,6 +13,40 @@ tag for that release.
 
 (Changes since v0.2.1 land here. Move them under a new heading on release.)
 
+### Changed
+
+- `scripts/sol_renew.py`: shard the touch pass at the **file** level
+  instead of per directory, as a streaming pipeline — enumerate a kept
+  directory, then `touch` its files in evenly-sized batches across the
+  worker pool, with a bounded in-flight window so peak memory stays a
+  small multiple of `-j` regardless of total file count. A single huge
+  directory now spreads across the whole pool, so `-j` scales the
+  slowest single directory, not just the count of directories.
+  Plan/dry-run output is unchanged; exit codes stay `0`/`1`/`2`, with
+  `1` now reflecting an enumeration or touch-batch failure rather than
+  a per-directory one. Addresses #17.
+- `scripts/sol_renew.py`: enumeration prefers `fd` (then `rg --files`)
+  when on `PATH`, falling back to `find` — the multithreaded walk is
+  faster on a large directory. Run with `--hidden --no-ignore` so the
+  fast listers match `find -type f` exactly (they skip dotfiles /
+  honor `.gitignore` by default, which would otherwise under-protect
+  files).
+- `skills/sol-skill/SKILL.md`: add a "Where to run it" decision rule —
+  a renewal is metadata-heavy I/O that Sol login nodes throttle, so on
+  a login node run the heavy pass on the DTN (`ssh soldtn`), a compute
+  node, or a short `htc` job; match `-j` to the node's cores. (Keeps
+  implementation detail out of the skill — that lives in the
+  reference.)
+- `references/scratch.md`: document the streaming/file-level design,
+  the `fd`/`rg`/`find` lister selection, the per-batch failure
+  granularity, and the non-interactive `uv`-on-`PATH` gotcha for
+  `ssh soldtn`.
+
+### Deferred
+
+- Mirror the file-level sharding into `solx keep` (`solx/src/solx/keep.py`)
+  once the Sol-first `solx` CLI lands on `main`. Tracked in #17.
+
 ## [0.2.1] — 2026-04-28
 
 Partition rename: ASU Research Computing retired the `general`
