@@ -1,6 +1,6 @@
 ---
 name: sol-skill
-version: 0.2.1
+version: 0.3.0
 description: Conventions and ready-to-run tooling for ASU's Sol supercomputer. Use whenever a task is happening on Sol — the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). Covers: renewing /scratch files Sol has flagged for deletion (purge/inactivity warning emails, .solkeep keep-lists, sol_renew.py) and where to store datasets and model caches; writing and managing SLURM jobs (sbatch, GPU and partition/QOS choice, why a job is pending, fairshare); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, …), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---

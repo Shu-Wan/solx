@@ -11,7 +11,12 @@ tag for that release.
 
 ## [Unreleased]
 
-(Changes since v0.2.1 land here. Move them under a new heading on release.)
+(Changes since v0.3.0 land here. Move them under a new heading on release.)
+
+## [0.3.0] — 2026-05-28
+
+File-level scratch renewal, faster enumeration, and skill guidance for
+where to run it. Closes #17 (see #18).
 
 ### Changed
 
@@ -24,7 +29,7 @@ tag for that release.
   slowest single directory, not just the count of directories.
   Plan/dry-run output is unchanged; exit codes stay `0`/`1`/`2`, with
   `1` now reflecting an enumeration or touch-batch failure rather than
-  a per-directory one. Addresses #17.
+  a per-directory one.
 - `scripts/sol_renew.py`: enumeration prefers `fd` (then `rg --files`)
   when on `PATH`, falling back to `find` — the multithreaded walk is
   faster on a large directory. Run with `--hidden --no-ignore` so the
@@ -34,13 +39,31 @@ tag for that release.
 - `skills/sol-skill/SKILL.md`: add a "Where to run it" decision rule —
   a renewal is metadata-heavy I/O that Sol login nodes throttle, so on
   a login node run the heavy pass on the DTN (`ssh soldtn`), a compute
-  node, or a short `htc` job; match `-j` to the node's cores. (Keeps
-  implementation detail out of the skill — that lives in the
-  reference.)
+  node, or a short `htc` job; match `-j` to the node's cores.
+- `skills/sol-skill/SKILL.md`: rewrite the frontmatter `description`
+  for triggering — cover the scratch-renewal flow (previously omitted)
+  alongside the other domains, with an explicit near-miss guard
+  (generic SLURM/HPC on Phoenix/NERSC, cloud GPUs, local-laptop
+  tasks). Add a load-bearing safety rule: preview with `--dry-run` or
+  confirm scope before the mutating run.
+- `skills/sol-skill/SKILL.md`: the example `.solkeep` now carves out
+  regenerable trees (`.venv`/`.git`/`__pycache__`/`node_modules`)
+  under every kept path, with the reasoning — renewing them spends the
+  pass on files that rebuild for free.
 - `references/scratch.md`: document the streaming/file-level design,
   the `fd`/`rg`/`find` lister selection, the per-batch failure
   granularity, and the non-interactive `uv`-on-`PATH` gotcha for
   `ssh soldtn`.
+
+### Added
+
+- `evals/runner/run_l2_renew.py`: a runnable L2 eval that builds its
+  own sandbox (real files + stale mtimes, incl. `.venv`/`__pycache__`)
+  and asserts the renewal's filesystem mutations — dry-run touches
+  nothing, kept files refresh recursively, `.solkeep` carve-outs are
+  left alone, non-kept dirs are skipped. Closes the gap where the
+  static mock CSVs (absolute `/scratch` paths) couldn't prove real
+  touching.
 
 ### Deferred
 
@@ -166,7 +189,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/sol-skills/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Shu-Wan/sol-skills/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.3.0
 [0.2.1]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.1.0
