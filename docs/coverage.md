@@ -5,10 +5,11 @@ automated verification, and what's a known gap. The eval harness
 requires manual orchestration today, so this document is updated by
 hand before each release.
 
-**Version:** v0.2.1 (see [`../CHANGELOG.md`](../CHANGELOG.md))
-**Last verified:** 2026-04-23 (against v0.2.0 — v0.2.1 is a
-partition-rename release with no behavior changes; tested rows below
-carry over).
+**Version:** v0.3.0 (see [`../CHANGELOG.md`](../CHANGELOG.md))
+**Last verified:** 2026-05-28 (against v0.3.0 — the renewal rows are
+now covered by the runnable L2 `evals/runner/run_l2_renew.py` (8/8) and
+a real end-to-end pass on Sol; other tested rows carry over from
+v0.2.0).
 
 ## Status legend
 
@@ -54,8 +55,9 @@ to the skill should mean adding a row here in the same group.
 | Steers away from `/home` for large data | 🟢 tested | Verified iter-1 |
 | `.solkeep` syntax (gitignore-style, `!` negation, `**` glob) | 🟢 tested | Verified iter-2 eval A: agent produces correct file with explanation |
 | Refuses to bulk-touch `/scratch` (`find -exec touch`) | 🟡 documented | Negative assertion; not yet probed |
-| `sol_renew.py --dry-run` plan correctness | 🟡 documented | L2 mock available; eval pending |
-| `sol_renew.py` actually touches files | 🟡 documented | Manual on Sol; no automated L3 |
+| `sol_renew.py --dry-run` plan correctness | 🟢 tested | L2 `run_l2_renew.py` (v0.3.0): dry-run exits 0 and touches nothing |
+| `sol_renew.py` actually refreshes kept files (recursively) | 🟢 tested | L2 `run_l2_renew.py` (v0.3.0): mtimes refresh across the tree; also run end-to-end on real Sol |
+| `.solkeep` carve-outs honored at run time (`.venv`/`__pycache__` skipped, non-kept dirs skipped) | 🟢 tested | L2 `run_l2_renew.py` (v0.3.0) |
 | File sharing procedure (`chmod` / `install` / `cp` between users) | 🟡 documented | |
 | Scratch-quota-exceeded behavior | 🔴 gap | Would need a fault-injection mock |
 | Concurrent `sol_renew.py` runs | 🔴 gap | No locking; documented behavior is "don't" |
