@@ -38,10 +38,10 @@ solx/src/solx/
   candidate list — a wrong cancel is irreversible. Acting from inside an
   allocation triggers a nesting heads-up (`jump`) or self-cancel confirm
   (`stop`). Rationale lives in the design panel synthesis; summary in
-  [`../docs/solx.md`](../docs/solx.md#job-id-resolution--the-defaults-for-stop--jump--time).
+  [`../docs/solx.md`](../docs/solx.md#leaving-out-the-job-id).
 - **Output is `Out` (`output.py`), not bare `print`/`Console`.** Each
   command body takes an `Out` that decides JSON vs Rich (auto: JSON when
-  stdout isn't a TTY; `--json`/`--plain` force it) and splits streams —
+  stdout isn't a TTY; global `--json` forces it) and splits streams —
   results to stdout, every diagnostic to stderr. Destructive commands
   refuse (`exit 2`) in a non-interactive session rather than hang on a
   prompt. Tests build an `Out` over `StringIO` consoles with an explicit

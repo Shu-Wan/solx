@@ -71,7 +71,7 @@ related operations, top-level shortcuts where they earn it.
 | `solx completions <bash\|zsh\|fish>` | Emit a shell completion script. |
 | `solx --version`, `--help` | — |
 
-Global output flags `--json` / `--plain` go **before** the subcommand
+The global `--json` flag goes **before** the subcommand
 (`solx --json job list`). See the full manual at
 [`docs/solx.md`](../docs/solx.md).
 
@@ -90,7 +90,7 @@ inside an allocation), else `squeue -u $USER`. With **≥2 matching jobs** the
 verbs differ — `time`/`jump` auto-pick the **most recent** (highest job id),
 while `stop` **never** guesses and exits 2 to disambiguate. Acting from inside
 an allocation warns about nesting (`jump`, `-q` to silence) or self-cancel
-(`stop`). Full rules: [`docs/solx.md`](../docs/solx.md#job-id-resolution--the-defaults-for-stop--jump--time).
+(`stop`). Full rules: [`docs/solx.md`](../docs/solx.md#leaving-out-the-job-id).
 
 ### Destructive-command confirmation contract
 
@@ -100,7 +100,7 @@ allocation, or `touch` mtimes under `/scratch`. Both follow:
 | Flag | Behavior |
 |---|---|
 | (none) | Print what's about to happen, then prompt `Proceed? [y/N]`. Default no. |
-| `-y`, `--yes` | Skip the prompt and execute. For scripts. |
+| `-y`/`--yes` (or `-f`/`--force`) | Skip the prompt and execute. For scripts. |
 | `-n`, `--dry-run` | Print the plan without executing. **No prompt** — nothing destructive is about to happen. |
 
 `-y` and `-n` together exit 2 (mutually exclusive). In a **non-interactive
@@ -110,12 +110,13 @@ rather than hang on a prompt — safe to drive from an agent or cron.
 ### Output: human or agent
 
 Output auto-detects — **JSON when stdout is not a TTY**, Rich tables on a
-terminal; `--json` / `--plain` (before the subcommand) force it. Results go to
-stdout, all diagnostics to stderr, so `solx --json job list | jq …` and
-`solx job time` (bare duration) both pipe cleanly. Exit codes: `0` success,
+terminal; the global `--json` (before the subcommand) forces JSON anywhere. A
+human at a terminal gets tables with no flag. Results go to stdout, all
+diagnostics to stderr, so `solx --json job list | jq …` and `solx job time`
+(bare duration) both pipe cleanly. Exit codes: `0` success,
 `1` operational/nothing-to-do, `2` under-specified or unconfirmed. This is the
 [issue #16](https://github.com/Shu-Wan/sol-skills/issues/16) "design for
-agents" behavior; details in [`docs/solx.md`](../docs/solx.md#output--agents).
+agents" behavior; details in [`docs/solx.md`](../docs/solx.md#output-for-scripts).
 
 Other commands (`init`, `job start`, `job list`, `job jump`, `job time`,
 `config show`, `config edit`) don't prompt. `solx init` has its own

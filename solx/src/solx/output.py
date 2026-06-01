@@ -4,7 +4,8 @@ Principle (issue #16 — "CLI design for agents"): a CLI driven by an agent
 should not have to know a flag exists to get parseable output. So:
 
 * When stdout is **not a TTY**, data commands emit JSON automatically; on a
-  TTY they render Rich tables. `--json` / `--plain` force the choice.
+  TTY they render Rich tables. The global `--json` flag forces JSON anywhere
+  (a human on a terminal gets tables with no flag; the agent passes `--json`).
 * All diagnostics, progress, and errors go to **stderr**, so stdout stays a
   clean data channel an agent can parse without stripping noise.
 * Interactivity (whether we may *prompt*) is decided by **stdin**, separately
@@ -25,7 +26,10 @@ from typing import Any, Callable
 from rich.console import Console
 
 
-# Force-mode tokens for the global --json/--plain flags. None == auto-detect.
+# Output mode override. The CLI sets "json" via the global --json flag; None
+# means auto-detect from the stdout TTY. "plain" (force human) is supported by
+# Out.auto for embedders/tests but has no CLI flag — a human on a terminal
+# already gets human output by default, so forcing it isn't worth a flag.
 Force = str  # "json" | "plain" | None
 
 
@@ -55,8 +59,8 @@ class Out:
     ) -> "Out":
         """Build an `Out`, auto-detecting format from the stdout TTY.
 
-        ``force`` (`"json"`/`"plain"`/`None`) overrides the auto-detect; it
-        comes from the global `--json` / `--plain` flags. ``interactive``
+        ``force`` (`"json"`/`"plain"`/`None`) overrides the auto-detect; the
+        CLI passes `"json"` (global `--json`) or `None`. ``interactive``
         defaults to whether **stdin** is a TTY.
         """
         so = stdout or Console()

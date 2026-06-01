@@ -188,3 +188,11 @@ def test_starter_config_no_maintainer_name() -> None:
     assert "swan16" not in text
     assert "<asurite>" not in text
     assert "sparky" in text  # in the commented [keep] example
+
+
+def test_load_unreadable_raises_config_error(tmp_path: Path) -> None:
+    """A directory where a file is expected -> OSError -> clean ConfigError."""
+    p = tmp_path / "config.toml"
+    p.mkdir()  # exists() is True, but open('rb') raises IsADirectoryError
+    with pytest.raises(ConfigError, match="cannot read"):
+        cfg.load(p)

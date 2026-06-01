@@ -14,12 +14,13 @@ Surface (see docs/solx.md):
     solx completions <bash|zsh|fish>
     solx --version
 
-Global output flags: `--json` / `--plain` force the output format; by default
-it auto-detects (JSON when stdout is not a TTY). See `solx.output`.
+Global output flag: `--json` forces JSON; by default output auto-detects
+(Rich tables on a terminal, JSON when stdout is not a TTY). See `solx.output`.
 """
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -64,7 +65,7 @@ config_app = typer.Typer(
 app.add_typer(config_app, name="config")
 
 
-# Output format forced by the global --json/--plain flags. None == auto-detect.
+# Output format forced by the global --json flag. None == auto-detect.
 _FORCE: Optional[output.Force] = None
 
 
@@ -94,21 +95,15 @@ def root(
         bool,
         typer.Option("--json", help="Force JSON output (machine-readable)."),
     ] = False,
-    plain: Annotated[
-        bool,
-        typer.Option("--plain", help="Force human output even when piped."),
-    ] = False,
 ) -> None:
     """Sol-first CLI.
 
-    Output auto-detects: JSON when stdout is not a TTY, Rich tables on a
-    terminal. `--json` / `--plain` override. Diagnostics always go to stderr.
+    Output auto-detects: Rich tables on a terminal, JSON when stdout is not a
+    TTY. A human at a terminal gets tables with no flag; an agent passes
+    `--json` to force JSON anywhere. Diagnostics always go to stderr.
     """
     global _FORCE
-    if json_out and plain:
-        typer.echo("error: --json and --plain are mutually exclusive", err=True)
-        raise typer.Exit(code=2)
-    _FORCE = "json" if json_out else "plain" if plain else None
+    _FORCE = "json" if json_out else None
 
 
 # --- top-level: init ------------------------------------------------------
@@ -118,7 +113,10 @@ def root(
 def init_cmd(
     force: Annotated[
         bool,
-        typer.Option("--force", "-f", help="Overwrite without prompting."),
+        typer.Option(
+            "--force", "-f", "--yes", "-y",
+            help="Overwrite without prompting (-y/--yes accepted too).",
+        ),
     ] = False,
 ) -> None:
     require_sol()
@@ -147,7 +145,7 @@ def keep_cmd(
     ] = max(1, min(8, (os.cpu_count() or 2) // 4)),
     yes: Annotated[
         bool,
-        typer.Option("--yes", "-y", help="Skip confirmation prompt."),
+        typer.Option("--yes", "-y", "--force", "-f", help="Skip confirmation prompt (also -f/--force)."),
     ] = False,
     dry_run: Annotated[
         bool,
@@ -268,7 +266,7 @@ def job_stop_cmd(
     ] = None,
     yes: Annotated[
         bool,
-        typer.Option("--yes", "-y", help="Skip confirmation prompt."),
+        typer.Option("--yes", "-y", "--force", "-f", help="Skip confirmation prompt (also -f/--force)."),
     ] = False,
     dry_run: Annotated[
         bool,
@@ -383,8 +381,11 @@ def config_edit_cmd() -> None:
     if not p.exists():
         typer.echo(f"no config at {p}. run `solx init` first.", err=True)
         raise typer.Exit(code=2)
+    # $EDITOR is often a command with flags (e.g. "code --wait", "vim -u NORC"),
+    # so split it into argv rather than treating the whole string as one binary.
     editor = os.environ.get("EDITOR") or shutil.which("vi") or "nano"
-    raise typer.Exit(code=subprocess.call([editor, str(p)]))
+    editor_argv = shlex.split(editor)
+    raise typer.Exit(code=subprocess.call([*editor_argv, str(p)]))
 
 
 # --- completions ----------------------------------------------------------
@@ -400,24 +401,22 @@ def completions_cmd(
         typer.Argument(help="Target shell: bash, zsh, or fish."),
     ],
 ) -> None:
-    """Friendlier alias for Typer's --show-completion machinery."""
+    """Print a completion script for `shell`.
+
+    Generated directly from Click's completion machinery rather than
+    re-exec'ing the binary, so it works under both the installed `solx` entry
+    point and `python -m solx`.
+    """
+    import click.shell_completion as shell_completion
+    from typer.main import get_command
+
     shell = shell.lower()
-    if shell not in {"bash", "zsh", "fish"}:
+    comp_cls = shell_completion.get_completion_class(shell)
+    if shell not in {"bash", "zsh", "fish"} or comp_cls is None:
         typer.echo(f"unknown shell {shell!r}; choose bash, zsh, or fish.", err=True)
         raise typer.Exit(code=2)
-    import sys
-
-    env = dict(os.environ)
-    env["_SOLX_COMPLETE"] = f"{shell}_source"
-    res = subprocess.run([sys.argv[0]], env=env, capture_output=True, text=True)
-    if res.returncode != 0 or not res.stdout:
-        typer.echo(
-            f"# To install solx completions for {shell}, run:\n"
-            f"#   solx --show-completion {shell}",
-            err=False,
-        )
-        raise typer.Exit(code=res.returncode)
-    typer.echo(res.stdout)
+    completer = comp_cls(get_command(app), {}, "solx", "_SOLX_COMPLETE")
+    typer.echo(completer.source())
 
 
 # --- helpers --------------------------------------------------------------

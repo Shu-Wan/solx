@@ -89,6 +89,10 @@ def load(path: Path | None = None) -> Config:
             raw = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"invalid TOML in {p}: {e}") from e
+    except OSError as e:
+        # Unreadable file (permissions, a directory in its place, I/O error):
+        # surface a clean config error instead of a traceback.
+        raise ConfigError(f"cannot read config {p}: {e}") from e
     return _parse(raw, source=str(p))
 
 

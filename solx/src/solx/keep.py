@@ -242,6 +242,12 @@ def cmd_keep(
         return 2
 
     csv_dir = csv_dir or Path.home()
+    if not csv_dir.is_dir():
+        out.error(
+            f"[red]error:[/] --csv-dir {csv_dir} is not a directory "
+            "(Sol drops the warning CSVs in $HOME)."
+        )
+        return 2
     stages = list(STAGE_ORDER) if stage == STAGES_ALL else [stage]
 
     plan = build_plan(csv_dir, stages, config.keep)

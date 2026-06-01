@@ -211,6 +211,19 @@ def test_keep_yes_and_dry_run_mutually_exclusive(tmp_path: Path) -> None:
     assert code == 2
 
 
+def test_keep_bad_csv_dir_exits_2(tmp_path: Path) -> None:
+    """A --csv-dir that isn't a directory is surfaced, not silently empty."""
+    cfg = make_config(keep=make_keep(include=["/scratch/sparky/a"]))
+    bad = tmp_path / "does-not-exist"
+    out = make_out()
+    code = keep_mod.cmd_keep(
+        config=cfg, csv_dir=bad, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=out,
+    )
+    assert code == 2
+    assert "not a directory" in out.stderr.file.getvalue()
+
+
 def test_keep_no_keep_block_exits_2(tmp_path: Path) -> None:
     cfg = make_config(keep=None)
     code = keep_mod.cmd_keep(

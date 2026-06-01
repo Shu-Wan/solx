@@ -118,11 +118,6 @@ def test_global_json_forces_json(runner: CliRunner, monkeypatch) -> None:
     assert _json.loads(res.stdout)["default_shell"] == "zsh"
 
 
-def test_json_and_plain_mutually_exclusive(runner: CliRunner) -> None:
-    res = runner.invoke(cli.app, ["--json", "--plain", "config", "show"])
-    assert res.exit_code == 2
-
-
 # ---- job subcommands ----------------------------------------------------
 
 
@@ -223,6 +218,17 @@ def test_job_stop_yes_flag(runner: CliRunner, monkeypatch) -> None:
     assert res.exit_code == 0
     assert captured[0]["yes"] is True
     assert captured[0]["dry_run"] is False
+
+
+def test_job_stop_force_is_alias_for_yes(runner: CliRunner, monkeypatch) -> None:
+    """`-f`/`--force` is interchangeable with `-y`/`--yes` for skipping the prompt."""
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_stop", lambda **kw: captured.append(kw) or 0)
+    res = runner.invoke(cli.app, ["job", "stop", "12345", "--force"])
+    assert res.exit_code == 0
+    assert captured[0]["yes"] is True
 
 
 def test_job_time_no_arg(runner: CliRunner, monkeypatch) -> None:
@@ -335,6 +341,16 @@ def test_init_force(runner: CliRunner, monkeypatch) -> None:
     assert captured[0]["force"] is True
 
 
+def test_init_yes_is_alias_for_force(runner: CliRunner, monkeypatch) -> None:
+    captured: list[dict] = []
+    from solx import init as init_mod
+
+    monkeypatch.setattr(init_mod, "cmd_init", lambda **kw: captured.append(kw) or 0)
+    res = runner.invoke(cli.app, ["init", "-y"])
+    assert res.exit_code == 0
+    assert captured[0]["force"] is True
+
+
 # ---- config -------------------------------------------------------------
 
 
@@ -352,7 +368,7 @@ def test_config_show(runner: CliRunner, monkeypatch) -> None:
         },
     )
     monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
-    res = runner.invoke(cli.app, ["--plain", "config", "show"])
+    res = runner.invoke(cli.app, ["config", "show"])
     assert res.exit_code == 0
     assert "lightwork" in res.stdout
 
@@ -391,3 +407,29 @@ def test_config_edit_no_config(runner: CliRunner, monkeypatch, tmp_path) -> None
 def test_completions_invalid_shell(runner: CliRunner) -> None:
     res = runner.invoke(cli.app, ["completions", "tcsh"])
     assert res.exit_code == 2
+
+
+def test_completions_bash_emits_script(runner: CliRunner) -> None:
+    """Happy path: a real completion script, generated without re-exec."""
+    res = runner.invoke(cli.app, ["completions", "bash"])
+    assert res.exit_code == 0
+    assert "_SOLX_COMPLETE" in res.stdout  # the env var the script wires up
+    assert "solx" in res.stdout
+
+
+def test_config_edit_splits_editor_flags(runner: CliRunner, monkeypatch, tmp_path) -> None:
+    """$EDITOR with flags (e.g. `code --wait`) is split into argv, not one binary."""
+    cfgfile = tmp_path / "config.toml"
+    cfgfile.write_text("default_shell = 'bash'\n")
+    monkeypatch.setattr(cli.cfg, "config_path", lambda: cfgfile)
+    monkeypatch.setenv("EDITOR", "myed --wait")
+    captured: dict = {}
+
+    def fake_call(argv):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    res = runner.invoke(cli.app, ["config", "edit"])
+    assert res.exit_code == 0
+    assert captured["argv"] == ["myed", "--wait", str(cfgfile)]
