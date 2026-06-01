@@ -95,33 +95,134 @@ def squeue_user_jobs(
 
 
 # --- jobid resolution -----------------------------------------------------
+#
+# Resolution is VERB-AWARE. The conventions are inspired by tmux (a no-arg
+# command acts on the obvious target; "most recent" when several exist; warn
+# when you act on the session you're sitting in) but adapted to Slurm, where a
+# cancelled job is unrecoverable and attaching spends real allocation time:
+#
+#   * `time`/`jump` (read / attach): when several jobs match, auto-pick the
+#     MOST RECENT one (like `tmux attach`). Deterministic, so it's agent-safe.
+#   * `stop` (cancel): NEVER auto-picks among several — that's how you cancel
+#     the wrong job. It returns the candidates so the caller can print them and
+#     exit 2. This is the deliberate divergence from tmux's "act on most recent".
+#   * `jump`'s auto-pick considers RUNNING jobs only (you can't attach to a
+#     pending one). An EXPLICIT arg or $SLURM_JOB_ID is passed through as-is
+#     (no state pre-check) — by design, `srun` surfaces a wrong-state job far
+#     more clearly than we could, and it saves a squeue round-trip.
+#
+# "Inside an allocation" ($SLURM_JOB_ID set) is treated as "the current
+# session": it's the default target, and acting on it carries a nesting/
+# self-cancel warning the caller surfaces.
+
+
+VERB_JUMP = "jump"
+VERB_STOP = "stop"
+VERB_TIME = "time"
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """Outcome of resolving a jobid for one verb.
+
+    Exactly one of these holds:
+      * ``job_id`` is set        → resolved; act on it.
+      * ``ambiguous`` is True    → several candidates, caller must disambiguate.
+      * ``error`` is set         → nothing to act on (no jobs / none running).
+    """
+
+    job_id: str | None = None
+    source: str = "arg"  # arg | inside | single | most-recent
+    inside: bool = False  # $SLURM_JOB_ID is set (acting from within an allocation)
+    inside_job_id: str | None = None
+    candidates: tuple[Job, ...] = ()  # set considered (for ambiguity / context)
+    ambiguous: bool = False
+    error: str | None = None
+
+    @property
+    def acting_on_current(self) -> bool:
+        """True when the resolved job is the one we're sitting inside."""
+        return self.inside and self.job_id is not None and self.job_id == self.inside_job_id
+
+
+def _jobid_key(job_id: str) -> tuple[int, int]:
+    """Sort key making 'most recent' == 'highest job id'.
+
+    Slurm assigns monotonically increasing ids, so the highest id is the
+    newest submission — which for `solx job start` is the one you just made.
+    Array ids like ``123_4`` sort by (base, index); a non-numeric id sorts
+    first so a real number always wins.
+    """
+    base, _, idx = job_id.partition("_")
+    try:
+        return (int(base), int(idx) if idx.isdigit() else 0)
+    except ValueError:
+        return (-1, 0)
+
+
+def most_recent(jobs: Iterable[Job]) -> Job:
+    """Return the most recently submitted job (highest job id)."""
+    return max(jobs, key=lambda j: _jobid_key(j.job_id))
 
 
 def resolve_jobid(
     arg: str | None,
     *,
+    verb: str = VERB_TIME,
     user: str | None = None,
     env: dict[str, str] | None = None,
     runner: Runner = real_runner,
-) -> tuple[str, list[Job] | None]:
-    """Resolve the jobid for `stop` / `jump` / `time` per the contract.
+) -> Resolution:
+    """Resolve the jobid for `stop` / `jump` / `time`, verb-aware (see above).
 
-    Order: arg > $SLURM_JOB_ID > sole running solx-eligible job > ambiguous.
+    Order: explicit arg > inside-allocation ($SLURM_JOB_ID) > squeue. From
+    squeue, a single candidate is used; several are auto-resolved to the most
+    recent for read/attach verbs, or returned as ``ambiguous`` for ``stop``.
 
-    Returns (jobid, None) on a clean resolve; (("", jobs)) on ambiguity so
-    the caller can render a table and exit 2 deterministically.
+    Raises ``SlurmError`` if the squeue query fails (the explicit-arg and
+    inside-allocation paths short-circuit before any squeue call, so they never
+    raise). Every caller in ``jobs.py`` wraps this in try/except.
     """
-    if arg:
-        return arg, None
     env = env if env is not None else dict(os.environ)
-    if env.get("SLURM_JOB_ID"):
-        return env["SLURM_JOB_ID"], None
+    inside_id = env.get("SLURM_JOB_ID") or None
+    inside = inside_id is not None
+
+    if arg:
+        return Resolution(job_id=arg, source="arg", inside=inside, inside_job_id=inside_id)
+    if inside_id:
+        return Resolution(
+            job_id=inside_id, source="inside", inside=True, inside_job_id=inside_id
+        )
+
     jobs = squeue_user_jobs(user=user, runner=runner)
-    if not jobs:
-        raise SlurmError("no jobs found for the current user")
-    if len(jobs) == 1:
-        return jobs[0].job_id, None
-    return "", jobs
+    candidates = [j for j in jobs if j.state == "RUNNING"] if verb == VERB_JUMP else jobs
+
+    if not candidates:
+        # For jump, distinguish "you have jobs but none running" from "no jobs".
+        if verb == VERB_JUMP and jobs:
+            err = "no running job to attach to (jobs exist but none are RUNNING)"
+        else:
+            err = "no jobs found for the current user"
+        return Resolution(error=err, candidates=tuple(jobs), inside=inside)
+
+    if len(candidates) == 1:
+        return Resolution(
+            job_id=candidates[0].job_id, source="single",
+            candidates=tuple(candidates), inside=inside, inside_job_id=inside_id,
+        )
+
+    if verb == VERB_STOP:
+        # Never auto-pick which job to cancel.
+        return Resolution(
+            ambiguous=True, candidates=tuple(candidates),
+            inside=inside, inside_job_id=inside_id,
+        )
+
+    chosen = most_recent(candidates)
+    return Resolution(
+        job_id=chosen.job_id, source="most-recent",
+        candidates=tuple(candidates), inside=inside, inside_job_id=inside_id,
+    )
 
 
 # --- salloc / scancel / srun argv builders -------------------------------

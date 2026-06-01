@@ -13,6 +13,35 @@ tag for that release.
 
 (Changes since v0.3.0 land here. Move them under a new heading on release.)
 
+### solx 0.3.0 (sub-package; versions independently of the skill)
+
+The `solx/` CLI gains agent-friendly output and verb-aware job-id
+resolution, and its `keep` command catches up to `sol_renew.py`'s
+file-level sharding (closing the #17 mirror that 0.3.0 deferred). The skill
+(`skills/sol-skill/`) is untouched.
+
+- **Agent-friendly output** (issue #16 / [10 principles for agent-native
+  CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis)): output
+  auto-detects — JSON when stdout is not a TTY, Rich tables on a terminal;
+  global `--json` / `--plain` force it. Results go to stdout, all diagnostics
+  to stderr. Destructive commands (`job stop`, `keep`) and `init`-over-existing
+  in a non-interactive session without `-y`/`-n`/`-f` now **refuse with exit 2**
+  instead of hanging on a prompt. `keep`'s JSON is **bounded** — exact counts +
+  a ≤100-item sample with a `*_truncated` flag, and the complete plan spilled to
+  a temp file returned as `full_plan_path` — so a CSV flagging thousands of dirs
+  can't emit a multi-megabyte payload. New `solx/src/solx/output.py` (`Out`).
+- **Verb-aware job-id resolution**: `job time`/`job jump` auto-pick the most
+  recent job (highest job id) when several match; `job stop` never guesses and
+  exits 2 to disambiguate. Acting from inside an allocation warns about nesting
+  (`jump`, `-q/--quiet` to silence) or self-cancel (`stop`). `slurm.py` returns
+  a `Resolution`; adds `most_recent()`.
+- **`solx keep` file-level sharding** (closes #17) mirroring `sol_renew.py`
+  PR #18: streaming pipeline, `fd`/`rg`/`find` enumeration, bounded window.
+- New human manual [`docs/solx.md`](docs/solx.md) — now the single source of
+  truth for `solx` behavior; retired the pre-implementation contract
+  `docs/stage-2-solx.md` (superseded). `solx` bumped 0.2.0 → 0.3.0. Test suite
+  103 → 148.
+
 ## [0.3.0] — 2026-05-28
 
 File-level scratch renewal, faster enumeration, and skill guidance for

@@ -8,7 +8,7 @@ this stage; that integration is Stage 3 (deferred — see
 
 ## Architecture
 
-Eight Python modules. Each is small and has one job:
+Nine Python modules. Each is small and has one job:
 
 ```
 solx/src/solx/
@@ -16,10 +16,11 @@ solx/src/solx/
 ├── __main__.py         # `python -m solx` entry
 ├── cli.py              # Typer wiring; nothing happens in here, just dispatch
 ├── config.py           # XDG TOML loader + dataclasses + pathspec compilation
+├── output.py           # Out: JSON-vs-Rich auto-detect + stdout/stderr split
 ├── side.py             # Sol-vs-not-Sol guard (each subcommand asks require_sol)
-├── slurm.py            # squeue/scancel/salloc/srun wrappers + jobid resolution
+├── slurm.py            # squeue/scancel/salloc/srun wrappers + verb-aware resolution
 ├── jobs.py             # `solx job *` command bodies
-├── keep.py             # `solx keep` (port of sol_renew.py mechanism)
+├── keep.py             # `solx keep` (port of sol_renew.py, file-level sharded)
 └── init.py             # `solx init` (write starter config.toml)
 ```
 
@@ -29,11 +30,22 @@ solx/src/solx/
   needs to know what jobs you have. There's no `session.json`, no
   stale-state class of bugs. Cost: one squeue call per command — fine
   on a login node.
-- **Slurm is the source of truth.** Default-jobid resolution
+- **Slurm is the source of truth.** Job-id resolution
   (`stop`/`jump`/`time`) reads `$SLURM_JOB_ID` if set (compute-node
-  default), then asks squeue. Ambiguous cases print a table and exit
-  2; a confirmation prompt would make cancelling the wrong job too
-  easy.
+  default), then asks squeue. It's **verb-aware** (`slurm.Resolution`):
+  with ≥2 jobs, `time`/`jump` auto-pick the most recent (highest job id,
+  `most_recent()`), while `stop` never guesses and exits 2 with the
+  candidate list — a wrong cancel is irreversible. Acting from inside an
+  allocation triggers a nesting heads-up (`jump`) or self-cancel confirm
+  (`stop`). Rationale lives in the design panel synthesis; summary in
+  [`../docs/solx.md`](../docs/solx.md#job-id-resolution--the-defaults-for-stop--jump--time).
+- **Output is `Out` (`output.py`), not bare `print`/`Console`.** Each
+  command body takes an `Out` that decides JSON vs Rich (auto: JSON when
+  stdout isn't a TTY; `--json`/`--plain` force it) and splits streams —
+  results to stdout, every diagnostic to stderr. Destructive commands
+  refuse (`exit 2`) in a non-interactive session rather than hang on a
+  prompt. Tests build an `Out` over `StringIO` consoles with an explicit
+  mode (see `make_out` in `tests/test_jobs.py` / `test_keep.py`).
 - **`Runner` injection** in `slurm.py`. Every subprocess call goes
   through a `Runner` callable that takes argv and returns
   `(returncode, stdout, stderr)`. Tests pass synthetic runners that
@@ -49,10 +61,15 @@ solx/src/solx/
   you want a flag in every template. Worth it; merge logic was
   contributing more confusion than savings.
 - **`keep` mirrors `sol_renew.py`** — same CSV-driven mechanism, same
-  flag surface (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`). Only
-  difference: the keep list lives in `[keep]` config now instead of
-  `~/.solkeep`. The original ethical posture (only renew what Sol has
-  flagged) carries over.
+  flag surface (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`). The keep list
+  lives in `[keep]` config now instead of `~/.solkeep`; the original
+  ethical posture (only renew what Sol has flagged) carries over.
+  Execution is **file-level sharded** (mirrors `sol_renew.py` PR #18):
+  `_pick_lister` (fd/rg/find) → `enumerate_dir` → `shard` → `touch_files`
+  on a bounded streaming window, so `-j` scales the biggest single
+  directory, not just the directory count. `_execute` has a serial
+  `jobs_n<=1` fast path (no process pool) used by tests and the
+  end-to-end real-touch test.
 - **Top-level shortcut for `jump`.** `solx jump` and `solx job jump`
   both work. The verb you reach for most earns the shortcut. No other
   verbs get this treatment; it'd make help-text noisy.
@@ -87,9 +104,10 @@ way — no real subprocess spawning, no real disk other than `tmp_path`.
 |---|---|
 | `side.py` | `detect()` parsing branches (Sol login, Sol compute, not-Sol, FQDN-only fallback). |
 | `config.py` | TOML schema parse, every required-key error, type errors, `pathspec` glob compilation, `parse_duration`, XDG fallback, **starter config round-trips through `load()`** (so `solx init` output is always valid), **starter config has no maintainer name baked in** (`sparky` only). |
-| `slurm.py` | `squeue` row parsing, `resolve_jobid` (arg / env / single / zero / ambiguous), every argv builder, `parse_granted_jobid` round-trip, `run_salloc` success + failure via injected runner. |
-| `jobs.py` | `cmd_list` (empty / populated / squeue-fail), `cmd_start` (default template, dry-run, passthrough, salloc failure, unknown template), `cmd_stop` (`-y`/`-n` mutex, dry-run no-op, prompt-and-proceed, prompt-and-abort, ambiguous), `cmd_jump` (env jobid + arg), `cmd_time`. |
-| `keep.py` | CSV parsing, `build_plan` filter + dedup + exclude carve-out, `cmd_keep` `-y`/`-n` mutex, no-`[keep]` exit 2, dry-run no-touch, prompt branches, single-stage filter, error propagation. |
+| `output.py` | `Out.auto` force/auto-detect, stdout/stderr split, clean JSON emission, `emit` json-vs-human branch. |
+| `slurm.py` | `squeue` row parsing; verb-aware `resolve_jobid` (arg / env / single / zero, stop-ambiguous-no-autopick, time-most-recent, jump-running-only + no-running); `most_recent` (highest id, array ids); every argv builder; `parse_granted_jobid`; `run_salloc` success + failure. |
+| `jobs.py` | `cmd_list` (empty / populated / squeue-fail / **JSON**), `cmd_start` (default template, dry-run, passthrough, salloc failure, unknown template, **JSON jobid**), `cmd_stop` (`-y`/`-n` mutex, dry-run, prompt proceed/abort, **non-interactive refuse**, ambiguous-no-autopick + JSON candidates, self-cancel warning, JSON), `cmd_jump` (arg, **inside warn-and-proceed**, `-q` suppress, most-recent, no-running), `cmd_time` (arg, JSON, most-recent). |
+| `keep.py` | CSV parsing, `build_plan` filter + dedup + exclude carve-out, `shard`/`enumerate_dir`/`touch_files` units, `cmd_keep` `-y`/`-n` mutex, no-`[keep]` exit 2, dry-run no-execute, prompt branches, **non-interactive refuse**, single-stage filter, failure propagation, JSON summary + dry-run plan, **end-to-end real-touch** (recursion + carve-out + non-kept). |
 | `init.py` | Fresh write, parent-dir creation, mode 0600, refuse-existing-without-force, `--force` overwrite, prompt-and-confirm. |
 | `cli.py` | Every command + alias path dispatches via `CliRunner`. Body itself is mocked — `cli.py` tests verify wiring, not behavior. |
 
@@ -164,11 +182,24 @@ After `ssh sparky@sol.asu.edu` (with your ASURITE):
    # cancels without prompting
    ```
 
-7. **Default-jobid resolution edge cases**:
+7. **Verb-aware job-id resolution edge cases**:
    ```shell
-   # no jobs: solx job time → exit 1, "no jobs found"
-   # multiple jobs: start two debug jobs, then `solx job time` →
-   # prints disambiguation table, exit 2.
+   # no jobs:        solx job time  → exit 1, "no jobs found"
+   # start two debug jobs, then with NO arg:
+   #   solx job time → picks the most recent (higher jobid), note on stderr, exit 0
+   #   solx job jump → attaches to the most recent running job, exit 0
+   #   solx job stop → prints the candidate table, exit 2 (never guesses)
+   # inside an allocation (after `solx job jump`):
+   #   solx job stop → "Cancel job N (the one you're inside)?" self-cancel confirm
+   #   solx job jump → warns about nesting, still attaches (-q silences)
+   ```
+
+7a. **Agent / non-interactive behavior** (no TTY):
+   ```shell
+   solx job list | jq .                 # JSON array (auto-detected off-TTY)
+   solx job time </dev/null             # bare D-HH:MM:SS on stdout
+   solx job stop 999 </dev/null         # exit 2: "non-interactive — pass -y…"
+   solx --json job time                 # {"jobid":…,"time_left":…} even on a TTY
    ```
 
 8. **Compute-node default-jobid**:
@@ -230,10 +261,10 @@ a tag:
 
 ## When in doubt
 
-- The contract for what `solx` does and doesn't lives in
-  [`../docs/stage-2-solx.md`](../docs/stage-2-solx.md). When code and
-  spec disagree, raise it — usually the code is right and the spec
-  needs an update, but check.
+- The user-facing behavior of `solx` lives in the manual
+  [`../docs/solx.md`](../docs/solx.md); the roadmap and design decisions are
+  in [`../docs/PLAN.md`](../docs/PLAN.md). When code and docs disagree, raise
+  it — usually the code is right and the doc needs an update, but check.
 - The agent skill at `../skills/sol-skill/` is hands-off in this
   stage. Don't add `solx` references there; that's Stage 3.
 - The repo root `README.md` and `DEVELOPMENT.md` describe the **agent

@@ -38,7 +38,7 @@ greenlit it.
 | Stage | Outcome | Status |
 |---|---|---|
 | 1 — Skill manual-SSH path | Shipped in v0.2.0 (see CHANGELOG). | ✅ shipped |
-| 2 — `solx` CLI (Sol-only) | `solx/` package, installable on Sol via `uv tool install`. Covers daily Sol use: jobs, interactive allocation, scratch renewal, config. See [`stage-2-solx.md`](stage-2-solx.md). | 🟡 in progress |
+| 2 — `solx` CLI (Sol-only) | `solx/` package, installable on Sol via `uv tool install`. Covers daily Sol use: jobs, interactive allocation, scratch renewal, config. Shipped as solx v0.3.0 (agent-friendly output, verb-aware job-id resolution, sharded `keep`). Behavior: [`solx.md`](solx.md). | ✅ shipped |
 | 3 — Skill ↔ `solx` integration | Skill detects `solx` and teaches the CLI flow alongside the manual fallback. **Deferred until Stage 2 is mature and the user gives the greenlight.** See [`stage-3-integration.md`](stage-3-integration.md). | ⚪ deferred |
 
 ## Design principles
@@ -67,82 +67,15 @@ below derives from them.
 6. **General, not personal.** The starter config ships with
    placeholders, never with the maintainer's username baked in.
 
-## Repo layout (target)
+## Command surface, config, and behavior → `solx.md`
 
-```text
-sol-skill/
-├── README.md                       # primary skill README, lightly touched
-├── docs/
-│   ├── PLAN.md                     # this file
-│   ├── stage-2-solx.md             # Sol-only CLI sub-plan
-│   ├── stage-3-integration.md      # deferred sub-plan
-│   ├── solx.md                     # user manual (rewritten in PR #2)
-│   ├── solx-smoke.md               # smoke checklist (rewritten in PR #2)
-│   ├── coverage.md
-│   └── name.md
-├── skills/sol-skill/               # untouched — the skill ships with sol_renew.py
-│   ├── SKILL.md
-│   ├── scripts/sol_renew.py
-│   └── references/
-└── solx/                           # CLI package — rewritten in PR #2
-    ├── pyproject.toml
-    ├── README.md
-    ├── src/solx/
-    │   ├── __init__.py
-    │   ├── __main__.py
-    │   ├── cli.py                  # Typer root
-    │   ├── config.py               # XDG TOML loader
-    │   ├── side.py                 # Sol-vs-not-Sol guard
-    │   ├── slurm.py                # squeue/scancel/salloc/srun wrappers; jobid resolution
-    │   ├── jobs.py                 # `solx job *`
-    │   ├── keep.py                 # `solx keep`
-    │   └── init.py                 # `solx init`
-    └── tests/
-```
-
-Distribution: **`uv tool install`** from the same repo (the CLI and
-skill version together long-term, even though Stage 3 is deferred).
-
-CLI stack: **Typer + Rich**. Defer Textual until a subcommand
-genuinely needs TUI.
-
-## What `solx` does, top level
-
-| Command | What it does |
-|---|---|
-| `solx init` | First-run: write a starter `config.toml` |
-| `solx job list` (alias `ls`) | List my Sol jobs |
-| `solx job start [TEMPLATE]` | Start an interactive allocation (`salloc --no-shell`) from a config template |
-| `solx job stop [JOBID] [-y] [-n]` | Cancel a job (prompts unless `-y`; `-n` previews) |
-| `solx job jump [JOBID]` (also `solx jump`) | Drop into a shell on the job's compute node |
-| `solx job time [JOBID]` | Remaining time (Slurm `D-HH:MM:SS`) |
-| `solx keep [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]` (prompts unless `-y`; `-n` previews; port of `sol_renew.py`) |
-| `solx config show` / `edit` | Inspect / edit the single TOML config |
-| `solx completions <shell>` | Emit shell completions |
-| `solx --version` / `--help` | — |
-
-Defaults and aliases:
-
-- The `job` subgroup is also reachable as `jobs`, and `list` is also
-  reachable as `ls`. `solx job list`, `solx jobs list`, `solx job ls`,
-  and `solx jobs ls` are all equivalent.
-- `jump` is also reachable at the top level — `solx jump [JOBID]` is
-  shorthand for `solx job jump [JOBID]`. (It's the verb you reach for
-  most; the shortcut earns its keep.)
-- Destructive commands (`solx job stop`, `solx keep`) prompt for
-  confirmation by default. `-y` / `--yes` skips the prompt for
-  scripts; `-n` / `--dry-run` previews the action without executing
-  it (and without prompting — nothing is about to happen).
-- Anywhere a `[JOBID]` is omitted, `solx` resolves it: `$SLURM_JOB_ID`
-  on a compute node, the user's only running job on a login node, or
-  a Rich table of all jobs (with exit 2) when ambiguous.
-- `solx job start` defaults to the `default_template` config key.
-- `solx job time` prints in Slurm's `D-HH:MM:SS` format, matching
-  `squeue -O TimeLeft`.
-
-Full surface details, config schema, and the rewrite plan against
-the existing `solx/` source tree live in
-[`stage-2-solx.md`](stage-2-solx.md).
+The full command surface, config schema, job-id resolution, agent-output
+contract, and the `keep` mechanism live in the user manual
+[`solx.md`](solx.md) — the **single source of truth** for what `solx` does.
+Contributor/architecture notes are in
+[`../solx/DEVELOPMENT.md`](../solx/DEVELOPMENT.md). This roadmap stays focused
+on *why* and *what's next*; it deliberately does not restate the API (so it
+can't drift out of sync with the implementation).
 
 ## Security model
 
@@ -179,9 +112,10 @@ specific laptop-side design.
 - **State tracking**: none. `squeue -u $USER` is the source of truth.
   No `session.json`, no stale-state class of bugs. Cost: one `squeue`
   call per command — fine on a login node.
-- **Default jobid resolution**: argument > `$SLURM_JOB_ID` (compute
-  node) > sole running job (login node) > Rich table + exit 2 when
-  ambiguous.
+- **Default jobid resolution**: verb-aware — argument > `$SLURM_JOB_ID`
+  (inside an allocation) > `squeue`, where `time`/`jump` auto-pick the most
+  recent and `stop` refuses to guess (exit 2). Full rules in
+  [`solx.md`](solx.md).
 - **Repo layout**: same repo, CLI under `solx/`, skill under
   `skills/sol-skill/` — they ship together long-term but Stage 3
   integration is deferred. The skill currently makes no reference to
@@ -195,10 +129,11 @@ specific laptop-side design.
 
 ## What ships when
 
-- **PR #1 (this branch)** — pivot the planning docs (`PLAN.md`,
-  `stage-2-solx.md`, `stage-3-integration.md`). No code change. Locks
-  the contract.
-- **PR #2** — rewrite the `solx/` package against `stage-2-solx.md`,
-  rewrite `docs/solx.md` and `docs/solx-smoke.md`, smoke-test on
-  Sol. Skill files untouched.
-- **PR #3+** — Stage 3 work, only after the user greenlights.
+- **Stage 2 (shipped, solx v0.3.0)** — the `solx/` package: Sol-only CLI
+  with agent-friendly output, verb-aware job-id resolution, and a
+  file-level-sharded `keep`. Behavior is documented in
+  [`solx.md`](solx.md); contributor notes in
+  [`../solx/DEVELOPMENT.md`](../solx/DEVELOPMENT.md). Skill files untouched.
+  (The pre-implementation contract `stage-2-solx.md` has been retired now
+  that `solx.md` is the living manual.)
+- **Stage 3+** — skill ↔ `solx` integration, only after the user greenlights.

@@ -57,48 +57,96 @@ def test_squeue_user_jobs_failure() -> None:
 # ---- resolve_jobid -------------------------------------------------------
 
 
+TWO_RUNNING = (
+    "12345|solx-default|RUNNING|00:01:00|00:59:00|lightwork|sg045\n"
+    "67890|notebook|RUNNING|00:01:00|00:59:00|htc|sg010\n"
+)
+
+
 def test_resolve_jobid_arg_wins() -> None:
     runner, cap = make_runner()
-    jid, jobs = slurm.resolve_jobid("99999", env={"SLURM_JOB_ID": "11111"}, runner=runner)
-    assert jid == "99999"
-    assert jobs is None
+    res = slurm.resolve_jobid(
+        "99999", verb=slurm.VERB_STOP, env={"SLURM_JOB_ID": "11111"}, runner=runner
+    )
+    assert res.job_id == "99999"
+    assert res.source == "arg"
+    assert res.inside is True and res.inside_job_id == "11111"
     assert "argv" not in cap  # never queried squeue
 
 
 def test_resolve_jobid_uses_env_on_compute_node() -> None:
     runner, cap = make_runner()
-    jid, jobs = slurm.resolve_jobid(
-        None, env={"SLURM_JOB_ID": "55555"}, runner=runner
-    )
-    assert jid == "55555"
-    assert jobs is None
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_TIME, env={"SLURM_JOB_ID": "55555"}, runner=runner)
+    assert res.job_id == "55555"
+    assert res.source == "inside"
+    assert res.acting_on_current is True
     assert "argv" not in cap
 
 
 def test_resolve_jobid_single_running_job() -> None:
     out = "12345|solx-default|RUNNING|00:01:00|00:59:00|lightwork|sg045\n"
     runner, _ = make_runner(stdout=out)
-    jid, jobs = slurm.resolve_jobid(None, env={}, user="sparky", runner=runner)
-    assert jid == "12345"
-    assert jobs is None
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_STOP, env={}, user="sparky", runner=runner)
+    assert res.job_id == "12345"
+    assert res.source == "single"
+    assert res.ambiguous is False
 
 
 def test_resolve_jobid_zero_jobs() -> None:
     runner, _ = make_runner(stdout="")
-    with pytest.raises(SlurmError, match="no jobs found"):
-        slurm.resolve_jobid(None, env={}, user="sparky", runner=runner)
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_TIME, env={}, user="sparky", runner=runner)
+    assert res.job_id is None
+    assert res.error and "no jobs found" in res.error
 
 
-def test_resolve_jobid_ambiguous_returns_table() -> None:
+def test_resolve_jobid_stop_ambiguous_no_autopick() -> None:
+    runner, _ = make_runner(stdout=TWO_RUNNING)
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_STOP, env={}, user="sparky", runner=runner)
+    assert res.job_id is None
+    assert res.ambiguous is True
+    assert {j.job_id for j in res.candidates} == {"12345", "67890"}
+
+
+def test_resolve_jobid_time_picks_most_recent() -> None:
+    runner, _ = make_runner(stdout=TWO_RUNNING)
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_TIME, env={}, user="sparky", runner=runner)
+    assert res.job_id == "67890"  # highest jobid == most recent
+    assert res.source == "most-recent"
+    assert res.ambiguous is False
+
+
+def test_resolve_jobid_jump_filters_running_only() -> None:
     out = (
-        "12345|solx-default|RUNNING|00:01:00|00:59:00|lightwork|sg045\n"
-        "67890|notebook|RUNNING|00:01:00|00:59:00|htc|sg010\n"
+        "12345|a|RUNNING|00:01|00:59|p|sg045\n"
+        "67890|b|PENDING|00:00|01:00|p|(Resources)\n"
     )
     runner, _ = make_runner(stdout=out)
-    jid, jobs = slurm.resolve_jobid(None, env={}, user="sparky", runner=runner)
-    assert jid == ""
-    assert jobs is not None
-    assert {j.job_id for j in jobs} == {"12345", "67890"}
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_JUMP, env={}, user="sparky", runner=runner)
+    # only the RUNNING job is an attach candidate -> unambiguous
+    assert res.job_id == "12345"
+    assert res.source == "single"
+
+
+def test_resolve_jobid_jump_no_running() -> None:
+    out = "67890|b|PENDING|00:00|01:00|p|(Resources)\n"
+    runner, _ = make_runner(stdout=out)
+    res = slurm.resolve_jobid(None, verb=slurm.VERB_JUMP, env={}, user="sparky", runner=runner)
+    assert res.job_id is None
+    assert res.error and "no running job" in res.error
+
+
+def test_most_recent_highest_jobid() -> None:
+    jobs = [
+        Job("100", "a", "RUNNING", "", "", "p"),
+        Job("9999", "b", "RUNNING", "", "", "p"),
+        Job("250", "c", "RUNNING", "", "", "p"),
+    ]
+    assert slurm.most_recent(jobs).job_id == "9999"
+
+
+def test_most_recent_array_ids() -> None:
+    jobs = [Job("100_1", "a", "R", "", "", "p"), Job("100_7", "b", "R", "", "", "p")]
+    assert slurm.most_recent(jobs).job_id == "100_7"
 
 
 # ---- argv builders -------------------------------------------------------

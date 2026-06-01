@@ -1,18 +1,21 @@
 """Typer entry point for `solx`.
 
-Surface (per `docs/stage-2-solx.md`):
+Surface (see docs/solx.md):
 
     solx init
     solx job list  (alias `ls`; group also reachable as `jobs`)
     solx job start [TEMPLATE]
     solx job stop  [JOBID]
-    solx job jump  [JOBID]    (also `solx jump`)
+    solx job jump  [JOBID] [--force]   (also `solx jump`)
     solx job time  [JOBID]
     solx keep      [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]
-    solx config show
+    solx config show [--json]
     solx config edit
     solx completions <bash|zsh|fish>
     solx --version
+
+Global output flags: `--json` / `--plain` force the output format; by default
+it auto-detects (JSON when stdout is not a TTY). See `solx.output`.
 """
 from __future__ import annotations
 
@@ -29,7 +32,9 @@ from solx import config as cfg
 from solx import init as init_mod
 from solx import jobs as jobs_mod
 from solx import keep as keep_mod
+from solx import output
 from solx.config import ConfigError
+from solx.output import Out
 from solx.side import require_sol
 
 
@@ -59,6 +64,15 @@ config_app = typer.Typer(
 app.add_typer(config_app, name="config")
 
 
+# Output format forced by the global --json/--plain flags. None == auto-detect.
+_FORCE: Optional[output.Force] = None
+
+
+def _out() -> Out:
+    """Build the resolved output target for a command body."""
+    return Out.auto(force=_FORCE)
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(__version__)
@@ -76,8 +90,25 @@ def root(
             help="Show version and exit.",
         ),
     ] = None,
+    json_out: Annotated[
+        bool,
+        typer.Option("--json", help="Force JSON output (machine-readable)."),
+    ] = False,
+    plain: Annotated[
+        bool,
+        typer.Option("--plain", help="Force human output even when piped."),
+    ] = False,
 ) -> None:
-    """Sol-first CLI."""
+    """Sol-first CLI.
+
+    Output auto-detects: JSON when stdout is not a TTY, Rich tables on a
+    terminal. `--json` / `--plain` override. Diagnostics always go to stderr.
+    """
+    global _FORCE
+    if json_out and plain:
+        typer.echo("error: --json and --plain are mutually exclusive", err=True)
+        raise typer.Exit(code=2)
+    _FORCE = "json" if json_out else "plain" if plain else None
 
 
 # --- top-level: init ------------------------------------------------------
@@ -91,7 +122,7 @@ def init_cmd(
     ] = False,
 ) -> None:
     require_sol()
-    raise typer.Exit(code=init_mod.cmd_init(force=force))
+    raise typer.Exit(code=init_mod.cmd_init(force=force, out=_out()))
 
 
 # --- top-level: keep ------------------------------------------------------
@@ -104,28 +135,15 @@ def init_cmd(
 def keep_cmd(
     stage: Annotated[
         str,
-        typer.Option(
-            "--stage",
-            help="Which warning CSVs to read.",
-            case_sensitive=False,
-        ),
+        typer.Option("--stage", help="Which warning CSVs to read.", case_sensitive=False),
     ] = "all",
     csv_dir: Annotated[
         Optional[Path],
-        typer.Option(
-            "--csv-dir",
-            help="Directory holding Sol's warning CSVs.",
-            exists=False,
-        ),
+        typer.Option("--csv-dir", help="Directory holding Sol's warning CSVs.", exists=False),
     ] = None,
     jobs_n: Annotated[
         int,
-        typer.Option(
-            "-j",
-            "--jobs",
-            help="Parallel touch workers.",
-            min=1,
-        ),
+        typer.Option("-j", "--jobs", help="Parallel touch workers.", min=1),
     ] = max(1, min(8, (os.cpu_count() or 2) // 4)),
     yes: Annotated[
         bool,
@@ -141,14 +159,14 @@ def keep_cmd(
     ] = False,
 ) -> None:
     require_sol()
+    out = _out()
     valid_stages = {"all", *keep_mod.STAGE_ORDER}
     if stage not in valid_stages:
-        typer.echo(
-            f"invalid --stage {stage!r}. choose from: {', '.join(sorted(valid_stages))}",
-            err=True,
+        out.error(
+            f"invalid --stage {stage!r}. choose from: {', '.join(sorted(valid_stages))}"
         )
         raise typer.Exit(code=2)
-    config = _load_or_exit()
+    config = _load_or_exit(out)
     code = keep_mod.cmd_keep(
         config=config,
         csv_dir=csv_dir,
@@ -157,6 +175,7 @@ def keep_cmd(
         yes=yes,
         dry_run=dry_run,
         verbose=verbose,
+        out=out,
     )
     raise typer.Exit(code=code)
 
@@ -171,12 +190,17 @@ def keep_cmd(
 def jump_cmd(
     jobid: Annotated[
         Optional[str],
-        typer.Argument(help="Job ID. Defaults to current job (compute) or sole running job (login)."),
+        typer.Argument(help="Job ID. Defaults to current job (compute) or sole/most-recent running job (login)."),
     ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress the nesting / most-recent heads-up."),
+    ] = False,
 ) -> None:
     require_sol()
-    config = _load_or_exit()
-    raise typer.Exit(code=jobs_mod.cmd_jump(config=config, jobid_arg=jobid))
+    out = _out()
+    config = _load_or_exit(out)
+    raise typer.Exit(code=jobs_mod.cmd_jump(config=config, jobid_arg=jobid, quiet=quiet, out=out))
 
 
 # --- job subcommands ------------------------------------------------------
@@ -185,13 +209,13 @@ def jump_cmd(
 @job_app.command("list", help="Print my Sol jobs.")
 def job_list_cmd() -> None:
     require_sol()
-    raise typer.Exit(code=jobs_mod.cmd_list())
+    raise typer.Exit(code=jobs_mod.cmd_list(out=_out()))
 
 
 @job_app.command("ls", help="Alias for `solx job list`.", hidden=True)
 def job_ls_cmd() -> None:
     require_sol()
-    raise typer.Exit(code=jobs_mod.cmd_list())
+    raise typer.Exit(code=jobs_mod.cmd_list(out=_out()))
 
 
 @job_app.command(
@@ -211,20 +235,18 @@ def job_start_cmd(
     ] = False,
     timeout: Annotated[
         Optional[str],
-        typer.Option(
-            "--timeout",
-            help="Override start_timeout (e.g. \"5m\", \"1h\").",
-        ),
+        typer.Option("--timeout", help='Override start_timeout (e.g. "5m", "1h").'),
     ] = None,
 ) -> None:
     require_sol()
-    config = _load_or_exit()
+    out = _out()
+    config = _load_or_exit(out)
     timeout_seconds: Optional[int] = None
     if timeout:
         try:
             timeout_seconds = cfg.parse_duration(timeout)
         except ConfigError as e:
-            typer.echo(f"error: {e}", err=True)
+            out.error(f"error: {e}")
             raise typer.Exit(code=2)
     raise typer.Exit(
         code=jobs_mod.cmd_start(
@@ -233,6 +255,7 @@ def job_start_cmd(
             dry_run=dry_run,
             timeout_override=timeout_seconds,
             passthrough=list(ctx.args),
+            out=out,
         )
     )
 
@@ -254,7 +277,7 @@ def job_stop_cmd(
 ) -> None:
     require_sol()
     raise typer.Exit(
-        code=jobs_mod.cmd_stop(jobid_arg=jobid, yes=yes, dry_run=dry_run)
+        code=jobs_mod.cmd_stop(jobid_arg=jobid, yes=yes, dry_run=dry_run, out=_out())
     )
 
 
@@ -264,10 +287,15 @@ def job_jump_cmd(
         Optional[str],
         typer.Argument(help="Job ID. Defaults per resolution rules."),
     ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress the nesting / most-recent heads-up."),
+    ] = False,
 ) -> None:
     require_sol()
-    config = _load_or_exit()
-    raise typer.Exit(code=jobs_mod.cmd_jump(config=config, jobid_arg=jobid))
+    out = _out()
+    config = _load_or_exit(out)
+    raise typer.Exit(code=jobs_mod.cmd_jump(config=config, jobid_arg=jobid, quiet=quiet, out=out))
 
 
 @job_app.command("time", help="Print remaining time (D-HH:MM:SS).")
@@ -278,7 +306,7 @@ def job_time_cmd(
     ] = None,
 ) -> None:
     require_sol()
-    raise typer.Exit(code=jobs_mod.cmd_time(jobid_arg=jobid))
+    raise typer.Exit(code=jobs_mod.cmd_time(jobid_arg=jobid, out=_out()))
 
 
 # --- config subcommands ---------------------------------------------------
@@ -291,22 +319,20 @@ def config_show_cmd(
     ] = False,
 ) -> None:
     require_sol()
-    config = _load_or_exit()
-    if json_output:
-        import json
+    out = _out()
+    config = _load_or_exit(out)
+    as_json = json_output or out.json_mode
+
+    if as_json:
         from dataclasses import asdict
 
-        # KeepRules has compiled pathspec objects; serialize the raw inputs only.
+        # KeepRules holds compiled pathspec objects; serialize raw inputs only.
         data = {
             "default_shell": config.default_shell,
             "default_template": config.default_template,
             "start_timeout_seconds": config.start_timeout_seconds,
             "templates": {
-                name: {
-                    k: v
-                    for k, v in asdict(t).items()
-                    if v not in (None, ())
-                }
+                name: {k: v for k, v in asdict(t).items() if v not in (None, ())}
                 for name, t in config.templates.items()
             },
             "keep": (
@@ -318,23 +344,18 @@ def config_show_cmd(
                 else None
             ),
         }
-        typer.echo(json.dumps(data, indent=2))
+        out.json(data)
         return
 
-    from rich.console import Console
     from rich.table import Table
 
-    c = Console()
+    c = out.stdout
     c.print(f"[bold]default_shell[/]    {config.default_shell}")
     c.print(f"[bold]default_template[/] {config.default_template}")
     c.print(f"[bold]start_timeout[/]    {config.start_timeout_seconds}s")
 
     for name, t in config.templates.items():
-        tbl = Table(
-            title=rf"\[jobs.{name}]",
-            show_header=False,
-            title_justify="left",
-        )
+        tbl = Table(title=rf"\[jobs.{name}]", show_header=False, title_justify="left")
         tbl.add_row("partition", t.partition)
         tbl.add_row("time", t.time)
         if t.qos:
@@ -346,9 +367,7 @@ def config_show_cmd(
         c.print(tbl)
 
     if config.keep is not None:
-        tbl = Table(
-            title=r"\[keep]", show_header=False, title_justify="left"
-        )
+        tbl = Table(title=r"\[keep]", show_header=False, title_justify="left")
         tbl.add_row("include", "\n".join(config.keep.raw_include))
         if config.keep.raw_exclude:
             tbl.add_row("exclude", "\n".join(config.keep.raw_exclude))
@@ -362,10 +381,7 @@ def config_edit_cmd() -> None:
     require_sol()
     p = cfg.config_path()
     if not p.exists():
-        typer.echo(
-            f"no config at {p}. run `solx init` first.",
-            err=True,
-        )
+        typer.echo(f"no config at {p}. run `solx init` first.", err=True)
         raise typer.Exit(code=2)
     editor = os.environ.get("EDITOR") or shutil.which("vi") or "nano"
     raise typer.Exit(code=subprocess.call([editor, str(p)]))
@@ -384,27 +400,17 @@ def completions_cmd(
         typer.Argument(help="Target shell: bash, zsh, or fish."),
     ],
 ) -> None:
-    """Friendlier alias for Typer's --show-completion machinery.
-
-    Defers to Click's completion script generation under the hood.
-    """
+    """Friendlier alias for Typer's --show-completion machinery."""
     shell = shell.lower()
     if shell not in {"bash", "zsh", "fish"}:
-        typer.echo(
-            f"unknown shell {shell!r}; choose bash, zsh, or fish.",
-            err=True,
-        )
+        typer.echo(f"unknown shell {shell!r}; choose bash, zsh, or fish.", err=True)
         raise typer.Exit(code=2)
-    # Re-invoke ourselves with Typer/Click's --show-completion=<shell>.
-    # We can't easily call into Typer's completion API directly, so shell out
-    # to the same binary; on the second call Typer prints the script and exits.
     import sys
 
     env = dict(os.environ)
     env["_SOLX_COMPLETE"] = f"{shell}_source"
     res = subprocess.run([sys.argv[0]], env=env, capture_output=True, text=True)
     if res.returncode != 0 or not res.stdout:
-        # Fallback: emit a minimal hint pointing at Typer's built-in.
         typer.echo(
             f"# To install solx completions for {shell}, run:\n"
             f"#   solx --show-completion {shell}",
@@ -417,9 +423,9 @@ def completions_cmd(
 # --- helpers --------------------------------------------------------------
 
 
-def _load_or_exit():
+def _load_or_exit(out: Out | None = None):
     try:
         return cfg.load()
     except ConfigError as e:
-        typer.echo(f"error: {e}", err=True)
+        (out or _out()).error(f"error: {e}")
         raise typer.Exit(code=2)

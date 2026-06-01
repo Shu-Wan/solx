@@ -60,16 +60,20 @@ related operations, top-level shortcuts where they earn it.
 | Command | What it does |
 |---|---|
 | `solx init [-f]` | Write a starter `config.toml`. Refuses to overwrite without `-f` (or interactive `y`). |
-| `solx job list` | List my Sol jobs as a Rich table. Aliases: `solx jobs list`, `solx job ls`, `solx jobs ls`. |
+| `solx job list` | List my Sol jobs (Rich table on a TTY, JSON when piped). Aliases: `solx jobs list`, `solx job ls`, `solx jobs ls`. |
 | `solx job start [TEMPLATE] [-n] [--timeout T] [-- ...]` | Request an interactive allocation via `salloc --no-shell`. `TEMPLATE` defaults to `default_template`; tail after `--` is appended verbatim to `salloc`. |
 | `solx job stop [JOBID] [-y] [-n]` | Cancel a job. Prompts unless `-y`; `-n` previews the `scancel` invocation. |
-| `solx job jump [JOBID]` | Drop into `default_shell` on the compute node via `srun --pty`. Also reachable as `solx jump [JOBID]`. |
+| `solx job jump [JOBID] [-q]` | Drop into `default_shell` on the compute node via `srun --pty`. Also reachable as `solx jump [JOBID]`. `-q/--quiet` silences the nesting / most-recent heads-up. |
 | `solx job time [JOBID]` | Print remaining time in Slurm's `D-HH:MM:SS` format. |
 | `solx keep [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]`. Mirrors the original `sol_renew.py` flag surface; `--solkeep` is dropped because the keep list lives in `[keep]` now. |
 | `solx config show [--json]` | Print the resolved config. |
 | `solx config edit` | Open `config.toml` in `$EDITOR`. |
 | `solx completions <bash\|zsh\|fish>` | Emit a shell completion script. |
 | `solx --version`, `--help` | — |
+
+Global output flags `--json` / `--plain` go **before** the subcommand
+(`solx --json job list`). See the full manual at
+[`docs/solx.md`](../docs/solx.md).
 
 ### Aliases
 
@@ -79,18 +83,14 @@ related operations, top-level shortcuts where they earn it.
 - `solx jump` is shorthand for `solx job jump`. The verb you reach for
   most often earns the top-level slot.
 
-### Default-jobid resolution
+### Default-jobid resolution (verb-aware)
 
-For `stop` / `jump` / `time` — when you omit `[JOBID]`:
-
-1. **Explicit argument** wins.
-2. Else if `$SLURM_JOB_ID` is set (you're on a compute node) → use it.
-3. Else `solx` queries `squeue -u $USER`:
-   - 0 jobs → exits 1 with "no jobs found".
-   - 1 job → uses it.
-   - ≥ 2 jobs → prints a table of all jobs and exits 2 with
-     "specify a jobid". This is **non-interactive on purpose** — a
-     confirmation prompt would make cancelling the wrong job too easy.
+When you omit `[JOBID]`: an explicit arg wins, else `$SLURM_JOB_ID` (you're
+inside an allocation), else `squeue -u $USER`. With **≥2 matching jobs** the
+verbs differ — `time`/`jump` auto-pick the **most recent** (highest job id),
+while `stop` **never** guesses and exits 2 to disambiguate. Acting from inside
+an allocation warns about nesting (`jump`, `-q` to silence) or self-cancel
+(`stop`). Full rules: [`docs/solx.md`](../docs/solx.md#job-id-resolution--the-defaults-for-stop--jump--time).
 
 ### Destructive-command confirmation contract
 
@@ -103,7 +103,19 @@ allocation, or `touch` mtimes under `/scratch`. Both follow:
 | `-y`, `--yes` | Skip the prompt and execute. For scripts. |
 | `-n`, `--dry-run` | Print the plan without executing. **No prompt** — nothing destructive is about to happen. |
 
-`-y` and `-n` together exit 2 (mutually exclusive).
+`-y` and `-n` together exit 2 (mutually exclusive). In a **non-interactive
+session** (no stdin TTY) without `-y`/`-n`, both commands **refuse with exit 2**
+rather than hang on a prompt — safe to drive from an agent or cron.
+
+### Output: human or agent
+
+Output auto-detects — **JSON when stdout is not a TTY**, Rich tables on a
+terminal; `--json` / `--plain` (before the subcommand) force it. Results go to
+stdout, all diagnostics to stderr, so `solx --json job list | jq …` and
+`solx job time` (bare duration) both pipe cleanly. Exit codes: `0` success,
+`1` operational/nothing-to-do, `2` under-specified or unconfirmed. This is the
+[issue #16](https://github.com/Shu-Wan/sol-skills/issues/16) "design for
+agents" behavior; details in [`docs/solx.md`](../docs/solx.md#output--agents).
 
 Other commands (`init`, `job start`, `job list`, `job jump`, `job time`,
 `config show`, `config edit`) don't prompt. `solx init` has its own

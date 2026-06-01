@@ -32,9 +32,11 @@ def runner() -> CliRunner:
 
 
 def test_version(runner: CliRunner) -> None:
+    from solx import __version__
+
     res = runner.invoke(cli.app, ["--version"])
     assert res.exit_code == 0
-    assert "0.2.0" in res.stdout
+    assert __version__ in res.stdout
 
 
 def test_help_lists_commands(runner: CliRunner) -> None:
@@ -90,11 +92,35 @@ def test_top_level_jump_routes_to_job_jump(runner: CliRunner, monkeypatch) -> No
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
-    res = runner.invoke(cli.app, ["jump", "12345"])
+    res = runner.invoke(cli.app, ["jump", "12345", "--quiet"])
     assert res.exit_code == 0
     assert captured[0]["jobid_arg"] == "12345"
+    assert captured[0]["quiet"] is True
+
+
+# ---- global output flags ------------------------------------------------
+
+
+def test_global_json_forces_json(runner: CliRunner, monkeypatch) -> None:
+    import json as _json
+    from solx.config import Config, JobTemplate
+
+    fake_config = Config(
+        default_shell="zsh", default_template="default", start_timeout_seconds=600,
+        templates={"default": JobTemplate(name="default", partition="lightwork", time="1-0")},
+    )
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
+    # global --json before the subcommand; config show has no local --json here
+    res = runner.invoke(cli.app, ["--json", "config", "show"])
+    assert res.exit_code == 0
+    assert _json.loads(res.stdout)["default_shell"] == "zsh"
+
+
+def test_json_and_plain_mutually_exclusive(runner: CliRunner) -> None:
+    res = runner.invoke(cli.app, ["--json", "--plain", "config", "show"])
+    assert res.exit_code == 2
 
 
 # ---- job subcommands ----------------------------------------------------
@@ -115,7 +141,7 @@ def test_job_start_passthrough(runner: CliRunner, monkeypatch) -> None:
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
     res = runner.invoke(
         cli.app,
@@ -141,7 +167,7 @@ def test_job_start_dry_run_flag(runner: CliRunner, monkeypatch) -> None:
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
     res = runner.invoke(cli.app, ["job", "start", "--dry-run"])
     assert res.exit_code == 0
@@ -163,7 +189,7 @@ def test_job_start_timeout_override(runner: CliRunner, monkeypatch) -> None:
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
     res = runner.invoke(cli.app, ["job", "start", "--timeout", "5m"])
     assert res.exit_code == 0
@@ -179,7 +205,7 @@ def test_job_start_invalid_timeout(runner: CliRunner, monkeypatch) -> None:
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
     res = runner.invoke(cli.app, ["job", "start", "--timeout", "never"])
     assert res.exit_code == 2
@@ -230,7 +256,7 @@ def test_keep_dry_run(runner: CliRunner, monkeypatch) -> None:
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
     res = runner.invoke(cli.app, ["keep", "-n"])
     assert res.exit_code == 0
@@ -258,7 +284,7 @@ def test_keep_full_flag_set(runner: CliRunner, monkeypatch, tmp_path) -> None:
         start_timeout_seconds=600,
         templates={"default": JobTemplate(name="default", partition="x", time="1-0")},
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
 
     res = runner.invoke(
         cli.app,
@@ -325,8 +351,8 @@ def test_config_show(runner: CliRunner, monkeypatch) -> None:
             )
         },
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
-    res = runner.invoke(cli.app, ["config", "show"])
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
+    res = runner.invoke(cli.app, ["--plain", "config", "show"])
     assert res.exit_code == 0
     assert "lightwork" in res.stdout
 
@@ -345,7 +371,7 @@ def test_config_show_json(runner: CliRunner, monkeypatch) -> None:
             )
         },
     )
-    monkeypatch.setattr(cli, "_load_or_exit", lambda: fake_config)
+    monkeypatch.setattr(cli, "_load_or_exit", lambda *a, **kw: fake_config)
     res = runner.invoke(cli.app, ["config", "show", "--json"])
     assert res.exit_code == 0
     data = json.loads(res.stdout)
