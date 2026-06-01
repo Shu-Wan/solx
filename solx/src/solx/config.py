@@ -87,6 +87,8 @@ def load(path: Path | None = None) -> Config:
     try:
         with p.open("rb") as f:
             raw = tomllib.load(f)
+    except OSError as e:
+        raise ConfigError(f"unable to read config at {p}: {e}") from e
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"invalid TOML in {p}: {e}") from e
     except OSError as e:
