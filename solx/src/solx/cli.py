@@ -417,24 +417,27 @@ def completions_cmd(
 ) -> None:
     """Print a completion script for `shell`.
 
-    Generated directly from Typer's completion machinery rather than
-    re-exec'ing the binary, so it works under both the installed `solx` entry
-    point and `python -m solx`.
-
-    Uses Typer's own completion classes, which carry the right source templates
-    and env-var wiring (``_SOLX_COMPLETE``, ``_TYPER_COMPLETE_ARGS``) and match
+    Built with Typer's completion-script generator — the same one behind
+    Typer's ``--show-completion`` — so the emitted script carries the right
+    env-var wiring (``_SOLX_COMPLETE``, ``_TYPER_COMPLETE_ARGS``) and matches
     Typer's runtime completion handler regardless of how click is packaged.
+    No re-exec, so it works under both the installed `solx` entry point and
+    `python -m solx`.
     """
-    from typer._completion_classes import BashComplete, FishComplete, ZshComplete
-    from typer.main import get_command
-
-    classes = {"bash": BashComplete, "zsh": ZshComplete, "fish": FishComplete}
-    comp_cls = classes.get(shell.lower())
-    if comp_cls is None:
+    shell = shell.lower()
+    if shell not in {"bash", "zsh", "fish"}:
         typer.echo(f"unknown shell {shell!r}; choose bash, zsh, or fish.", err=True)
         raise typer.Exit(code=2)
-    completer = comp_cls(get_command(app), {}, "solx", "_SOLX_COMPLETE")
-    typer.echo(completer.source())
+    try:
+        from typer.completion import get_completion_script
+    except ImportError as e:  # Typer internals shifted under an unpinned upgrade
+        typer.echo(f"solx: completion unavailable with this Typer ({e}).", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(
+        get_completion_script(
+            prog_name="solx", complete_var="_SOLX_COMPLETE", shell=shell
+        )
+    )
 
 
 # --- meta: version / help -------------------------------------------------
