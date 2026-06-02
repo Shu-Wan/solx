@@ -193,9 +193,11 @@ def test_scancel_argv() -> None:
 
 
 def test_srun_pty_argv() -> None:
+    # --overlap lets the step share the allocation's busy resources.
     assert slurm.srun_pty_argv("12345", "zsh") == [
         "srun",
         "--jobid=12345",
+        "--overlap",
         "--pty",
         "zsh",
     ]
