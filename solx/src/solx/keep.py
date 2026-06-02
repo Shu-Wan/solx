@@ -33,7 +33,7 @@ from typing import Callable
 
 from rich.prompt import Confirm
 
-from solx.config import Config, KeepRules
+from solx.config import Config, KeepRules, load_solkeep
 from solx.output import Out
 
 
@@ -217,13 +217,14 @@ def shard(files: list[bytes], batch_size: int = BATCH) -> list[list[bytes]]:
 
 def cmd_keep(
     *,
-    config: Config,
+    config: Config | None,
     csv_dir: Path | None,
     stage: str,
     jobs_n: int,
     yes: bool,
     dry_run: bool,
     verbose: bool,
+    solkeep: Path | None = None,
     out: Out | None = None,
     confirm_fn: Callable[..., bool] | None = None,
     execute_fn: Callable[..., tuple[int, int]] | None = None,
@@ -234,12 +235,23 @@ def cmd_keep(
         out.error("[red]error:[/] --yes and --dry-run are mutually exclusive")
         return 2
 
-    if config.keep is None:
-        out.error(
-            r"[red]error:[/] no \[keep] block in config. "
-            "run `solx config edit` to add one."
-        )
-        return 2
+    # Keep-list source, in precedence order: explicit --solkeep > config
+    # [keep] > the skill's ~/.solkeep (so an existing .solkeep just works).
+    if solkeep is not None:
+        keep_rules = load_solkeep(solkeep)
+        if keep_rules is None:
+            out.error(f"[red]error:[/] no keep rules found in {solkeep}")
+            return 2
+    elif config is not None and config.keep is not None:
+        keep_rules = config.keep
+    else:
+        keep_rules = load_solkeep(Path.home() / ".solkeep")
+        if keep_rules is None:
+            out.error(
+                r"[red]error:[/] no \[keep] block in config and no ~/.solkeep. "
+                r"run `solx config edit` to add a \[keep] block, or create ~/.solkeep."
+            )
+            return 2
 
     csv_dir = csv_dir or Path.home()
     if not csv_dir.is_dir():
@@ -250,7 +262,7 @@ def cmd_keep(
         return 2
     stages = list(STAGE_ORDER) if stage == STAGES_ALL else [stage]
 
-    plan = build_plan(csv_dir, stages, config.keep)
+    plan = build_plan(csv_dir, stages, keep_rules)
     _report_plan(out, plan, csv_dir, stages, verbose)
 
     if not plan.kept:

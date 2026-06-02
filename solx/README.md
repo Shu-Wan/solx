@@ -1,6 +1,6 @@
 # solx
 
-A Sol-first command-line tool for daily work on ASU's
+A command-line tool for daily work on ASU's
 [Sol supercomputer](https://docs.rc.asu.edu/). `solx` wraps the
 handful of Slurm operations a terminal-driven user actually does: list
 jobs, request an interactive allocation, drop into a shell on the
@@ -65,7 +65,7 @@ related operations, top-level shortcuts where they earn it.
 | `solx job stop [JOBID] [-y] [-n]` | Cancel a job. Prompts unless `-y`; `-n` previews the `scancel` invocation. |
 | `solx job jump [JOBID] [-q]` | Drop into `default_shell` on the compute node via `srun --pty`. Also reachable as `solx jump [JOBID]`. `-q/--quiet` silences the nesting / most-recent heads-up. |
 | `solx job time [JOBID]` | Print remaining time in Slurm's `D-HH:MM:SS` format. |
-| `solx keep [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files filtered by `[keep]`. Mirrors the original `sol_renew.py` flag surface; `--solkeep` is dropped because the keep list lives in `[keep]` now. |
+| `solx keep [--solkeep F] [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files. Keep-list source: `--solkeep` > the `[keep]` config block > `~/.solkeep` (auto-detected, so an existing `.solkeep` from the skill just works). |
 | `solx config show [--json]` | Print the resolved config. |
 | `solx config edit` | Open `config.toml` in `$EDITOR`. |
 | `solx completions <bash\|zsh\|fish>` | Emit a shell completion script. |
@@ -210,10 +210,11 @@ out: `scratch-dirs-pending-removal.csv`,
 `scratch-dirs-over-90days.csv`, `scratch-dirs-inactive.csv`. `solx keep`:
 
 1. Reads those CSVs from `--csv-dir` (default `$HOME`).
-2. Filters the flagged directories through `[keep]` `include`/`exclude`
-   (compiled with `pathspec`, gitignore-style).
+2. Filters the flagged directories through your keep-list (`--solkeep` file >
+   the `[keep]` config block > `~/.solkeep`), compiled with `pathspec`,
+   gitignore-style.
 3. Runs `touch -a -m -c` on the intersection — only directories that
-   **both** appear in a CSV and match `[keep]`. Never walks
+   **both** appear in a CSV and match the keep-list. Never walks
    `/scratch` wholesale.
 
 This preserves the original tool's ethical posture: `solx keep` cannot
@@ -223,6 +224,8 @@ CSV.
 
 Flag surface mirrors `sol_renew.py`:
 
+- `--solkeep FILE` — use a specific gitignore-style keep-list (overrides
+  `[keep]`). Same format as `sol_renew.py`'s `--solkeep`.
 - `--stage {pending,over90,inactive,all}` — limit to one CSV. Default `all`.
 - `--csv-dir DIR` — where Sol drops the CSVs. Default `$HOME`.
 - `-j N`, `--jobs N` — parallel touch workers. NFS is the bottleneck;
@@ -230,8 +233,9 @@ Flag surface mirrors `sol_renew.py`:
 - `-n`, `--dry-run` — print plan, don't touch.
 - `-v`, `--verbose` — show the matched/skipped lists.
 
-Dropped vs `sol_renew.py`: `--solkeep PATH` (the keep list lives in
-`[keep]` now, not `~/.solkeep`).
+`solx keep` works without a `solx` config file when a `~/.solkeep` (or
+`--solkeep`) provides the keep-list — so the skill's existing `.solkeep`
+users can adopt `solx` without migrating anything.
 
 ## Limitations
 

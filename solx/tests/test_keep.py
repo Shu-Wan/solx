@@ -224,13 +224,86 @@ def test_keep_bad_csv_dir_exits_2(tmp_path: Path) -> None:
     assert "not a directory" in out.stderr.file.getvalue()
 
 
-def test_keep_no_keep_block_exits_2(tmp_path: Path) -> None:
+def test_keep_no_keep_block_exits_2(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))  # no ~/.solkeep here
     cfg = make_config(keep=None)
     code = keep_mod.cmd_keep(
         config=cfg, csv_dir=tmp_path, stage="all", jobs_n=1,
         yes=False, dry_run=False, verbose=False, out=make_out(),
     )
     assert code == 2
+
+
+def test_keep_explicit_solkeep(tmp_path: Path) -> None:
+    """--solkeep <file> uses a gitignore-style keep-list (skill compatibility)."""
+    write_csv(
+        tmp_path / "scratch-dirs-pending-removal.csv",
+        ["/scratch/sparky/proj/run", "/scratch/sparky/other"],
+    )
+    solkeep = tmp_path / "mykeep"
+    solkeep.write_text("/scratch/sparky/proj\n")  # bare path = dir + everything under
+    touched: list[str] = []
+    code = keep_mod.cmd_keep(
+        config=make_config(keep=None), csv_dir=tmp_path, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=make_out(), solkeep=solkeep,
+        execute_fn=recording_execute(touched),
+    )
+    assert code == 0
+    assert touched == ["/scratch/sparky/proj/run"]
+
+
+def test_keep_explicit_solkeep_empty_exits_2(tmp_path: Path) -> None:
+    solkeep = tmp_path / "empty"
+    solkeep.write_text("# only a comment\n\n")
+    code = keep_mod.cmd_keep(
+        config=make_config(keep=None), csv_dir=tmp_path, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=make_out(), solkeep=solkeep,
+    )
+    assert code == 2
+
+
+def test_keep_autodetects_home_solkeep(tmp_path: Path, monkeypatch) -> None:
+    """With no [keep] block, an existing ~/.solkeep is picked up automatically."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".solkeep").write_text("/scratch/sparky/proj\n!**/__pycache__\n")
+    monkeypatch.setenv("HOME", str(home))
+    csvdir = tmp_path / "csv"
+    csvdir.mkdir()
+    write_csv(
+        csvdir / "scratch-dirs-pending-removal.csv",
+        ["/scratch/sparky/proj/run", "/scratch/sparky/proj/__pycache__", "/scratch/sparky/x"],
+    )
+    touched: list[str] = []
+    code = keep_mod.cmd_keep(
+        config=make_config(keep=None), csv_dir=csvdir, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=make_out(),
+        execute_fn=recording_execute(touched),
+    )
+    assert code == 0
+    assert touched == ["/scratch/sparky/proj/run"]  # negation carved out __pycache__
+
+
+def test_keep_config_precedence_over_solkeep(tmp_path: Path, monkeypatch) -> None:
+    """A config [keep] block wins over a present ~/.solkeep."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".solkeep").write_text("/scratch/sparky/from-solkeep\n")
+    monkeypatch.setenv("HOME", str(home))
+    csvdir = tmp_path / "csv"
+    csvdir.mkdir()
+    write_csv(
+        csvdir / "scratch-dirs-pending-removal.csv",
+        ["/scratch/sparky/from-config", "/scratch/sparky/from-solkeep"],
+    )
+    cfg = make_config(keep=make_keep(include=["/scratch/sparky/from-config"]))
+    touched: list[str] = []
+    keep_mod.cmd_keep(
+        config=cfg, csv_dir=csvdir, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=make_out(),
+        execute_fn=recording_execute(touched),
+    )
+    assert touched == ["/scratch/sparky/from-config"]
 
 
 def test_keep_dry_run_does_not_execute(tmp_path: Path) -> None:

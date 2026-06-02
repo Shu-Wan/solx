@@ -1,4 +1,4 @@
-# Roadmap: Sol-first `solx` CLI
+# Roadmap: the `solx` CLI
 
 Forward-looking design doc for **`solx`**, a Python CLI for working
 on ASU's **Sol** supercomputer. Not part of any released version
@@ -22,7 +22,7 @@ which need real laptop ↔ Sol round-trips to validate.
 
 Rather than ship a brittle one-command flow, we are **deferring the
 laptop side entirely** until the design is more mature. `solx` is
-now a **Sol-first CLI**: the user reaches Sol the manual way (per the
+now a CLI you run **on Sol**: the user reaches Sol the manual way (per the
 already-shipped `references/sessions.md`), then runs `solx` from
 there. Everything `solx` does — list jobs, start an interactive
 allocation, drop into a shell on the compute node, cancel, query
@@ -46,7 +46,7 @@ greenlit it.
 These are the load-bearing constraints for `solx`. Every decision
 below derives from them.
 
-1. **Sol-first.** The CLI is meant to be run *on* Sol after a manual
+1. **Runs on Sol.** The CLI is meant to be run *on* Sol after a manual
    SSH. No laptop side, no ssh-chain construction, no `~/.ssh/*`
    reads. If you want one-command magic from your laptop, that's a
    separate (deferred) conversation.

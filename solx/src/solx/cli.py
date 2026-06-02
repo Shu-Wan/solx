@@ -43,7 +43,7 @@ from solx.side import require_sol
 
 app = typer.Typer(
     name="solx",
-    help="Sol-first CLI for ASU's Sol supercomputer.",
+    help="CLI for ASU's Sol supercomputer.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -96,7 +96,7 @@ def root(
         typer.Option("--json", help="Force JSON output (machine-readable)."),
     ] = False,
 ) -> None:
-    """Sol-first CLI.
+    """The solx CLI.
 
     Output auto-detects: Rich tables on a terminal, JSON when stdout is not a
     TTY. A human at a terminal gets tables with no flag; an agent passes
@@ -139,6 +139,13 @@ def keep_cmd(
         Optional[Path],
         typer.Option("--csv-dir", help="Directory holding Sol's warning CSVs.", exists=False),
     ] = None,
+    solkeep: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--solkeep",
+            help="Path to a gitignore-style keep-list (overrides the [keep] config block).",
+        ),
+    ] = None,
     jobs_n: Annotated[
         int,
         typer.Option("-j", "--jobs", help="Parallel touch workers.", min=1),
@@ -164,7 +171,9 @@ def keep_cmd(
             f"invalid --stage {stage!r}. choose from: {', '.join(sorted(valid_stages))}"
         )
         raise typer.Exit(code=2)
-    config = _load_or_exit(out)
+    # `keep` can run off a `~/.solkeep` alone, so a missing config.toml is fine
+    # (config stays None). A config that exists but is malformed still errors.
+    config = _load_or_exit(out) if cfg.config_path().exists() else None
     code = keep_mod.cmd_keep(
         config=config,
         csv_dir=csv_dir,
@@ -173,6 +182,7 @@ def keep_cmd(
         yes=yes,
         dry_run=dry_run,
         verbose=verbose,
+        solkeep=solkeep,
         out=out,
     )
     raise typer.Exit(code=code)

@@ -13,34 +13,41 @@ tag for that release.
 
 (Changes since v0.3.0 land here. Move them under a new heading on release.)
 
-### solx 0.3.0 (sub-package; versions independently of the skill)
+### solx (sub-package; version stays 0.3.0 until the skill↔CLI sync after Stage 3)
 
-The `solx/` CLI gains agent-friendly output and verb-aware job-id
-resolution, and its `keep` command catches up to `sol_renew.py`'s
-file-level sharding (closing the #17 mirror that 0.3.0 deferred). The skill
-(`skills/sol-skill/`) is untouched.
+The `solx/` CLI: agent-friendly output, verb-aware job-id resolution, and a
+file-level-sharded `keep` that also reads the skill's `~/.solkeep`. The skill
+(`skills/sol-skill/`) is untouched, and `solx` keeps version `0.3.0` while it
+accumulates here — the repo is skill-first until Stage 3, when the two
+versions will be reconciled.
 
 - **Agent-friendly output** (issue #16 / [10 principles for agent-native
   CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis)): output
-  auto-detects — JSON when stdout is not a TTY, Rich tables on a terminal;
-  global `--json` / `--plain` force it. Results go to stdout, all diagnostics
-  to stderr. Destructive commands (`job stop`, `keep`) and `init`-over-existing
-  in a non-interactive session without `-y`/`-n`/`-f` now **refuse with exit 2**
-  instead of hanging on a prompt. `keep`'s JSON is **bounded** — exact counts +
-  a ≤100-item sample with a `*_truncated` flag, and the complete plan spilled to
-  a temp file returned as `full_plan_path` — so a CSV flagging thousands of dirs
-  can't emit a multi-megabyte payload. New `solx/src/solx/output.py` (`Out`).
+  auto-detects — Rich tables on a terminal, JSON when stdout is not a TTY; the
+  global `--json` flag forces JSON anywhere. Results go to stdout, all
+  diagnostics to stderr. Destructive commands (`job stop`, `keep`) and
+  `init`-over-existing **refuse with exit 2** in a non-interactive session
+  instead of hanging on a prompt; `-y`/`--yes` and `-f`/`--force` are
+  interchangeable for skipping a prompt. `keep`'s JSON is **bounded** — counts +
+  a ≤100-item sample + a `full_plan_path` temp-file spill. New
+  `solx/src/solx/output.py` (`Out`).
 - **Verb-aware job-id resolution**: `job time`/`job jump` auto-pick the most
   recent job (highest job id) when several match; `job stop` never guesses and
   exits 2 to disambiguate. Acting from inside an allocation warns about nesting
   (`jump`, `-q/--quiet` to silence) or self-cancel (`stop`). `slurm.py` returns
   a `Resolution`; adds `most_recent()`.
-- **`solx keep` file-level sharding** (closes #17) mirroring `sol_renew.py`
-  PR #18: streaming pipeline, `fd`/`rg`/`find` enumeration, bounded window.
-- New human manual [`docs/solx.md`](docs/solx.md) — now the single source of
-  truth for `solx` behavior; retired the pre-implementation contract
-  `docs/stage-2-solx.md` (superseded). `solx` bumped 0.2.0 → 0.3.0. Test suite
-  103 → 148.
+- **`solx keep`**: file-level sharding (closes #17) mirroring `sol_renew.py`
+  PR #18 (streaming pipeline, `fd`/`rg`/`find` enumeration, bounded window);
+  plus a keep-list resolved from `--solkeep <file>` > the `[keep]` config block
+  > an auto-detected `~/.solkeep`, so the skill's existing `.solkeep` works
+  under `solx keep` even with no `solx` config file.
+- **Hardening** (Copilot review): `completions` generated from Click so it
+  works under `python -m solx`; `config edit` shlex-splits `$EDITOR`; an
+  unreadable config surfaces a clean error; `keep` validates `--csv-dir`.
+- New human manual [`docs/solx.md`](docs/solx.md) — the single source of truth
+  for `solx` behavior; retired the pre-implementation contract
+  `docs/stage-2-solx.md`. Root `README.md` now features `solx`; dropped the
+  "Sol-first" phrasing. Test suite 103 → 161.
 
 ## [0.3.0] — 2026-05-28
 
@@ -97,7 +104,7 @@ where to run it. Closes #17 (see #18).
 ### Deferred
 
 - Mirror the file-level sharding into `solx keep` (`solx/src/solx/keep.py`)
-  once the Sol-first `solx` CLI lands on `main`. Tracked in #17.
+  once the `solx` CLI lands on `main`. Tracked in #17.
 
 ## [0.2.1] — 2026-04-28
 

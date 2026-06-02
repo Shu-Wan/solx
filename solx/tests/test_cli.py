@@ -275,6 +275,19 @@ def test_keep_invalid_stage(runner: CliRunner, monkeypatch) -> None:
     assert "invalid --stage" in res.stderr or "invalid --stage" in res.stdout
 
 
+def test_keep_solkeep_flag_and_missing_config(runner: CliRunner, monkeypatch, tmp_path) -> None:
+    """`solx keep --solkeep ...` works with no config.toml (config passed as None)."""
+    captured: list[dict] = []
+    from solx import keep as keep_mod
+
+    monkeypatch.setattr(keep_mod, "cmd_keep", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(cli.cfg, "config_path", lambda: tmp_path / "absent.toml")
+    res = runner.invoke(cli.app, ["keep", "--solkeep", "/tmp/mk", "-y"])
+    assert res.exit_code == 0
+    assert str(captured[0]["solkeep"]) == "/tmp/mk"
+    assert captured[0]["config"] is None  # missing config tolerated for keep
+
+
 def test_keep_full_flag_set(runner: CliRunner, monkeypatch, tmp_path) -> None:
     captured: list[dict] = []
     from solx import keep as keep_mod

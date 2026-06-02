@@ -194,5 +194,29 @@ def test_load_unreadable_raises_config_error(tmp_path: Path) -> None:
     """A directory where a file is expected -> OSError -> clean ConfigError."""
     p = tmp_path / "config.toml"
     p.mkdir()  # exists() is True, but open('rb') raises IsADirectoryError
-    with pytest.raises(ConfigError, match="cannot read"):
+    with pytest.raises(ConfigError, match="unable to read"):
         cfg.load(p)
+
+
+def test_load_solkeep(tmp_path: Path) -> None:
+    p = tmp_path / ".solkeep"
+    p.write_text(
+        "# comment\n"
+        "/scratch/sparky/proj\n"
+        "!/scratch/sparky/proj/**/__pycache__\n"
+    )
+    rules = cfg.load_solkeep(p)
+    assert rules is not None
+    assert rules.matches("/scratch/sparky/proj/src")              # kept (prefix)
+    assert not rules.matches("/scratch/sparky/proj/a/__pycache__")  # negated
+    assert not rules.matches("/scratch/sparky/other")            # not listed
+
+
+def test_load_solkeep_missing(tmp_path: Path) -> None:
+    assert cfg.load_solkeep(tmp_path / "nope") is None
+
+
+def test_load_solkeep_comments_only(tmp_path: Path) -> None:
+    p = tmp_path / ".solkeep"
+    p.write_text("# just a comment\n\n")
+    assert cfg.load_solkeep(p) is None

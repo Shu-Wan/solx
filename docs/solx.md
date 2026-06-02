@@ -184,10 +184,19 @@ already exists — pass `-f` (or `-y`) to overwrite it.
 When `/scratch` files of yours are aging out, Sol drops warning CSVs in your
 home directory (`scratch-dirs-pending-removal.csv`,
 `scratch-dirs-over-90days.csv`, `scratch-dirs-inactive.csv`). `solx keep` reads
-those, keeps only the directories that match your `[keep]` `include` (minus
-`exclude`), and refreshes their timestamps with `touch`. It only ever touches
-directories that are **both** flagged by Sol **and** matched by `[keep]` — so
-there's nothing for it to do until Sol actually flags something.
+those, keeps only the directories that match your **keep-list**, and refreshes
+their timestamps with `touch`. It only ever touches directories that are
+**both** flagged by Sol **and** in your keep-list — so there's nothing for it
+to do until Sol actually flags something.
+
+**Where the keep-list comes from**, in priority order:
+
+1. `--solkeep <file>` — a specific gitignore-style keep-list, if you pass one.
+2. the `[keep]` block in your `solx` config (`include` / `exclude`).
+3. `~/.solkeep` — the same file the skill's `sol_renew.py` uses. If you already
+   have one, `solx keep` picks it up automatically, and works even without a
+   `solx` config file. (Format: one pattern per line, `!` carves a subtree out,
+   a bare path means that directory and everything under it — last match wins.)
 
 ```shell
 solx keep --dry-run         # preview exactly which directories would be renewed
@@ -197,6 +206,7 @@ solx keep --stage pending   # only the most-urgent CSV
 
 | Flag | Meaning |
 |---|---|
+| `--solkeep FILE` | Use a specific gitignore-style keep-list (overrides `[keep]`). |
 | `--stage {pending,over90,inactive,all}` | Which warning CSVs to read. Default `all`. |
 | `--csv-dir DIR` | Where Sol's CSVs live. Default your home directory. |
 | `-j N`, `--jobs N` | How many parallel workers. The default is small on purpose — `/scratch` is networked storage. |
@@ -206,8 +216,9 @@ This does a lot of small filesystem operations, which Sol's login nodes
 throttle. For a big renewal, run it on a compute node or the data-transfer
 node (`ssh soldtn`).
 
-If your config has no `[keep]` block, `solx keep` stops and points you to
-`solx config edit`.
+If there's no keep-list anywhere — no `[keep]` block and no `~/.solkeep` —
+`solx keep` stops and points you to `solx config edit` (or to create a
+`~/.solkeep`).
 
 ---
 

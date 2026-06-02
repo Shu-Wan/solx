@@ -1,7 +1,7 @@
 [project]
 name = "solx"
 version = "0.3.0"
-description = "Sol-first CLI for ASU's Sol supercomputer."
+description = "CLI for ASU's Sol supercomputer."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

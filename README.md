@@ -2,14 +2,16 @@
 
 A suite of tools for working on ASU's **Sol** supercomputer.
 
-- a **CLI** you run from the shell to keep your scratch data alive
-- an **agent skill** that teaches an AI coding assistant how to operate
-  on Sol on your behalf
+- **`solx`** — a command-line tool for daily Sol work: list jobs, request an
+  interactive allocation, open a shell on the compute node, cancel, check
+  remaining time, and renew `/scratch` files Sol has flagged for deletion.
+- **`sol_renew.py`** — a standalone, zero-install script that does just the
+  scratch-renewal piece (what `solx keep` is built on).
+- an **agent skill** that teaches an AI coding assistant how to operate on
+  Sol on your behalf.
 
-Both share the same helper scripts (`scripts/`) and reference notes
-(`references/`). The official doc for every policy and convention
-referenced here is the ASU Research Computing site:
-<https://docs.rc.asu.edu/>.
+The official doc for every policy and convention referenced here is the ASU
+Research Computing site: <https://docs.rc.asu.edu/>.
 
 ## Intended use
 
@@ -86,12 +88,17 @@ sol-skills/
 ├── DEVELOPMENT.md               # Contributor guide + eval harness internals
 ├── docs/
 │   ├── PLAN.md                  # roadmap (in development)
+│   ├── solx.md                  # solx user manual
 │   ├── name.md
 │   └── coverage.md              # Public test methodology + coverage matrix
+├── solx/                        # solx CLI — installable Python package
+│   ├── README.md                # install + command reference
+│   ├── DEVELOPMENT.md           # architecture + tests
+│   └── src/solx/                # the package
 ├── skills/sol-skill/            # Agent skill (per agentskills.io layout)
 │   ├── SKILL.md                 # Agent skill entry point
 │   ├── scripts/
-│   │   └── sol_renew.py         # CLI: renew scratch files flagged by Sol
+│   │   └── sol_renew.py         # standalone scratch-renewal script
 │   └── references/              # module, scratch, sharing, slurm, sessions
 └── evals/                       # Eval harness (not shipped with the skill)
     ├── README.md
@@ -110,7 +117,29 @@ sol-skills/
   [`DEVELOPMENT.md`](DEVELOPMENT.md) for the layered (L0–L3) eval
   framework, the mock Sol environment, and the release process.
 
-## CLI: `sol_renew.py`
+## `solx` — command-line tool
+
+`solx` is a CLI for daily work on Sol: list your jobs,
+request an interactive allocation, open a shell on the compute node, cancel,
+check remaining time, and renew `/scratch` files Sol has flagged. You SSH to
+Sol yourself, then run `solx` from a login or compute node.
+
+```shell
+uv tool install git+https://github.com/Shu-Wan/sol-skills.git#subdirectory=solx
+solx init                 # write ~/.config/solx/config.toml
+solx config edit          # set up your job templates and [keep] paths
+solx job start debug      # request an interactive allocation
+solx job jump             # open a shell on the compute node
+solx keep --dry-run       # preview scratch renewal
+```
+
+- Full manual: [`docs/solx.md`](docs/solx.md)
+- Install + command reference: [`solx/README.md`](solx/README.md)
+
+`solx keep` is the job-aware successor to `sol_renew.py` below; the standalone
+script stays around for quick, zero-install renewal when you don't have `solx`.
+
+## `sol_renew.py` — standalone scratch renewal
 
 Sol deletes inactive files under `/scratch` on a layered schedule. Each
 stage of the pipeline announces itself via a CSV file dropped in your

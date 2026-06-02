@@ -87,14 +87,12 @@ def load(path: Path | None = None) -> Config:
     try:
         with p.open("rb") as f:
             raw = tomllib.load(f)
-    except OSError as e:
-        raise ConfigError(f"unable to read config at {p}: {e}") from e
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"invalid TOML in {p}: {e}") from e
     except OSError as e:
         # Unreadable file (permissions, a directory in its place, I/O error):
         # surface a clean config error instead of a traceback.
-        raise ConfigError(f"cannot read config {p}: {e}") from e
+        raise ConfigError(f"unable to read config at {p}: {e}") from e
     return _parse(raw, source=str(p))
 
 
@@ -168,6 +166,35 @@ def _parse_keep(body: object, source: str) -> KeepRules | None:
         exclude=pathspec.GitIgnoreSpec.from_lines(exclude),
         raw_include=tuple(include),
         raw_exclude=tuple(exclude),
+    )
+
+
+def load_solkeep(path: Path) -> KeepRules | None:
+    """Load a gitignore-style `~/.solkeep` keep-list into `KeepRules`.
+
+    Same format and semantics as the skill's `sol_renew.py`: each line is a
+    keep pattern, `!` negates (carves a subtree out), `#`/blank lines are
+    ignored, a bare path matches that directory *and everything under it*, and
+    the last matching rule wins. `pathspec`'s `GitIgnoreSpec` implements those
+    semantics, so the whole file becomes a single keep matcher (with an empty
+    exclude). Returns None if the file is missing or has no effective rules —
+    so `solx keep` can fall through to its "nothing to match" handling, exactly
+    like `sol_renew.py` exiting when no rules load.
+    """
+    if not path.exists():
+        return None
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return None
+    effective = [ln for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+    if not effective:
+        return None
+    return KeepRules(
+        include=pathspec.GitIgnoreSpec.from_lines(lines),
+        exclude=pathspec.GitIgnoreSpec.from_lines([]),
+        raw_include=tuple(effective),
+        raw_exclude=(),
     )
 
 
