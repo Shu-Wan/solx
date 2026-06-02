@@ -305,7 +305,7 @@ def test_jump_builds_correct_argv() -> None:
         exec_fn=lambda argv: captured.append(argv), out=make_out(),
     )
     assert code == 0
-    assert captured == [["srun", "--jobid=12345", "--pty", "zsh"]]
+    assert captured == [["srun", "--jobid=12345", "--overlap", "--pty", "zsh"]]
 
 
 def test_jump_from_inside_warns_and_proceeds(monkeypatch) -> None:
@@ -319,7 +319,7 @@ def test_jump_from_inside_warns_and_proceeds(monkeypatch) -> None:
         exec_fn=lambda argv: captured.append(argv), out=out,
     )
     assert code == 0
-    assert captured == [["srun", "--jobid=99999", "--pty", "zsh"]]
+    assert captured == [["srun", "--jobid=99999", "--overlap", "--pty", "zsh"]]
     assert "already inside job 99999" in out.stderr.file.getvalue()
 
 
@@ -333,7 +333,7 @@ def test_jump_inside_quiet_suppresses_warning(monkeypatch) -> None:
         exec_fn=lambda argv: captured.append(argv), out=out,
     )
     assert code == 0
-    assert captured == [["srun", "--jobid=99999", "--pty", "zsh"]]
+    assert captured == [["srun", "--jobid=99999", "--overlap", "--pty", "zsh"]]
     assert out.stderr.file.getvalue() == ""
 
 
@@ -347,7 +347,7 @@ def test_jump_most_recent_running() -> None:
     )
     assert code == 0
     # highest jobid (67890) is "most recent"
-    assert captured == [["srun", "--jobid=67890", "--pty", "zsh"]]
+    assert captured == [["srun", "--jobid=67890", "--overlap", "--pty", "zsh"]]
     assert "most recent" in out.stderr.file.getvalue()
 
 

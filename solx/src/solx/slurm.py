@@ -246,8 +246,14 @@ def scancel_argv(job_id: str) -> list[str]:
 
 
 def srun_pty_argv(job_id: str, shell: str) -> list[str]:
-    """Argv for attaching a pty shell to a running allocation."""
-    return ["srun", f"--jobid={job_id}", "--pty", shell]
+    """Argv for attaching a pty shell to a running allocation.
+
+    `--overlap` lets the step share the allocation's resources with steps
+    already running in it. Without it, srun demands exclusive use of the node
+    and stalls with "step creation temporarily disabled (Requested nodes are
+    busy)" whenever the job already has a step occupying its resources.
+    """
+    return ["srun", f"--jobid={job_id}", "--overlap", "--pty", shell]
 
 
 def squeue_time_left_argv(job_id: str) -> list[str]:

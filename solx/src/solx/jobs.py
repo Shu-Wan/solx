@@ -113,7 +113,7 @@ def cmd_start(
     out.status(f"[green]allocated job[/] [bold]{jobid}[/]")
     out.status(
         f"[dim]attach:[/] solx job jump {jobid}  "
-        f"[dim](or: srun --jobid={jobid} --pty {config.default_shell})[/]"
+        f"[dim](or: srun --jobid={jobid} --overlap --pty {config.default_shell})[/]"
     )
     if out.json_mode:
         out.json({"jobid": jobid, "template": name})
