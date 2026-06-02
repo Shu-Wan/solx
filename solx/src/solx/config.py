@@ -241,16 +241,76 @@ def parse_duration(text: str) -> int:
     return n * _DURATION_UNITS[unit]
 
 
-def starter_config_text() -> str:
+def import_solkeep(path: Path) -> tuple[list[str], list[str]] | None:
+    """Split a `~/.solkeep` file into `([keep].include, [keep].exclude)`.
+
+    `.solkeep` is one gitignore-style list; `solx init` imports it into the new
+    config's `[keep]` block so an existing keep-list carries over without
+    rewriting. Plain lines become `include`, `!`-prefixed lines become
+    `exclude` (the `!` dropped); `#`/blank lines are skipped. Returns None if
+    the file is missing or has no `include` patterns. This is a best-effort
+    import of the common "broad includes + `!` carve-outs" shape — review the
+    result with `solx config show`.
+    """
+    if not path.exists():
+        return None
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return None
+    include: list[str] = []
+    exclude: list[str] = []
+    for raw in lines:
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("!"):
+            exclude.append(s[1:].strip())
+        else:
+            include.append(s)
+    if not include:  # a keep-list with no keep patterns is nothing to import
+        return None
+    return include, exclude
+
+
+def starter_config_text(
+    keep: tuple[list[str], list[str]] | None = None,
+    default_shell: str = "bash",
+) -> str:
     """The text that `solx init` writes to a fresh config.toml.
 
-    No maintainer name baked in — uses `sparky` as the placeholder per the
-    project convention. Comments tell the user to replace.
+    With no `keep`, the `[keep]` block is a commented placeholder using the
+    `sparky` placeholder (no maintainer name baked in). When `keep` is given
+    (imported from `~/.solkeep` via `import_solkeep`), an active `[keep]` block
+    is written instead. `default_shell` sets the `default_shell` value (the
+    `solx init` walkthrough can pick it).
     """
-    return _STARTER_CONFIG
+    base = _STARTER_CONFIG_BASE.replace(
+        'default_shell = "bash"', f'default_shell = {_toml_str(default_shell)}'
+    )
+    block = _render_keep_block(*keep) if keep else _KEEP_PLACEHOLDER
+    return base + block
 
 
-_STARTER_CONFIG = """\
+def _toml_str(s: str) -> str:
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _render_keep_block(include: list[str], exclude: list[str]) -> str:
+    lines = [
+        "# [keep] imported from ~/.solkeep — directories `solx keep` renews",
+        "# when Sol flags them. Patterns are gitignore-style (** for recursion).",
+        "[keep]",
+        "include = [",
+        *(f"  {_toml_str(p)}," for p in include),
+        "]",
+    ]
+    if exclude:
+        lines += ["exclude = [", *(f"  {_toml_str(p)}," for p in exclude), "]"]
+    return "\n".join(lines) + "\n"
+
+
+_STARTER_CONFIG_BASE = """\
 # solx config — see https://github.com/Shu-Wan/sol-skills/blob/main/solx/README.md
 #
 # Used by `solx job jump` when dropping into a shell on a compute node.
@@ -277,6 +337,9 @@ partition = "htc"
 time = "0-1"
 
 
+"""
+
+_KEEP_PLACEHOLDER = """\
 # Scratch paths to keep alive when Sol flags them in a warning CSV
 # *and* `solx keep` runs. Replace `sparky` with your ASURITE.
 # Patterns use gitignore-style globs (** for recursion).

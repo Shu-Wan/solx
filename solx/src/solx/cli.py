@@ -120,7 +120,10 @@ def init_cmd(
     ] = False,
 ) -> None:
     require_sol()
-    raise typer.Exit(code=init_mod.cmd_init(force=force, out=_out()))
+    # Auto-import an existing ~/.solkeep into the new config's [keep] block.
+    raise typer.Exit(
+        code=init_mod.cmd_init(force=force, solkeep=Path.home() / ".solkeep", out=_out())
+    )
 
 
 # --- top-level: keep ------------------------------------------------------

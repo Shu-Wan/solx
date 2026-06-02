@@ -59,7 +59,7 @@ related operations, top-level shortcuts where they earn it.
 
 | Command | What it does |
 |---|---|
-| `solx init [-f]` | Write a starter `config.toml`. Refuses to overwrite without `-f` (or interactive `y`). |
+| `solx init [-f]` | Write a starter `config.toml`. On a terminal, offers a short walkthrough (pick your shell) and imports an existing `~/.solkeep` into `[keep]`. Refuses to overwrite without `-f` (or interactive `y`). |
 | `solx job list` | List my Sol jobs (Rich table on a TTY, JSON when piped). Aliases: `solx jobs list`, `solx job ls`, `solx jobs ls`. |
 | `solx job start [TEMPLATE] [-n] [--timeout T] [-- ...]` | Request an interactive allocation via `salloc --no-shell`. `TEMPLATE` defaults to `default_template`; tail after `--` is appended verbatim to `salloc`. |
 | `solx job stop [JOBID] [-y] [-n]` | Cancel a job. Prompts unless `-y`; `-n` previews the `scancel` invocation. |

@@ -220,3 +220,46 @@ def test_load_solkeep_comments_only(tmp_path: Path) -> None:
     p = tmp_path / ".solkeep"
     p.write_text("# just a comment\n\n")
     assert cfg.load_solkeep(p) is None
+
+
+def test_import_solkeep_splits_include_exclude(tmp_path: Path) -> None:
+    p = tmp_path / ".solkeep"
+    p.write_text(
+        "# comment\n"
+        "/scratch/sparky/proj\n"
+        "/scratch/sparky/exp/**\n"
+        "!**/__pycache__\n"
+    )
+    result = cfg.import_solkeep(p)
+    assert result is not None
+    include, exclude = result
+    assert include == ["/scratch/sparky/proj", "/scratch/sparky/exp/**"]
+    assert exclude == ["**/__pycache__"]
+
+
+def test_import_solkeep_missing(tmp_path: Path) -> None:
+    assert cfg.import_solkeep(tmp_path / "nope") is None
+
+
+def test_import_solkeep_no_includes(tmp_path: Path) -> None:
+    p = tmp_path / ".solkeep"
+    p.write_text("# only comments\n!**/__pycache__\n")  # exclude-only: nothing to keep
+    assert cfg.import_solkeep(p) is None
+
+
+def test_starter_config_with_imported_keep_round_trips(tmp_path: Path) -> None:
+    text = cfg.starter_config_text(keep=(["/scratch/sparky/proj"], ["**/__pycache__"]))
+    p = tmp_path / "config.toml"
+    p.write_text(text)
+    c = cfg.load(p)
+    assert c.keep is not None
+    assert c.keep.matches("/scratch/sparky/proj/src")
+    assert not c.keep.matches("/scratch/sparky/proj/a/__pycache__")
+
+
+def test_starter_config_default_keeps_placeholder(tmp_path: Path) -> None:
+    text = cfg.starter_config_text()  # no import
+    assert "sparky" in text
+    p = tmp_path / "config.toml"
+    p.write_text(text)
+    assert cfg.load(p).keep is None  # [keep] is a commented placeholder
