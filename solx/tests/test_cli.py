@@ -430,6 +430,15 @@ def test_completions_bash_emits_script(runner: CliRunner) -> None:
     assert "solx" in res.stdout
 
 
+def test_completions_zsh_emits_script(runner: CliRunner) -> None:
+    """zsh emits a valid `#compdef` script wired to Typer's runtime handler."""
+    res = runner.invoke(cli.app, ["completions", "zsh"])
+    assert res.exit_code == 0
+    assert "#compdef solx" in res.stdout
+    assert "_SOLX_COMPLETE=complete_zsh" in res.stdout
+    assert "_TYPER_COMPLETE_ARGS" in res.stdout
+
+
 def test_config_edit_splits_editor_flags(runner: CliRunner, monkeypatch, tmp_path) -> None:
     """$EDITOR with flags (e.g. `code --wait`) is split into argv, not one binary."""
     cfgfile = tmp_path / "config.toml"

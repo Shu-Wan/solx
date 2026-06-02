@@ -416,16 +416,20 @@ def completions_cmd(
 ) -> None:
     """Print a completion script for `shell`.
 
-    Generated directly from Click's completion machinery rather than
+    Generated directly from Typer's completion machinery rather than
     re-exec'ing the binary, so it works under both the installed `solx` entry
     point and `python -m solx`.
+
+    Uses Typer's own completion classes, which carry the right source templates
+    and env-var wiring (``_SOLX_COMPLETE``, ``_TYPER_COMPLETE_ARGS``) and match
+    Typer's runtime completion handler regardless of how click is packaged.
     """
-    import click.shell_completion as shell_completion
+    from typer._completion_classes import BashComplete, FishComplete, ZshComplete
     from typer.main import get_command
 
-    shell = shell.lower()
-    comp_cls = shell_completion.get_completion_class(shell)
-    if shell not in {"bash", "zsh", "fish"} or comp_cls is None:
+    classes = {"bash": BashComplete, "zsh": ZshComplete, "fish": FishComplete}
+    comp_cls = classes.get(shell.lower())
+    if comp_cls is None:
         typer.echo(f"unknown shell {shell!r}; choose bash, zsh, or fish.", err=True)
         raise typer.Exit(code=2)
     completer = comp_cls(get_command(app), {}, "solx", "_SOLX_COMPLETE")
