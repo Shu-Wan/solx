@@ -196,7 +196,7 @@ Sol runs Slurm 25.x, which supports `salloc --no-shell` natively.
    allocation N`).
 4. Returns. The allocation continues running in the background as a
    "headless" reservation — nothing is consuming it until you attach.
-5. You attach with `solx job jump`, which exec's `srun --jobid=N --overlap
+5. You attach with `solx job jump`, which execs `srun --jobid=N --overlap
    --pty $default_shell` to drop you onto the compute node.
 
 If the queue stalls, the `start_timeout` config (`--timeout` overrides)
