@@ -25,23 +25,27 @@ def _default_walkthrough(out: Out, solkeep: Path | None) -> dict | None:
     if not Confirm.ask("Walk through a quick setup?", default=False):
         return None
 
-    keep = None
-    if solkeep is not None:
-        candidate = cfg.import_solkeep(solkeep)
-        if candidate is not None:
-            inc, exc = candidate
-            if Confirm.ask(
-                f"Found {solkeep} ({len(inc)} include / {len(exc)} exclude "
-                "pattern(s)). Import it into \\[keep]?",  # \\[ escapes Rich markup
-                default=True,
-            ):
-                keep = candidate
-
+    # Step 1 — shell (a real choice, so the walkthrough doesn't open with two
+    # yes/no questions in a row).
+    out.status("\n[bold]Step 1 — shell[/]")
     shell = Prompt.ask(
         "Which shell should `solx job jump` open on the compute node?",
         choices=list(SHELLS),
         default="bash",
     )
+
+    # Step 2 — scratch keep-list (only when there's a ~/.solkeep to offer).
+    keep = None
+    candidate = cfg.import_solkeep(solkeep) if solkeep is not None else None
+    if candidate is not None:
+        inc, exc = candidate
+        out.status(
+            f"\n[bold]Step 2 — scratch keep-list[/]  "
+            f"({solkeep}: {len(inc)} include / {len(exc)} exclude)"
+        )
+        if Confirm.ask("Import it into \\[keep]?", default=True):  # \\[ escapes markup
+            keep = candidate
+
     return {"shell": shell, "keep": keep}
 
 
