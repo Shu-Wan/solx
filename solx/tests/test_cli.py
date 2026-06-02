@@ -46,6 +46,23 @@ def test_help_lists_commands(runner: CliRunner) -> None:
         assert cmd in res.stdout
 
 
+def test_version_subcommand_aliases_flag(runner: CliRunner) -> None:
+    """`solx version` matches `solx --version`."""
+    from solx import __version__
+
+    res = runner.invoke(cli.app, ["version"])
+    assert res.exit_code == 0
+    assert __version__ in res.stdout
+
+
+def test_help_subcommand_aliases_flag(runner: CliRunner) -> None:
+    """`solx help` shows the root help, same as `solx --help`."""
+    res = runner.invoke(cli.app, ["help"])
+    assert res.exit_code == 0
+    for cmd in ("init", "keep", "job", "config", "completions"):
+        assert cmd in res.stdout
+
+
 # ---- alias coverage -----------------------------------------------------
 
 
@@ -428,6 +445,15 @@ def test_completions_bash_emits_script(runner: CliRunner) -> None:
     assert res.exit_code == 0
     assert "_SOLX_COMPLETE" in res.stdout  # the env var the script wires up
     assert "solx" in res.stdout
+
+
+def test_completions_zsh_emits_script(runner: CliRunner) -> None:
+    """zsh emits a valid `#compdef` script wired to Typer's runtime handler."""
+    res = runner.invoke(cli.app, ["completions", "zsh"])
+    assert res.exit_code == 0
+    assert "#compdef solx" in res.stdout
+    assert "_SOLX_COMPLETE=complete_zsh" in res.stdout
+    assert "_TYPER_COMPLETE_ARGS" in res.stdout
 
 
 def test_config_edit_splits_editor_flags(runner: CliRunner, monkeypatch, tmp_path) -> None:

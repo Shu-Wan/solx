@@ -12,7 +12,8 @@ Surface (see docs/solx.md):
     solx config show [--json]
     solx config edit
     solx completions <bash|zsh|fish>
-    solx --version
+    solx version   (alias of --version)
+    solx help      (alias of --help)
 
 Global output flag: `--json` forces JSON; by default output auto-detects
 (Rich tables on a terminal, JSON when stdout is not a TTY). See `solx.output`.
@@ -416,20 +417,41 @@ def completions_cmd(
 ) -> None:
     """Print a completion script for `shell`.
 
-    Generated directly from Click's completion machinery rather than
-    re-exec'ing the binary, so it works under both the installed `solx` entry
-    point and `python -m solx`.
+    Built with Typer's completion-script generator — the same one behind
+    Typer's ``--show-completion`` — so the emitted script carries the right
+    env-var wiring (``_SOLX_COMPLETE``, ``_TYPER_COMPLETE_ARGS``) and matches
+    Typer's runtime completion handler regardless of how click is packaged.
+    No re-exec, so it works under both the installed `solx` entry point and
+    `python -m solx`.
     """
-    import click.shell_completion as shell_completion
-    from typer.main import get_command
-
     shell = shell.lower()
-    comp_cls = shell_completion.get_completion_class(shell)
-    if shell not in {"bash", "zsh", "fish"} or comp_cls is None:
+    if shell not in {"bash", "zsh", "fish"}:
         typer.echo(f"unknown shell {shell!r}; choose bash, zsh, or fish.", err=True)
         raise typer.Exit(code=2)
-    completer = comp_cls(get_command(app), {}, "solx", "_SOLX_COMPLETE")
-    typer.echo(completer.source())
+    try:
+        from typer.completion import get_completion_script
+    except ImportError as e:  # Typer internals shifted under an unpinned upgrade
+        typer.echo(f"solx: completion unavailable with this Typer ({e}).", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(
+        get_completion_script(
+            prog_name="solx", complete_var="_SOLX_COMPLETE", shell=shell
+        )
+    )
+
+
+# --- meta: version / help -------------------------------------------------
+
+
+@app.command("version", help="Show version and exit (alias of --version).")
+def version_cmd() -> None:
+    typer.echo(__version__)
+
+
+@app.command("help", help="Show help and exit (alias of --help).")
+def help_cmd(ctx: typer.Context) -> None:
+    # The root group's help, matching `solx --help`.
+    typer.echo((ctx.parent or ctx).get_help())
 
 
 # --- helpers --------------------------------------------------------------
