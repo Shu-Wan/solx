@@ -456,6 +456,25 @@ def test_completions_zsh_emits_script(runner: CliRunner) -> None:
     assert "_TYPER_COMPLETE_ARGS" in res.stdout
 
 
+def test_runtime_completion_dispatch_resolves_shell(monkeypatch, capsys) -> None:
+    """The emitted script calls `_SOLX_COMPLETE=complete_zsh solx` at runtime;
+    that path must resolve the shell (subcommands), not "Shell zsh not
+    supported" — i.e. `completion_init()` ran at import despite
+    add_completion=False.
+    """
+    from typer.completion import shell_complete
+    from typer.main import get_command
+
+    monkeypatch.setenv("_TYPER_COMPLETE_ARGS", "solx ")
+    rc = shell_complete(
+        get_command(cli.app), {}, "solx", "_SOLX_COMPLETE", "complete_zsh"
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "not supported" not in (captured.out + captured.err).lower()
+    assert "init" in captured.out  # top-level subcommands are completed
+
+
 def test_config_edit_splits_editor_flags(runner: CliRunner, monkeypatch, tmp_path) -> None:
     """$EDITOR with flags (e.g. `code --wait`) is split into argv, not one binary."""
     cfgfile = tmp_path / "config.toml"

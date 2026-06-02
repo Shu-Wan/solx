@@ -49,6 +49,18 @@ app = typer.Typer(
     add_completion=False,
 )
 
+# `add_completion=False` keeps the --install/--show-completion flags off the
+# root command, but it also means Typer never registers its bash/zsh/fish
+# completion classes. Without them, the runtime `_SOLX_COMPLETE=complete_<shell>`
+# dispatch resolves no class and reports "Shell <shell> not supported", so Tab
+# does nothing. Register them at import (before app() runs) so completion fires.
+try:
+    from typer.completion import completion_init
+
+    completion_init()
+except ImportError:  # Typer internals shifted under an unpinned upgrade
+    pass  # completion won't fire, but the rest of the CLI is unaffected
+
 job_app = typer.Typer(
     name="job",
     help="Manage interactive Slurm jobs on Sol.",
