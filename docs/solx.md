@@ -56,9 +56,9 @@ solx job stop              # cancel it when you're done
 `solx` reads one file: `~/.config/solx/config.toml` (or
 `$XDG_CONFIG_HOME/solx/config.toml`). Run `solx init` to create a starter,
 then `solx config edit` to fill it in. On a terminal, `solx init` offers a
-short walkthrough (pick the shell `solx job jump` opens), and if you already
-have a `~/.solkeep`, it imports those patterns into the `[keep]` block. A
-complete example:
+short walkthrough — pick the shell `solx job jump` opens, and (if you have a
+`~/.solkeep`) confirm importing its patterns into `[keep]`. A complete
+example:
 
 ```toml
 # The shell `solx job jump` opens on the compute node.

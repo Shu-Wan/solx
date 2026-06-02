@@ -15,19 +15,34 @@ from solx.output import Out
 SHELLS = ("bash", "zsh", "fish")
 
 
-def _default_walkthrough(out: Out) -> str | None:
-    """Interactive first-run walkthrough. Returns the chosen shell, or None.
+def _default_walkthrough(out: Out, solkeep: Path | None) -> dict | None:
+    """Interactive first-run walkthrough. Returns answers, or None if declined.
 
-    One question for now — which login shell `solx job jump` should open on the
-    compute node. More steps can be added here later.
+    Steps (more can be added later): optionally import an existing `~/.solkeep`
+    into `[keep]`, then pick the login shell `solx job jump` opens. Returns
+    ``{"shell": str, "keep": (include, exclude) | None}``.
     """
     if not Confirm.ask("Walk through a quick setup?", default=False):
         return None
-    return Prompt.ask(
+
+    keep = None
+    if solkeep is not None:
+        candidate = cfg.import_solkeep(solkeep)
+        if candidate is not None:
+            inc, exc = candidate
+            if Confirm.ask(
+                f"Found {solkeep} ({len(inc)} include / {len(exc)} exclude "
+                "pattern(s)). Import it into \\[keep]?",  # \\[ escapes Rich markup
+                default=True,
+            ):
+                keep = candidate
+
+    shell = Prompt.ask(
         "Which shell should `solx job jump` open on the compute node?",
         choices=list(SHELLS),
         default="bash",
     )
+    return {"shell": shell, "keep": keep}
 
 
 def cmd_init(
@@ -37,7 +52,7 @@ def cmd_init(
     solkeep: Path | None = None,
     out: Out | None = None,
     confirm_fn: Callable[..., bool] | None = None,
-    walkthrough_fn: Callable[[Out], str | None] | None = None,
+    walkthrough_fn: Callable[[Out, Path | None], dict | None] | None = None,
 ) -> int:
     out = out or Out.auto()
     p = path or cfg.config_path()
@@ -52,16 +67,17 @@ def cmd_init(
             out.status("[dim]aborted[/]")
             return 1
 
-    # If an existing ~/.solkeep is around (skill users), carry it into [keep].
-    imported = cfg.import_solkeep(solkeep) if solkeep is not None else None
-
     # Optional interactive walkthrough — skipped entirely in a non-interactive
-    # session (an agent/cron just gets the defaults, never a hung prompt).
+    # session (an agent/cron just gets the defaults, never a hung prompt). The
+    # `~/.solkeep` import is one of its prompted steps; importing is convenience
+    # only — `solx keep` reads `~/.solkeep` at runtime regardless.
+    imported = None
     default_shell = "bash"
     if out.interactive:
-        chosen = (walkthrough_fn or _default_walkthrough)(out)
-        if chosen:
-            default_shell = chosen
+        result = (walkthrough_fn or _default_walkthrough)(out, solkeep)
+        if result:
+            default_shell = result.get("shell") or "bash"
+            imported = result.get("keep")
 
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(cfg.starter_config_text(keep=imported, default_shell=default_shell))
@@ -73,7 +89,7 @@ def cmd_init(
         inc, exc = imported
         out.status(
             f"[green]imported[/] {len(inc)} include / {len(exc)} exclude "
-            f"pattern(s) from {solkeep} into [keep]"
+            "pattern(s) into \\[keep]"
         )
     out.status("[dim]edit it with `solx config edit`, then `solx job start`.[/]")
     out.emit(data={"wrote": str(p)}, human=lambda: f"[green]wrote[/] {p}")

@@ -41,10 +41,10 @@ versions will be reconciled.
   plus a keep-list resolved from `--solkeep <file>` > the `[keep]` config block
   > an auto-detected `~/.solkeep`, so the skill's existing `.solkeep` works
   under `solx keep` even with no `solx` config file.
-- **`solx init`**: imports an existing `~/.solkeep` into the new config's
-  `[keep]` block, and (on a terminal) offers a short interactive walkthrough —
-  one question for now, picking the shell `solx job jump` opens. Both are
-  skipped in a non-interactive session.
+- **`solx init`**: on a terminal, offers a short interactive walkthrough —
+  confirm importing an existing `~/.solkeep` into `[keep]`, then pick the shell
+  `solx job jump` opens. Skipped in a non-interactive session (which writes
+  plain defaults; `solx keep` still reads `~/.solkeep` at runtime).
 - **Hardening** (Copilot review): `completions` generated from Click so it
   works under `python -m solx`; `config edit` shlex-splits `$EDITOR`; an
   unreadable config surfaces a clean error; `keep` validates `--csv-dir`.
