@@ -1,6 +1,6 @@
 [project]
 name = "solx"
-version = "0.3.1"
+version = "0.3.2"
 description = "CLI for ASU's Sol supercomputer."
 readme = "README.md"
 requires-python = ">=3.11"
