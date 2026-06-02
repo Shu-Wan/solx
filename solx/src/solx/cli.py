@@ -12,7 +12,8 @@ Surface (see docs/solx.md):
     solx config show [--json]
     solx config edit
     solx completions <bash|zsh|fish>
-    solx --version
+    solx version   (alias of --version)
+    solx help      (alias of --help)
 
 Global output flag: `--json` forces JSON; by default output auto-detects
 (Rich tables on a terminal, JSON when stdout is not a TTY). See `solx.output`.
@@ -434,6 +435,20 @@ def completions_cmd(
         raise typer.Exit(code=2)
     completer = comp_cls(get_command(app), {}, "solx", "_SOLX_COMPLETE")
     typer.echo(completer.source())
+
+
+# --- meta: version / help -------------------------------------------------
+
+
+@app.command("version", help="Show version and exit (alias of --version).")
+def version_cmd() -> None:
+    typer.echo(__version__)
+
+
+@app.command("help", help="Show help and exit (alias of --help).")
+def help_cmd(ctx: typer.Context) -> None:
+    # The root group's help, matching `solx --help`.
+    typer.echo((ctx.parent or ctx).get_help())
 
 
 # --- helpers --------------------------------------------------------------

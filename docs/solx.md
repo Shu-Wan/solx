@@ -31,7 +31,8 @@ solx init        # writes ~/.config/solx/config.toml
 | `solx keep` | Renew `/scratch` files Sol flagged for deletion. |
 | `solx config show` / `edit` | Show or edit your config. |
 | `solx completions <bash\|zsh\|fish>` | Print a shell-completion script. |
-| `solx --version` / `--help` | — |
+| `solx version` (alias `--version`) | Print the version. |
+| `solx help` (alias `--help`) | Show help. |
 
 `job` is also spelled `jobs`, `list` is also `ls`, and `solx jump` is short
 for `solx job jump`.

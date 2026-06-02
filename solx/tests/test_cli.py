@@ -46,6 +46,23 @@ def test_help_lists_commands(runner: CliRunner) -> None:
         assert cmd in res.stdout
 
 
+def test_version_subcommand_aliases_flag(runner: CliRunner) -> None:
+    """`solx version` matches `solx --version`."""
+    from solx import __version__
+
+    res = runner.invoke(cli.app, ["version"])
+    assert res.exit_code == 0
+    assert __version__ in res.stdout
+
+
+def test_help_subcommand_aliases_flag(runner: CliRunner) -> None:
+    """`solx help` shows the root help, same as `solx --help`."""
+    res = runner.invoke(cli.app, ["help"])
+    assert res.exit_code == 0
+    for cmd in ("init", "keep", "job", "config", "completions"):
+        assert cmd in res.stdout
+
+
 # ---- alias coverage -----------------------------------------------------
 
 
