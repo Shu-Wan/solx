@@ -21,6 +21,18 @@ tag for that release.
 - `README.md`: agent-skill install section reduced to the common
   `gh skill install` one-liner (any agentskills.io-spec installer works).
 
+### solx 0.3.4 — zsh completions work installed on fpath (#26)
+
+- `solx completions zsh` now ends with Click's dual-mode footer instead
+  of Typer's bare `compdef`: installed on `fpath`
+  (`solx completions zsh > ~/.zfunc/_solx`), the autoloaded script
+  *calls* the completer, so the first Tab of a session completes instead
+  of returning nothing. The eval/source install keeps working unchanged;
+  if Typer's template ever stops matching, the script is emitted
+  unmodified. bash/fish output untouched.
+- Docs (`solx/README.md`, `docs/solx.md`): both zsh install modes, with
+  the fpath two-liner as the recommended one.
+
 ### solx 0.3.3 — cold-start latency, single-line help aliases, zipapp scripts
 
 - **Cold-start latency on Sol's NFS home** (where every module import is

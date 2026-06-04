@@ -52,6 +52,44 @@ solx job stop              # cancel it when you're done
 
 ---
 
+## Shell completion
+
+`solx completions <shell>` prints a completion script for bash, zsh, or
+fish. For zsh there are two ways to install it, and the emitted script
+supports both:
+
+**Recommended — on `fpath` (one-time, position-independent):**
+
+```zsh
+mkdir -p ~/.zfunc                      # any dir on fpath before compinit
+solx completions zsh > ~/.zfunc/_solx
+```
+
+If `~/.zfunc` isn't on your `fpath` yet, add `fpath=(~/.zfunc $fpath)`
+*before* the `compinit` call in your `.zshrc`. compinit then autoloads
+`_solx` on the first Tab. This is the only mode that works when your
+machine-local config is sourced before compinit runs (common with plugin
+managers like antidote, zinit, or zim).
+
+**Alternative — eval at startup:**
+
+```zsh
+eval "$(solx completions zsh)"         # must run *after* compinit
+```
+
+Same result, but it runs `solx` on every shell startup and fails with
+`command not found: compdef` if placed before compinit.
+
+bash and fish are single-mode; drop the script where the shell's
+completion loader looks:
+
+```shell
+solx completions bash > ~/.local/share/bash-completion/completions/solx
+solx completions fish > ~/.config/fish/completions/solx.fish
+```
+
+---
+
 ## Configuration
 
 `solx` reads one file: `~/.config/solx/config.toml` (or

@@ -36,6 +36,29 @@ If `uv` isn't on your `$PATH` yet, install it from
 is older than what `solx` needs (Python ≥ 3.11); `uv tool install`
 provisions its own interpreter, so you don't have to manage one.
 
+### Shell completion
+
+zsh — recommended: install on `fpath`, one-time. Works no matter where
+in your `.zshrc` it lands relative to `compinit`:
+
+```zsh
+mkdir -p ~/.zfunc                      # any dir on fpath before compinit
+solx completions zsh > ~/.zfunc/_solx
+```
+
+(If `~/.zfunc` is new, add `fpath=(~/.zfunc $fpath)` before the
+`compinit` call in your `.zshrc`.) Alternatively, anywhere *after*
+compinit has run you can `eval "$(solx completions zsh)"` — same result,
+but it adds a `solx` exec to every shell startup and dies with
+`command not found: compdef` if eval'd before compinit.
+
+bash and fish:
+
+```shell
+solx completions bash > ~/.local/share/bash-completion/completions/solx
+solx completions fish > ~/.config/fish/completions/solx.fish
+```
+
 ## Quick start
 
 ```shell

@@ -447,6 +447,7 @@ def test_completions_bash_emits_script(runner: CliRunner) -> None:
     assert res.exit_code == 0
     assert "_SOLX_COMPLETE" in res.stdout  # the env var the script wires up
     assert "solx" in res.stdout
+    assert "loadautofunc" not in res.stdout  # zsh-only post-processing
 
 
 def test_completions_zsh_emits_script(runner: CliRunner) -> None:
@@ -456,6 +457,30 @@ def test_completions_zsh_emits_script(runner: CliRunner) -> None:
     assert "#compdef solx" in res.stdout
     assert "_SOLX_COMPLETE=complete_zsh" in res.stdout
     assert "_TYPER_COMPLETE_ARGS" in res.stdout
+
+
+def test_completions_zsh_dual_mode_footer(runner: CliRunner) -> None:
+    """The zsh script supports both install modes: autoloaded from fpath
+    (the `loadautofunc` branch calls the completer, so the first Tab of a
+    session completes) and eval/source (compdef registers it)."""
+    res = runner.invoke(cli.app, ["completions", "zsh"])
+    assert res.exit_code == 0
+    assert "loadautofunc" in res.stdout
+    assert '_solx_completion "$@"' in res.stdout
+    # the compdef only survives inside the else-branch (indented) — a bare
+    # column-0 compdef would make the script eval-only again
+    assert "compdef _solx_completion solx" not in res.stdout.splitlines()
+    assert res.stdout.rstrip().endswith("fi")
+
+
+def test_zsh_dual_mode_fallback_unmodified() -> None:
+    """A script without the expected trailing compdef (Typer template
+    changed) passes through untouched instead of being mangled."""
+    for script in (
+        "#compdef solx\n_new_typer_footer solx",  # no compdef line at all
+        "compdef _solx_completion solx\nmore lines after",  # not trailing
+    ):
+        assert cli._zsh_dual_mode(script) == script
 
 
 def test_runtime_completion_dispatch_resolves_shell(monkeypatch, capsys) -> None:
