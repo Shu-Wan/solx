@@ -12,9 +12,13 @@ import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-import pathspec
+# pathspec is imported where the [keep] specs are compiled (not here) so that
+# importing this module stays cheap on NFS; most commands load config without
+# ever touching keep rules.
+if TYPE_CHECKING:
+    import pathspec
 
 
 CONFIG_FILENAME = "config.toml"
@@ -155,6 +159,8 @@ def _parse_keep(body: object, source: str) -> KeepRules | None:
         return None
     if not isinstance(body, dict):
         raise ConfigError(f"{source}: [keep] must be a table")
+    import pathspec
+
     include = _optional_str_list(body, "include", f"{source}:[keep]")
     exclude = _optional_str_list(body, "exclude", f"{source}:[keep]")
     if not include:
@@ -187,6 +193,8 @@ def load_solkeep(path: Path) -> KeepRules | None:
         lines = path.read_text().splitlines()
     except OSError:
         return None
+    import pathspec
+
     effective = [ln for ln in lines if ln.strip() and not ln.strip().startswith("#")]
     if not effective:
         return None

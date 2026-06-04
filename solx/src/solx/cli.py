@@ -21,23 +21,23 @@ Global output flag: `--json` forces JSON; by default output auto-detects
 from __future__ import annotations
 
 import os
-import shlex
-import shutil
-import subprocess
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import TYPE_CHECKING, Annotated, Optional
 
 import typer
 
 from solx import __version__
-from solx import config as cfg
-from solx import init as init_mod
-from solx import jobs as jobs_mod
-from solx import keep as keep_mod
-from solx import output
-from solx.config import ConfigError
-from solx.output import Out
 from solx.side import require_sol
+
+if TYPE_CHECKING:
+    from solx import output
+    from solx.output import Out
+
+# solx's home lives on NFS, where every module import is a network round-trip,
+# so a cold `solx --version` pays for whatever this module pulls in. Command
+# implementations (and their rich/pathspec dependency trees) are therefore
+# imported inside the command bodies, not here — only typer and the cheap
+# `solx.side` check load up front.
 
 
 # --- root + groups --------------------------------------------------------
@@ -63,12 +63,13 @@ except ImportError:  # Typer internals shifted under an unpinned upgrade
 
 job_app = typer.Typer(
     name="job",
-    help="Manage interactive Slurm jobs on Sol.",
+    help="Manage interactive Slurm jobs on Sol (alias: jobs).",
     no_args_is_help=True,
 )
-# Both `job` and `jobs` reach the same subgroup.
+# Both `job` and `jobs` reach the same subgroup; only `job` is listed in
+# --help (one line per command, aliases noted inline).
 app.add_typer(job_app, name="job")
-app.add_typer(job_app, name="jobs")
+app.add_typer(job_app, name="jobs", hidden=True)
 
 config_app = typer.Typer(
     name="config",
@@ -84,6 +85,8 @@ _FORCE: Optional[output.Force] = None
 
 def _out() -> Out:
     """Build the resolved output target for a command body."""
+    from solx.output import Out
+
     return Out.auto(force=_FORCE)
 
 
@@ -133,6 +136,8 @@ def init_cmd(
     ] = False,
 ) -> None:
     require_sol()
+    from solx import init as init_mod
+
     # Auto-import an existing ~/.solkeep into the new config's [keep] block.
     raise typer.Exit(
         code=init_mod.cmd_init(force=force, solkeep=Path.home() / ".solkeep", out=_out())
@@ -180,6 +185,9 @@ def keep_cmd(
     ] = False,
 ) -> None:
     require_sol()
+    from solx import config as cfg
+    from solx import keep as keep_mod
+
     out = _out()
     valid_stages = {"all", *keep_mod.STAGE_ORDER}
     if stage not in valid_stages:
@@ -222,6 +230,8 @@ def jump_cmd(
     ] = False,
 ) -> None:
     require_sol()
+    from solx import jobs as jobs_mod
+
     out = _out()
     config = _load_or_exit(out)
     raise typer.Exit(code=jobs_mod.cmd_jump(config=config, jobid_arg=jobid, quiet=quiet, out=out))
@@ -233,12 +243,16 @@ def jump_cmd(
 @job_app.command("list", help="Print my Sol jobs.")
 def job_list_cmd() -> None:
     require_sol()
+    from solx import jobs as jobs_mod
+
     raise typer.Exit(code=jobs_mod.cmd_list(out=_out()))
 
 
 @job_app.command("ls", help="Alias for `solx job list`.", hidden=True)
 def job_ls_cmd() -> None:
     require_sol()
+    from solx import jobs as jobs_mod
+
     raise typer.Exit(code=jobs_mod.cmd_list(out=_out()))
 
 
@@ -263,6 +277,10 @@ def job_start_cmd(
     ] = None,
 ) -> None:
     require_sol()
+    from solx import config as cfg
+    from solx import jobs as jobs_mod
+    from solx.config import ConfigError
+
     out = _out()
     config = _load_or_exit(out)
     timeout_seconds: Optional[int] = None
@@ -300,6 +318,8 @@ def job_stop_cmd(
     ] = False,
 ) -> None:
     require_sol()
+    from solx import jobs as jobs_mod
+
     raise typer.Exit(
         code=jobs_mod.cmd_stop(jobid_arg=jobid, yes=yes, dry_run=dry_run, out=_out())
     )
@@ -317,6 +337,8 @@ def job_jump_cmd(
     ] = False,
 ) -> None:
     require_sol()
+    from solx import jobs as jobs_mod
+
     out = _out()
     config = _load_or_exit(out)
     raise typer.Exit(code=jobs_mod.cmd_jump(config=config, jobid_arg=jobid, quiet=quiet, out=out))
@@ -330,6 +352,8 @@ def job_time_cmd(
     ] = None,
 ) -> None:
     require_sol()
+    from solx import jobs as jobs_mod
+
     raise typer.Exit(code=jobs_mod.cmd_time(jobid_arg=jobid, out=_out()))
 
 
@@ -403,6 +427,12 @@ def config_show_cmd(
 @config_app.command("edit", help="Open the config in $EDITOR.")
 def config_edit_cmd() -> None:
     require_sol()
+    import shlex
+    import shutil
+    import subprocess
+
+    from solx import config as cfg
+
     p = cfg.config_path()
     if not p.exists():
         typer.echo(f"no config at {p}. run `solx init` first.", err=True)
@@ -470,6 +500,9 @@ def help_cmd(ctx: typer.Context) -> None:
 
 
 def _load_or_exit(out: Out | None = None):
+    from solx import config as cfg
+    from solx.config import ConfigError
+
     try:
         return cfg.load()
     except ConfigError as e:
