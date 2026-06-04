@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 
 from solx import config as cfg
-from solx.config import Config, ConfigError, JobTemplate
+from solx.config import ConfigError
 from tests.conftest import SAMPLE_CONFIG_TOML
 
 

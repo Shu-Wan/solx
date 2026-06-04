@@ -19,7 +19,7 @@ from rich.table import Table
 from solx import slurm
 from solx.config import Config, ConfigError
 from solx.output import Out
-from solx.slurm import Job, Resolution, SlurmError
+from solx.slurm import Job, SlurmError
 
 
 # --- shared rendering -----------------------------------------------------

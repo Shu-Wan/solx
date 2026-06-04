@@ -12,7 +12,7 @@ import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 # pathspec is imported where the [keep] specs are compiled (not here) so that
 # importing this module stays cheap on NFS; most commands load config without
