@@ -7,12 +7,14 @@ so the suite passes off-Sol.
 """
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from solx import cli
+from solx import config as cfg
 from solx import side
 
 
@@ -298,7 +300,7 @@ def test_keep_solkeep_flag_and_missing_config(runner: CliRunner, monkeypatch, tm
     from solx import keep as keep_mod
 
     monkeypatch.setattr(keep_mod, "cmd_keep", lambda **kw: captured.append(kw) or 0)
-    monkeypatch.setattr(cli.cfg, "config_path", lambda: tmp_path / "absent.toml")
+    monkeypatch.setattr(cfg, "config_path", lambda: tmp_path / "absent.toml")
     res = runner.invoke(cli.app, ["keep", "--solkeep", "/tmp/mk", "-y"])
     assert res.exit_code == 0
     assert str(captured[0]["solkeep"]) == "/tmp/mk"
@@ -426,7 +428,7 @@ def test_config_show_json(runner: CliRunner, monkeypatch) -> None:
 
 
 def test_config_edit_no_config(runner: CliRunner, monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(cli.cfg, "config_path", lambda: tmp_path / "absent.toml")
+    monkeypatch.setattr(cfg, "config_path", lambda: tmp_path / "absent.toml")
     res = runner.invoke(cli.app, ["config", "edit"])
     assert res.exit_code == 2
 
@@ -479,7 +481,7 @@ def test_config_edit_splits_editor_flags(runner: CliRunner, monkeypatch, tmp_pat
     """$EDITOR with flags (e.g. `code --wait`) is split into argv, not one binary."""
     cfgfile = tmp_path / "config.toml"
     cfgfile.write_text("default_shell = 'bash'\n")
-    monkeypatch.setattr(cli.cfg, "config_path", lambda: cfgfile)
+    monkeypatch.setattr(cfg, "config_path", lambda: cfgfile)
     monkeypatch.setenv("EDITOR", "myed --wait")
     captured: dict = {}
 
@@ -487,7 +489,7 @@ def test_config_edit_splits_editor_flags(runner: CliRunner, monkeypatch, tmp_pat
         captured["argv"] = argv
         return 0
 
-    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    monkeypatch.setattr(subprocess, "call", fake_call)
     res = runner.invoke(cli.app, ["config", "edit"])
     assert res.exit_code == 0
     assert captured["argv"] == ["myed", "--wait", str(cfgfile)]

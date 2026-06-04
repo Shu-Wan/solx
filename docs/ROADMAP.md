@@ -39,7 +39,7 @@ greenlit it.
 |---|---|---|
 | 1 — Skill manual-SSH path | Shipped in v0.2.0 (see CHANGELOG). | ✅ shipped |
 | 2 — `solx` CLI (Sol-only) | `solx/` package, installable on Sol via `uv tool install`. Covers daily Sol use: jobs, interactive allocation, scratch renewal, config. Shipped as solx v0.3.0 (agent-friendly output, verb-aware job-id resolution, sharded `keep`). Behavior: [`solx.md`](solx.md). | ✅ shipped |
-| 3 — Skill ↔ `solx` integration | Skill detects `solx` and teaches the CLI flow alongside the manual fallback. **Deferred until Stage 2 is mature and the user gives the greenlight.** See [`stage-3-integration.md`](stage-3-integration.md). | ⚪ deferred |
+| 3 — Skill ↔ `solx` integration + distribution | Skill detects `solx` and teaches the CLI flow alongside the manual fallback; `solx` gains a single-file install channel; the two version lines reconcile. Ships as **v0.4.0**. Scope below. | ⚪ planned |
 
 ## Design principles
 
@@ -127,6 +127,61 @@ specific laptop-side design.
   in the eventual surface, **not implemented in Stage 2**. They
   return with Stage 3.
 
+## Stage 3 scope (v0.4.0)
+
+Stage 3 is the v0.4.0 release. Work begins only when Stage 2 has
+matured through real Sol use, the command surface is stable, and the
+user greenlights it. Three tracks ship together.
+
+### Skill ↔ CLI integration
+
+- `skills/sol-skill/references/solx.md` — reference doc teaching the
+  agent the `solx`-driven workflow (`init`, `job
+  list/start/jump/time/stop`, `keep`), including the `-y`/`-n`
+  confirmation contract for destructive ops.
+- `skills/sol-skill/SKILL.md` — a `command -v solx` detection branch
+  so the agent prefers `solx` when present and falls back to the
+  manual flow (`sessions.md`, `sol_renew.py`) when not. The manual
+  branch never goes away.
+- `scripts/sol_renew.py` is kept — the zero-install renewal flow
+  remains viable without `solx`.
+- `docs/coverage.md` rows for the detection-branch behaviors; skill
+  version bump in `CHANGELOG.md`.
+
+### Distribution — the `.pyz` channel
+
+Sol's NFS home makes a venv install pay one network round-trip per
+module file, so cold starts are slow (measured: 4.4s for
+`solx --version` from the uv tool venv). A single-file zipapp cuts
+that to one file open (1.6s cold / 0.12s warm). The build and install
+scripts live in `solx/scripts/` (`build-pyz.sh`, `install.sh`);
+v0.4.0 publishes the artifacts:
+
+- Attach `solx.pyz` + `install.sh` to the GitHub Release.
+  `curl -fsSL …/releases/latest/download/install.sh | sh` becomes the
+  recommended install on Sol — it is also the upgrade command.
+  `uv tool install` stays as the package-manager path for generic
+  installs.
+- `solx self update` — channel-aware: running from the `.pyz` it
+  replaces its own file with the latest release artifact; running
+  from a uv-managed venv it prints `uv tool upgrade solx` and exits 2
+  rather than cross-grading the install.
+- README install sections (root + `solx/`) lead with the channel that
+  fits each audience.
+
+### Versioning reconciliation
+
+`solx` versions independently of the skill today (repo tags track the
+skill). The release that carries the `.pyz` artifact must correspond
+to the `solx` version users download, so v0.4.0 reconciles the two
+lines (per-solx tag prefix or a unified version — decided then).
+
+### Out of scope (still)
+
+- Laptop-side `solx` (`up/down/forward/info`, ssh-chain construction)
+  — deferred for a separate design discussion.
+- PyPI publication.
+
 ## What ships when
 
 - **Stage 2 (shipped, solx v0.3.0)** — the `solx/` package: Sol-only CLI
@@ -136,4 +191,7 @@ specific laptop-side design.
   [`../solx/DEVELOPMENT.md`](../solx/DEVELOPMENT.md). Skill files untouched.
   (The pre-implementation contract `stage-2-solx.md` has been retired now
   that `solx.md` is the living manual.)
-- **Stage 3+** — skill ↔ `solx` integration, only after the user greenlights.
+- **Stage 3 (planned, v0.4.0)** — skill ↔ `solx` integration, the
+  `.pyz` distribution channel, and versioning reconciliation; see
+  [Stage 3 scope](#stage-3-scope-v040). Starts only after the user
+  greenlights.

@@ -2,7 +2,7 @@
 
 Working name: **`solx`** — tentative, may change before public release.
 
-The CLI described in [PLAN.md](PLAN.md) needs a name that is short, easy to
+The CLI described in [ROADMAP.md](ROADMAP.md) needs a name that is short, easy to
 type, unambiguous at the shell prompt, and not already taken on PyPI / GitHub /
 Homebrew. Candidates are listed here so the decision is explicit and
 revisitable; nothing below is final.
@@ -26,7 +26,7 @@ revisitable; nothing below is final.
 - **Sol etymology.** Latin/Greek roots tied to the sun — the CLI is a
   *companion* to Sol, so companion-of-sun words fit well (e.g., *aura*,
   *lumen*, *solis*, *vesper*).
-- **Subcommand-friendly.** Reads naturally with the subcommands PLAN.md
+- **Subcommand-friendly.** Reads naturally with the subcommands ROADMAP.md
   introduces: `<name> up`, `<name> down`, `<name> session start`,
   `<name> doctor`, `<name> init`.
 - **Pronounceable.** Says cleanly out loud when explaining the tool in a

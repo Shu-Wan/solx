@@ -3,8 +3,8 @@
 Contributor + maintainer guide for the `solx` CLI. End-user docs live
 in [`README.md`](README.md). The Sol-skill agent skill at
 `../skills/sol-skill/` is intentionally untouched by `solx` work in
-this stage; that integration is Stage 3 (deferred — see
-[`../docs/stage-3-integration.md`](../docs/stage-3-integration.md)).
+this stage; that integration is Stage 3, planned for v0.4.0 — see
+[`../docs/ROADMAP.md`](../docs/ROADMAP.md).
 
 ## Architecture
 
@@ -263,7 +263,7 @@ a tag:
 
 - The user-facing behavior of `solx` lives in the manual
   [`../docs/solx.md`](../docs/solx.md); the roadmap and design decisions are
-  in [`../docs/PLAN.md`](../docs/PLAN.md). When code and docs disagree, raise
+  in [`../docs/ROADMAP.md`](../docs/ROADMAP.md). When code and docs disagree, raise
   it — usually the code is right and the doc needs an update, but check.
 - The agent skill at `../skills/sol-skill/` is hands-off in this
   stage. Don't add `solx` references there; that's Stage 3.

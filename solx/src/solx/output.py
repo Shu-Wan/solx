@@ -21,9 +21,12 @@ from __future__ import annotations
 import json as _json
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from rich.console import Console
+# rich is imported inside `Out.auto` (not here) so that importing this module
+# stays cheap on NFS-homed installs.
+if TYPE_CHECKING:
+    from rich.console import Console
 
 
 # Output mode override. The CLI sets "json" via the global --json flag; None
@@ -63,6 +66,8 @@ class Out:
         CLI passes `"json"` (global `--json`) or `None`. ``interactive``
         defaults to whether **stdin** is a TTY.
         """
+        from rich.console import Console
+
         so = stdout or Console()
         se = stderr or Console(stderr=True)
         if force == "json":

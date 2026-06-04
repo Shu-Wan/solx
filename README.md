@@ -87,7 +87,7 @@ sol-skills/
 ├── README.md                    # You are here
 ├── DEVELOPMENT.md               # Contributor guide + eval harness internals
 ├── docs/
-│   ├── PLAN.md                  # roadmap (in development)
+│   ├── ROADMAP.md               # roadmap
 │   ├── solx.md                  # solx user manual
 │   ├── name.md
 │   └── coverage.md              # Public test methodology + coverage matrix
@@ -232,60 +232,13 @@ jobs, and how to use `sol_renew.py` to keep scratch data alive.
 
 ### Install
 
-Pick whichever installer you already use. Both read the same
-`skills/sol-skill/SKILL.md` and install it into the target agent's skill
-directory.
-
-#### Option A — GitHub CLI (`gh skill`)
-
-Requires [GitHub CLI](https://cli.github.com/) **≥ 2.90.0** (which
-introduces the preview `gh skill` command).
-
 ```shell
-# Claude Code, available in every project (recommended)
-gh skill install Shu-Wan/sol-skills sol-skill --agent claude-code --scope user
-
-# Or scope to the current repo only
-gh skill install Shu-Wan/sol-skills sol-skill --agent claude-code --scope project
-
-# Other supported agents: github-copilot, cursor, codex, gemini, antigravity
-gh skill install Shu-Wan/sol-skills sol-skill --agent github-copilot --scope user
-
-# Preview before installing
-gh skill preview Shu-Wan/sol-skills sol-skill
-
-# Pin to a specific release
-gh skill install Shu-Wan/sol-skills sol-skill@v0.3.0 --agent claude-code --scope user
-
-# Upgrade later
-gh skill update --all
+npx skills add Shu-Wan/sol-skills -g
 ```
 
-Run `gh skill install --help` for the full flag list.
-
-#### Option B — Vercel Skills CLI (`skills`)
-
-Requires the
-[`skills`](https://github.com/vercel-labs/agent-skills) CLI
-(`npm i -g @vercel/skills` or via `pnpm`/`npx`).
-
-```shell
-# Global install into your default agent (prompts for scope)
-skills add Shu-Wan/sol-skills -g
-
-# Non-interactive: install sol-skill globally into Claude Code
-skills add Shu-Wan/sol-skills -s sol-skill -a claude-code -g -y
-
-# List without installing
-skills add Shu-Wan/sol-skills --list
-
-# Update later
-skills update -g
-```
-
-Run `skills --help` for the full flag list. See the
-[Agent Skills specification](https://agentskills.io/specification) for
-how skills are discovered and installed.
+Any installer following the
+[Agent Skills specification](https://agentskills.io/specification) works the
+same way — e.g. GitHub CLI's `gh skill install Shu-Wan/sol-skills sol-skill`.
 
 ## References
 

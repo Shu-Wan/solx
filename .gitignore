@@ -26,3 +26,7 @@ evals/mocks/home/.lmod.d/
 evals/mocks/home/.bash_history
 evals/mocks/home/.zsh_history
 evals/mocks/.module_loaded
+
+# Zipapp build tree and artifacts (solx/scripts/build-pyz.sh)
+solx/build/
+solx/dist/
