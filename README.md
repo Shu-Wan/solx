@@ -232,16 +232,13 @@ jobs, and how to use `sol_renew.py` to keep scratch data alive.
 
 ### Install
 
-With the [GitHub CLI](https://cli.github.com/) (≥ 2.90.0):
-
 ```shell
-gh skill install Shu-Wan/sol-skills sol-skill --agent claude-code --scope user
+npx skills add Shu-Wan/sol-skills -g
 ```
 
-Swap `--agent` for `github-copilot`, `cursor`, `codex`, `gemini`, or
-`antigravity`; upgrade later with `gh skill update --all`. Any installer
-following the [Agent Skills specification](https://agentskills.io/specification)
-works the same way (e.g. Vercel's `skills add Shu-Wan/sol-skills -g`).
+Any installer following the
+[Agent Skills specification](https://agentskills.io/specification) works the
+same way — e.g. GitHub CLI's `gh skill install Shu-Wan/sol-skills sol-skill`.
 
 ## References
 
