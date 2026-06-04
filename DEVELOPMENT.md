@@ -12,7 +12,7 @@ sol-skill/
 ├── README.md                       # end-user entry point
 ├── DEVELOPMENT.md                  # you are here
 ├── docs/                           # working/helper docs (plans, public coverage)
-│   ├── PLAN.md                     # roadmap
+│   ├── ROADMAP.md                  # roadmap
 │   ├── name.md
 │   └── coverage.md                 # public methodology + coverage matrix
 ├── skills/sol-skill/               # the shipped skill (what users install)

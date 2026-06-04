@@ -13,13 +13,40 @@ tag for that release.
 
 (Changes since v0.3.0 land here. Move them under a new heading on release.)
 
-### solx (sub-package; version stays 0.3.0 until the skill↔CLI sync after Stage 3)
+### Changed
+
+- docs: `PLAN.md` → `ROADMAP.md`; the Stage 3 sub-plan
+  (`stage-3-integration.md`) is folded into the roadmap's
+  "Stage 3 scope (v0.4.0)" section — one roadmap document.
+- `README.md`: agent-skill install section reduced to the common
+  `gh skill install` one-liner (any agentskills.io-spec installer works).
+
+### solx 0.3.3 — cold-start latency, single-line help aliases, zipapp scripts
+
+- **Cold-start latency on Sol's NFS home** (where every module import is
+  a network round-trip): command implementations, `rich`, and `pathspec`
+  now load inside command bodies, so `solx --version`, `--help`, and each
+  tab-completion exec import ~150 modules (~780 metadata syscalls)
+  instead of ~280 (~1,400).
+- `--help` lists each command once: `jobs` is a hidden alias of `job`,
+  noted inline on the `job` line.
+- New `solx/scripts/build-pyz.sh` + `install.sh`: build and install
+  `solx` as a single-file zipapp (`.pyz`) with precompiled bytecode —
+  measured 1.6s cold / 0.12s warm vs 4.4s / 0.19s for the venv install
+  on Sol. Publishing the artifacts to GitHub Releases is Stage 3
+  (v0.4.0); see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+### solx 0.3.2 — runtime tab completion + `jump --overlap` (#23)
+
+### solx 0.3.1 — completions under Typer's vendored Click; `version`/`help` aliases (#22)
+
+### solx 0.3.0 (sub-package)
 
 The `solx/` CLI: agent-friendly output, verb-aware job-id resolution, and a
 file-level-sharded `keep` that also reads the skill's `~/.solkeep`. The skill
-(`skills/sol-skill/`) is untouched, and `solx` keeps version `0.3.0` while it
-accumulates here — the repo is skill-first until Stage 3, when the two
-versions will be reconciled.
+(`skills/sol-skill/`) is untouched, and `solx` versions independently while
+its changes accumulate here — the repo is skill-first until Stage 3 (v0.4.0),
+when the two version lines reconcile.
 
 - **Agent-friendly output** (issue #16 / [10 principles for agent-native
   CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis)): output
