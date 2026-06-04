@@ -446,6 +446,35 @@ def config_edit_cmd() -> None:
 
 # --- completions ----------------------------------------------------------
 
+# Click >= 8.x's dual-mode zsh footer. Typer renders its own older zsh
+# template that ends with a bare `compdef`, which only registers the
+# completer — fine when the script is eval'd/sourced after compinit, but
+# installed on fpath (`solx completions zsh > ~/.zfunc/_solx`) compinit
+# autoloads the file body *as* the completer, so the function must also be
+# called or the first Tab of a session produces nothing.
+_ZSH_BARE_COMPDEF = "compdef _solx_completion solx"
+_ZSH_DUAL_MODE_FOOTER = """\
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    # autoload from fpath, call function directly
+    _solx_completion "$@"
+else
+    # eval/source/. command, register function for later
+    compdef _solx_completion solx
+fi"""
+
+
+def _zsh_dual_mode(script: str) -> str:
+    """Swap the trailing bare ``compdef`` for the dual-mode footer.
+
+    If the script doesn't end with the expected line (a Typer upgrade
+    changed the template), return it unmodified — eval/source installs
+    keep working either way.
+    """
+    head, sep, tail = script.rpartition(_ZSH_BARE_COMPDEF)
+    if not sep or tail.strip():
+        return script
+    return head + _ZSH_DUAL_MODE_FOOTER + tail
+
 
 @app.command(
     "completions",
@@ -465,6 +494,11 @@ def completions_cmd(
     Typer's runtime completion handler regardless of how click is packaged.
     No re-exec, so it works under both the installed `solx` entry point and
     `python -m solx`.
+
+    The zsh script gets a dual-mode footer so both install modes work:
+    eval/source (compdef registers the completer) and fpath/autoload
+    (`solx completions zsh > ~/.zfunc/_solx`, where the autoloaded body
+    must call the completer itself).
     """
     shell = shell.lower()
     if shell not in {"bash", "zsh", "fish"}:
@@ -475,11 +509,12 @@ def completions_cmd(
     except ImportError as e:  # Typer internals shifted under an unpinned upgrade
         typer.echo(f"solx: completion unavailable with this Typer ({e}).", err=True)
         raise typer.Exit(code=1)
-    typer.echo(
-        get_completion_script(
-            prog_name="solx", complete_var="_SOLX_COMPLETE", shell=shell
-        )
+    script = get_completion_script(
+        prog_name="solx", complete_var="_SOLX_COMPLETE", shell=shell
     )
+    if shell == "zsh":
+        script = _zsh_dual_mode(script)
+    typer.echo(script)
 
 
 # --- meta: version / help -------------------------------------------------

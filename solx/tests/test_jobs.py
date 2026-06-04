@@ -7,7 +7,6 @@ import pytest
 from rich.console import Console
 
 from solx import jobs as jobs_mod
-from solx import slurm
 from solx.config import Config, JobTemplate
 from solx.output import Out
 
