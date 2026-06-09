@@ -46,7 +46,7 @@ STAGES_ALL = "all"
 # still reads it as a last-resort fallback, but the config [keep] block is the
 # supported home now; the implicit fallback and the .solkeep format lose support
 # in this release line.
-SOLKEEP_REMOVED_IN = "0.5.0"
+SOLKEEP_REMOVED_IN = "1.0.0"
 
 # Files per touch shard. Big enough that per-batch subprocess overhead is
 # negligible, small enough that one huge directory fans out into many batches
