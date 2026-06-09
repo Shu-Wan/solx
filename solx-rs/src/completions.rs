@@ -43,6 +43,6 @@ mod tests {
         assert!(ZSH.starts_with("#compdef"));
         // fpath/autoload installs need the dual-mode footer.
         assert!(ZSH.contains("loadautofunc"));
-        assert!(ZSH.contains("compdef _solx_completion solx"));
+        assert!(ZSH.contains("compdef _solx solx"));
     }
 }
