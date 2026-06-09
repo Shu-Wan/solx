@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Mock salloc: behaves like `salloc --no-shell` that gets a grant immediately.
+echo "salloc: Pending job allocation 54809999" >&2
+echo "salloc: Granted job allocation 54809999" >&2
+exit 0

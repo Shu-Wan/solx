@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Mock hostname: always reports a Sol compute-node FQDN so require_sol passes
+# deterministically regardless of which node the harness runs on.
+echo "scc041.sol.rc.asu.edu"
+exit 0
