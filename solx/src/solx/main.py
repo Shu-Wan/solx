@@ -23,21 +23,26 @@ after `job start`, a `--json` belongs to the salloc passthrough.
 """
 from __future__ import annotations
 
-import argparse
 import os
 import sys
-from pathlib import Path
-from typing import TYPE_CHECKING
 
 from solx import __version__
 
+# Recognized by type checkers like typing.TYPE_CHECKING, without importing
+# `typing` at runtime.
+TYPE_CHECKING = False
 if TYPE_CHECKING:
+    import argparse
+
     from solx.output import Out
 
 # solx's home lives on NFS, where every module import is a network round-trip,
-# so a cold `solx --version` pays for whatever this module pulls in. Only the
-# stdlib dispatch layer loads up front; command implementations (and their
-# rich/pathspec dependency trees) are imported inside the handlers below.
+# so every invocation pays for whatever this module pulls in. Importing this
+# module loads nothing beyond what the interpreter already has: argparse and
+# pathlib are imported when the parser tree is built (so the `--version` /
+# `version` fast path in `main()` skips them entirely), and command
+# implementations (with their rich/pathspec dependency trees) are imported
+# inside the handlers below.
 
 _JSON_HELP = "Force JSON output (machine-readable)."
 
@@ -79,6 +84,8 @@ def _load_or_exit(out: Out):
 
 def _cmd_init(ns: argparse.Namespace) -> None:
     _require_sol()
+    from pathlib import Path
+
     from solx import init as init_mod
 
     # Auto-import an existing ~/.solkeep into the new config's [keep] block.
@@ -374,6 +381,9 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     Every parser sets ``allow_abbrev=False``: option prefixes are never
     expanded (`--time` must not match `--timeout`).
     """
+    import argparse
+    from pathlib import Path
+
     parser = argparse.ArgumentParser(
         prog="solx",
         description="CLI for ASU's Sol supercomputer.",
