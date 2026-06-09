@@ -5,14 +5,14 @@ management (`solx job start/stop/jump/time/list`), scratch renewal
 (`solx keep`), and a single TOML config (`solx config`, `solx init`).
 
 The command surface, JSON output, diagnostics, and exit codes match the
-Python `solx` package in this repository (see `solx/docs/solx.md` for the
-full command reference). One binary, no interpreter or virtualenv on the
+Python `solx` package in this repository (see [`../docs/solx.md`](../docs/solx.md)
+for the full command reference). One binary, no interpreter or virtualenv on the
 critical path — a cold start from NFS home is a single exec.
 
 ## Build
 
-Requires stable Rust (pinned via `rust-toolchain.toml`; rustup installs it
-on first build).
+Requires stable Rust (`rust-toolchain.toml` selects the channel; rustup
+installs it on first build).
 
 ```console
 $ cd solx-rs
@@ -52,7 +52,7 @@ $ solx completions zsh > ~/.zfunc/_solx   # optional tab completion
 
 ## UX notes
 
-* Human tables are plain aligned columns; there is no color output yet.
+* Human tables are plain aligned columns; nothing emits color.
 * Confirmation prompts are plain `[y/N]` lines on stderr (TTY only;
   non-interactive sessions require `-y` or `-n`).
 * `solx completions` emits static scripts (no runtime completion callback
