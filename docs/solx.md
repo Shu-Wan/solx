@@ -1,11 +1,11 @@
 # ☀️ `solx` — user manual
 
 `solx` is a command-line tool for daily work on ASU's
-[Sol supercomputer](https://docs.rc.asu.edu/). You SSH to Sol yourself, then
-run `solx` from a login or compute node. It wraps the Slurm steps you repeat
-all day — list your jobs, request an interactive allocation, open a shell on
-the compute node, cancel, check remaining time — plus renewing `/scratch`
-files that Sol has flagged for deletion.
+[Sol supercomputer](https://docs.rc.asu.edu/). SSH to Sol, then run `solx` from
+a login or compute node. It wraps the Slurm steps you repeat all day — list
+your jobs, request an interactive allocation, open a shell on the compute node,
+cancel, check remaining time — plus renewing `/scratch` files that Sol has
+flagged for deletion.
 
 Install instructions are in [`solx/README.md`](../solx/README.md). The short
 version, on Sol:
@@ -59,38 +59,18 @@ solx job stop              # cancel it when you're done
 
 ## Shell completion
 
-`solx completions <shell>` prints a completion script for bash, zsh, or
-fish. For zsh there are two ways to install it, and the emitted script
-supports both:
-
-**Recommended — on `fpath` (one-time, position-independent):**
-
-```zsh
-mkdir -p ~/.zfunc                      # any dir on fpath before compinit
-solx completions zsh > ~/.zfunc/_solx
-```
-
-If `~/.zfunc` isn't on your `fpath` yet, add `fpath=(~/.zfunc $fpath)`
-*before* the `compinit` call in your `.zshrc`. compinit then autoloads
-`_solx` on the first Tab. This is the only mode that works when your
-machine-local config is sourced before compinit runs (common with plugin
-managers like antidote, zinit, or zim).
-
-**Alternative — eval at startup:**
-
-```zsh
-eval "$(solx completions zsh)"         # must run *after* compinit
-```
-
-Same result, but it runs `solx` on every shell startup and fails with
-`command not found: compdef` if placed before compinit.
-
-bash and fish are single-mode; drop the script where the shell's
-completion loader looks:
+`solx completions <shell>` prints a completion script for **bash**, **zsh**, or
+**fish**. Add it to your shell's startup file, then restart your shell:
 
 ```shell
-solx completions bash > ~/.local/share/bash-completion/completions/solx
-solx completions fish > ~/.config/fish/completions/solx.fish
+# bash — add to ~/.bashrc
+eval "$(solx completions bash)"
+
+# zsh — add to ~/.zshrc (after compinit)
+eval "$(solx completions zsh)"
+
+# fish — add to ~/.config/fish/config.fish
+solx completions fish | source
 ```
 
 ---
@@ -285,3 +265,42 @@ solx --json job list | jq '.[].job_id'
 `solx keep --json` summarizes the plan with counts and a short sample rather
 than printing thousands of paths; when the list is long, the complete plan is
 written to a temp file and its path is included in the output.
+
+---
+
+## Under the hood
+
+### `solx job start` — headless allocations
+
+Sol runs Slurm 25.x, which supports `salloc --no-shell` natively.
+`solx job start`:
+
+1. Builds the `salloc --no-shell -J solx-<template> -p <partition> -t <time> …`
+   argv from your template.
+2. Runs `salloc`, which **blocks until the queue grants the allocation** (no
+   polling needed).
+3. Parses the granted jobid from `salloc`'s stderr (`Granted job allocation N`).
+4. Returns. The allocation keeps running in the background as a "headless"
+   reservation — nothing consumes it until you attach.
+5. You attach with `solx job jump`, which execs
+   `srun --jobid=N --overlap --pty $default_shell` to drop you onto the node.
+
+If the queue stalls, `start_timeout` (CLI `--timeout` overrides) caps the wait
+so a stuck request surfaces instead of hanging forever.
+
+### `solx keep` — CSV ∩ keep-list
+
+Sol drops warning CSVs in `$HOME` as files age out
+(`scratch-dirs-pending-removal.csv`, `scratch-dirs-over-90days.csv`,
+`scratch-dirs-inactive.csv`). `solx keep`:
+
+1. Reads those CSVs from `--csv-dir` (default `$HOME`).
+2. Filters the flagged directories through your keep-list (`--solkeep` file >
+   the `[keep]` config block > `~/.solkeep`), compiled with `pathspec`
+   gitignore-style.
+3. Runs `touch -a -m -c` on the intersection — only directories that **both**
+   appear in a CSV **and** match the keep-list. It never walks `/scratch`
+   wholesale.
+
+So `solx keep` can't be used to keep arbitrary files alive on a cron — there's
+nothing to do until Sol drops a warning CSV.

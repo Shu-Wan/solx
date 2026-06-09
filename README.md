@@ -10,8 +10,7 @@ interactive jobs from templates, drop onto compute nodes, and keep `/scratch`
 files from being purged — without memorizing Slurm flags. Ships with an agent
 skill so an AI assistant can drive Sol for you.
 
-You SSH to Sol yourself, then run `solx` there — it shells out to Slurm and
-reads one config file. No laptop-side magic, no `~/.ssh/*` reads.
+SSH to Sol, then run `solx` from a login or compute node.
 
 ## Installation
 

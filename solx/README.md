@@ -7,9 +7,7 @@ jobs, request an interactive allocation, drop into a shell on the
 compute node, cancel, query remaining time, and renew `/scratch` files
 that Sol has flagged for deletion.
 
-You SSH to Sol manually first, then run `solx` from a login or compute
-node. Everything `solx` does is local to Sol — no laptop-side magic, no
-ssh-chain construction, no `~/.ssh/*` reads.
+SSH to Sol, then run `solx` from a login or compute node.
 
 ## Status
 
@@ -21,7 +19,7 @@ are at <https://docs.rc.asu.edu/>.
 ## Install
 
 `solx` provisions its own Python via [`uv`](https://docs.astral.sh/uv/)
-(Sol's system `python3` is older than the Python ≥ 3.11 `solx` needs).
+(Sol's system `python3` is older than the Python ≥ 3.10 `solx` needs).
 Install `uv` from [astral.sh/uv](https://docs.astral.sh/uv/) first if it
 isn't on your `$PATH`.
 
@@ -41,25 +39,18 @@ solx config show                 # sanity-check
 
 ### Shell completion
 
-zsh — recommended: install on `fpath`, one-time. Works no matter where
-in your `.zshrc` it lands relative to `compinit`:
-
-```zsh
-mkdir -p ~/.zfunc                      # any dir on fpath before compinit
-solx completions zsh > ~/.zfunc/_solx
-```
-
-(If `~/.zfunc` is new, add `fpath=(~/.zfunc $fpath)` before the
-`compinit` call in your `.zshrc`.) Alternatively, anywhere *after*
-compinit has run you can `eval "$(solx completions zsh)"` — same result,
-but it adds a `solx` exec to every shell startup and dies with
-`command not found: compdef` if eval'd before compinit.
-
-bash and fish:
+`solx completions <shell>` prints a completion script. Add it to your shell's
+startup file, then restart your shell:
 
 ```shell
-solx completions bash > ~/.local/share/bash-completion/completions/solx
-solx completions fish > ~/.config/fish/completions/solx.fish
+# bash — add to ~/.bashrc
+eval "$(solx completions bash)"
+
+# zsh — add to ~/.zshrc (after compinit)
+eval "$(solx completions zsh)"
+
+# fish — add to ~/.config/fish/config.fish
+solx completions fish | source
 ```
 
 ## Quick start
@@ -210,79 +201,13 @@ last-flag-wins lets the tail override template defaults for one run:
 solx job start gpu -- --mem=128G --time=8:00:00
 ```
 
-## How `solx job start` works under the hood
+## Under the hood
 
-Sol runs Slurm 25.x, which supports `salloc --no-shell` natively.
-`solx job start`:
-
-1. Builds the `salloc --no-shell -J solx-<template> -p <partition> -t
-   <time> ...` argv from your template.
-2. Runs salloc, which **blocks until the queue grants the allocation**
-   (no polling needed).
-3. Parses the granted jobid from salloc's stderr (`Granted job
-   allocation N`).
-4. Returns. The allocation continues running in the background as a
-   "headless" reservation — nothing is consuming it until you attach.
-5. You attach with `solx job jump`, which execs `srun --jobid=N --overlap
-   --pty $default_shell` to drop you onto the compute node.
-
-If the queue stalls, the `start_timeout` config (`--timeout` overrides)
-caps the wait so a stuck request surfaces instead of hanging forever.
-
-## How `solx keep` works under the hood
-
-Sol drops warning CSVs in your `$HOME` when files are aging
-out: `scratch-dirs-pending-removal.csv`,
-`scratch-dirs-over-90days.csv`, `scratch-dirs-inactive.csv`. `solx keep`:
-
-1. Reads those CSVs from `--csv-dir` (default `$HOME`).
-2. Filters the flagged directories through your keep-list (`--solkeep` file >
-   the `[keep]` config block > `~/.solkeep`), compiled with `pathspec`,
-   gitignore-style.
-3. Runs `touch -a -m -c` on the intersection — only directories that
-   **both** appear in a CSV and match the keep-list. Never walks
-   `/scratch` wholesale.
-
-`solx keep` cannot be used to bypass Sol's scratch-retention policy by
-keeping arbitrary files alive on a cron — there's nothing to do until Sol
-drops a warning CSV.
-
-Flag surface:
-
-- `--solkeep FILE` — use a specific gitignore-style keep-list (overrides
-  `[keep]`). Same format as the legacy `~/.solkeep`.
-- `--stage {pending,over90,inactive,all}` — limit to one CSV. Default `all`.
-- `--csv-dir DIR` — where Sol drops the CSVs. Default `$HOME`.
-- `-j N`, `--jobs N` — parallel touch workers. NFS is the bottleneck;
-  default is conservative.
-- `-n`, `--dry-run` — print plan, don't touch.
-- `-v`, `--verbose` — show the matched/skipped lists.
-
-`solx keep` still reads a `~/.solkeep` when no `[keep]` block is
-configured, but prints a deprecation notice — **support is removed in
-0.5.0**. Migrate an existing `~/.solkeep` with `solx config
-import-solkeep`.
-
-## Limitations
-
-- **One config, one machine.** `solx` is meant to be run on Sol after
-  manual SSH. Laptop-side composite commands (`solx up/down/forward`)
-  are intentionally absent — that design needs more thought before it
-  ships. Use the manual SSH chain for now.
-- **Interactive only.** `solx job start` is for interactive allocations
-  via `salloc --no-shell`. For real batch work, use `sbatch
-  your-script.sbatch` directly. `solx` deliberately doesn't try to
-  replace `sbatch`.
-- **No VSCode wrapper.** For VSCode on a compute node, `solx job jump`
-  there and run `code tunnel` directly. We don't wrap `vscode` because
-  it's a long-running interactive process that breaks the
-  `solx`-returns-then-you-attach model.
-- **Single-session model.** `solx`'s default-jobid resolution prefers a
-  single running job. If you have several allocations in flight at once
-  you'll see the disambiguation table — this is on purpose, but it
-  means heavy multi-job workflows aren't `solx`'s sweet spot.
-- **Sol-only.** Every subcommand exits 2 on a non-Sol host with a
-  redirect message. There's no `solx` value off-cluster.
+The headless-allocation model behind `solx job start` / `jump` and the
+CSV-∩-keep-list mechanism behind `solx keep` are documented in the manual:
+[`docs/solx.md`](../docs/solx.md#under-the-hood). A legacy `~/.solkeep` still
+works but is deprecated (support removed in 0.5.0) — migrate with
+`solx config import-solkeep`.
 
 ## Contributing / development
 

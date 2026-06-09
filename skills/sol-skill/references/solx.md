@@ -210,17 +210,16 @@ with `solx config edit` in that case). After migrating, `solx keep` uses
 
 ## Shell completion
 
-`solx completions <shell>` prints a completion script. For zsh, install
-on `fpath` (one-time, position-independent):
-
-```zsh
-mkdir -p ~/.zfunc                      # any dir on fpath before compinit
-solx completions zsh > ~/.zfunc/_solx  # add `fpath=(~/.zfunc $fpath)` before compinit if new
-```
-
-bash / fish:
+`solx completions <shell>` prints a completion script. Add it to the user's
+shell startup file:
 
 ```shell
-solx completions bash > ~/.local/share/bash-completion/completions/solx
-solx completions fish > ~/.config/fish/completions/solx.fish
+# bash — ~/.bashrc
+eval "$(solx completions bash)"
+
+# zsh — ~/.zshrc (after compinit)
+eval "$(solx completions zsh)"
+
+# fish — ~/.config/fish/config.fish
+solx completions fish | source
 ```
