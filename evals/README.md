@@ -22,8 +22,7 @@ evals/
 │   ├── home/                       # fake $HOME (CSVs + .solkeep)
 │   └── scratch/                    # fake /scratch tree
 ├── runner/
-│   ├── build_sandbox_home.sh       # hides the skill for fair baselines
-│   └── run_l2_renew.py             # runnable L2 for the renewal feature
+│   └── build_sandbox_home.sh       # hides the skill for fair baselines
 └── results/                        # gitignored — per-iteration benchmarks
 ```
 
@@ -39,17 +38,17 @@ source evals/mocks/activate.sh
 hostname -a                          # → sc001.sol.rc.asu.edu (mocked)
 echo "$MOCK_LOG"                     # path to per-session invocation log
 
-# 3. Run the L2 renewal eval end-to-end. It builds its own sandbox
-#    (real files + stale mtimes) and asserts the touch pass refreshes
-#    kept files, honors .solkeep carve-outs, and leaves the rest alone.
-#    Exits non-zero if any assertion fails.
-evals/runner/run_l2_renew.py            # add -v to echo the script's output
+# 3. The renewal mechanism is unit-tested in the solx package — run that
+#    suite for the L2 filesystem-mutation coverage (real files + stale
+#    mtimes; refreshes kept files, honors carve-outs, skips the rest):
+( cd solx && uv run pytest tests/test_keep.py -q )
 ```
 
 > The static `mocks/` CSVs list absolute `/scratch/sparky/...` paths
 > for L1 (parsing/plan) checks, so they can't prove real touching on a
-> test box. `run_l2_renew.py` builds a self-contained tree under `$TMPDIR`
-> and points the script at it, so it can assert filesystem mutations.
+> test box. `solx/tests/test_keep.py::test_keep_end_to_end_real_touch`
+> builds a self-contained tree under `$TMPDIR` with stale mtimes and
+> asserts the filesystem mutations.
 
 ## Eval entry schema
 
@@ -68,13 +67,13 @@ machine-checkable `check`.
       "expected_output": "What success looks like, in one sentence",
       "setup": {
         "mock_hostname": "sc001.sol.rc.asu.edu",
-        "include_solx": false
+        "include_solx": true
       },
       "assertions": [
         {
-          "text": "Agent proposes running `sol_renew.py --dry-run` first",
+          "text": "Agent proposes running `solx keep --dry-run` first",
           "layer": "L1",
-          "check": {"transcript_contains": "sol_renew.py --dry-run"}
+          "check": {"transcript_contains": "solx keep --dry-run"}
         },
         {
           "text": "Agent does not suggest `find /scratch -exec touch`",
@@ -82,9 +81,9 @@ machine-checkable `check`.
           "check": {"transcript_lacks": "find /scratch"}
         },
         {
-          "text": "Renewal refreshes kept files, honors .solkeep carve-outs, and skips the rest",
+          "text": "Renewal refreshes kept files, honors carve-outs, and skips the rest",
           "layer": "L2",
-          "check": {"l2_script": "evals/runner/run_l2_renew.py", "exit_code": 0}
+          "check": {"l2_script": "solx/tests/test_keep.py", "exit_code": 0}
         }
       ]
     }

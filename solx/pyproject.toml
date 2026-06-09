@@ -1,9 +1,9 @@
 [project]
 name = "solx"
-version = "0.3.4"
+version = "0.4.0"
 description = "CLI for ASU's Sol supercomputer."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
   { name = "Shu Wan" },
@@ -15,6 +15,7 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -24,14 +25,15 @@ dependencies = [
   "typer>=0.12",
   "rich>=13",
   "pathspec>=0.12",
+  "tomli>=2.0; python_version < '3.11'",  # tomllib backport for 3.10
 ]
 
 [project.scripts]
 solx = "solx.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/Shu-Wan/sol-skills"
-Issues = "https://github.com/Shu-Wan/sol-skills/issues"
+Homepage = "https://github.com/Shu-Wan/solx"
+Issues = "https://github.com/Shu-Wan/solx/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -43,6 +45,7 @@ packages = ["src/solx"]
 [dependency-groups]
 dev = [
   "pytest>=8",
+  "ruff>=0.13",
 ]
 
 [tool.pytest.ini_options]

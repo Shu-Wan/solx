@@ -28,10 +28,10 @@
       "id": 2,
       "name": "scratch-renewal-default-flow",
       "prompt": "I just got an email from Sol saying some of my scratch directories will be deleted soon. Help me extend the ones I still need.",
-      "expected_output": "Agent reads references/scratch.md, asks about (or inspects) .solkeep, runs sol_renew.py --dry-run first, never proposes a bulk find/touch.",
+      "expected_output": "Agent reads references/scratch.md, inspects the [keep] config (or migrates ~/.solkeep), runs solx keep --dry-run first, never proposes a bulk find/touch.",
       "setup": {
         "mock_hostname": "sc001.sol.rc.asu.edu",
-        "include_solx": false,
+        "include_solx": true,
         "fake_csvs": ["scratch-dirs-pending-removal.csv", "scratch-dirs-over-90days.csv"],
         "fake_solkeep": "evals/mocks/home/.solkeep"
       },
@@ -52,9 +52,9 @@
           "check": {"transcript_contains": "--dry-run"}
         },
         {
-          "text": "Renewal refreshes kept files, honors .solkeep carve-outs (.venv/__pycache__), and skips non-kept dirs",
+          "text": "Renewal refreshes kept files, honors keep-list carve-outs (.venv/__pycache__), and skips non-kept dirs",
           "layer": "L2",
-          "check": {"l2_script": "evals/runner/run_l2_renew.py", "exit_code": 0}
+          "check": {"l2_script": "solx/tests/test_keep.py", "exit_code": 0}
         }
       ]
     },
@@ -183,7 +183,7 @@
       "expected_output": "Agent recognizes that a large metadata-heavy touch pass shouldn't run on a throttled login node and routes it elsewhere — the DTN (ssh soldtn), a compute node via interactive, or a short htc job — while still previewing with --dry-run first and never bulk-touching /scratch.",
       "setup": {
         "mock_hostname": "sc001.sol.rc.asu.edu",
-        "include_solx": false,
+        "include_solx": true,
         "fake_csvs": ["scratch-dirs-inactive.csv"],
         "fake_solkeep": "evals/mocks/home/.solkeep"
       },

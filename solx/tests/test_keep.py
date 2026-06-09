@@ -243,13 +243,16 @@ def test_keep_explicit_solkeep(tmp_path: Path) -> None:
     solkeep = tmp_path / "mykeep"
     solkeep.write_text("/scratch/sparky/proj\n")  # bare path = dir + everything under
     touched: list[str] = []
+    out = make_out()
     code = keep_mod.cmd_keep(
         config=make_config(keep=None), csv_dir=tmp_path, stage="all", jobs_n=1,
-        yes=True, dry_run=False, verbose=False, out=make_out(), solkeep=solkeep,
+        yes=True, dry_run=False, verbose=False, out=out, solkeep=solkeep,
         execute_fn=recording_execute(touched),
     )
     assert code == 0
     assert touched == ["/scratch/sparky/proj/run"]
+    # An explicit --solkeep is a deliberate choice, not the deprecated fallback.
+    assert "deprecated" not in out.stderr.file.getvalue()
 
 
 def test_keep_explicit_solkeep_empty_exits_2(tmp_path: Path) -> None:
@@ -282,6 +285,40 @@ def test_keep_autodetects_home_solkeep(tmp_path: Path, monkeypatch) -> None:
     )
     assert code == 0
     assert touched == ["/scratch/sparky/proj/run"]  # negation carved out __pycache__
+
+
+def test_keep_solkeep_fallback_warns_deprecated(tmp_path: Path, monkeypatch) -> None:
+    """Falling back to ~/.solkeep emits a deprecation warning naming the cutoff."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".solkeep").write_text("/scratch/sparky/proj\n")
+    monkeypatch.setenv("HOME", str(home))
+    csvdir = tmp_path / "csv"
+    csvdir.mkdir()
+    write_csv(csvdir / "scratch-dirs-pending-removal.csv", ["/scratch/sparky/proj/run"])
+    out = make_out()
+    keep_mod.cmd_keep(
+        config=make_config(keep=None), csv_dir=csvdir, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=out,
+        execute_fn=recording_execute([]),
+    )
+    err = out.stderr.file.getvalue()
+    assert "deprecated" in err
+    assert keep_mod.SOLKEEP_REMOVED_IN in err
+    assert "import-solkeep" in err
+
+
+def test_keep_config_keep_emits_no_deprecation(tmp_path: Path) -> None:
+    """Using a config [keep] block (the supported path) warns about nothing."""
+    write_csv(tmp_path / "scratch-dirs-pending-removal.csv", ["/scratch/sparky/a"])
+    cfg = make_config(keep=make_keep(include=["/scratch/sparky/a"]))
+    out = make_out()
+    keep_mod.cmd_keep(
+        config=cfg, csv_dir=tmp_path, stage="all", jobs_n=1,
+        yes=True, dry_run=False, verbose=False, out=out,
+        execute_fn=recording_execute([]),
+    )
+    assert "deprecated" not in out.stderr.file.getvalue()
 
 
 def test_keep_config_precedence_over_solkeep(tmp_path: Path, monkeypatch) -> None:
@@ -501,7 +538,7 @@ def test_keep_json_plan_small_no_spill(tmp_path: Path) -> None:
     assert "full_plan_path" not in data
 
 
-# ---- end-to-end: real filesystem mutation (mirrors run_l2_renew.py) ------
+# ---- end-to-end: real filesystem mutation (real-touch over a real tree) --
 
 
 def test_keep_end_to_end_real_touch(tmp_path: Path) -> None:
@@ -511,7 +548,8 @@ def test_keep_end_to_end_real_touch(tmp_path: Path) -> None:
     Sol flags *leaf* directories, so the CSV lists leaves — never a parent
     that contains another flagged row. A kept dir is walked recursively, so a
     carve-out only protects a tree when it is its own flagged row (a sibling
-    leaf), mirroring evals/runner/run_l2_renew.py.
+    leaf). This is the L2 renewal coverage that the standalone renewal eval
+    used to provide.
     """
     scratch = tmp_path / "scratch"
     src = scratch / "proj" / "src"

@@ -10,9 +10,11 @@
 # writes a bytecode cache of its own. The .pyc format is interpreter-
 # specific, so the version here must match the shebang install.sh stamps:
 # both default to PYVER below and read SOLX_PYTHON to override together.
+# 3.11 is the floor with native tomllib (solx supports 3.10+ via the tomli
+# backport, but the artifact targets one interpreter).
 set -euo pipefail
 
-PYVER="${SOLX_PYTHON:-3.13}"
+PYVER="${SOLX_PYTHON:-3.11}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="$ROOT/build/pyz"
 
@@ -22,7 +24,15 @@ PY="$(uv python find "$PYVER")"
 rm -rf "$STAGE"
 mkdir -p "$STAGE" "$ROOT/dist"
 
-uv pip install --python "$PY" --target "$STAGE" --quiet "$ROOT"
+# Install the LOCKED dependency set so the shipped artifact matches the
+# environment CI tested (`uv run --frozen`), not whatever the resolver picks
+# today. `uv pip install "$ROOT"` re-resolves and can drift (e.g. typer
+# 0.25.1 in uv.lock vs a newer release). Export the locked deps, install those,
+# then add solx itself with --no-deps so nothing re-resolves.
+uv export --frozen --no-dev --no-emit-project --project "$ROOT" -o "$STAGE/requirements.txt"
+uv pip install --python "$PY" --target "$STAGE" --quiet -r "$STAGE/requirements.txt"
+uv pip install --python "$PY" --target "$STAGE" --quiet --no-deps "$ROOT"
+rm -f "$STAGE/requirements.txt"
 rm -rf "$STAGE/bin"  # entry-point scripts; the zipapp __main__ replaces them
 
 "$PY" -m compileall -b -q "$STAGE"

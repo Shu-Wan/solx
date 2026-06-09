@@ -11,6 +11,7 @@ Surface (see docs/solx.md):
     solx keep      [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]
     solx config show [--json]
     solx config edit
+    solx config import-solkeep   (migrate ~/.solkeep into [keep])
     solx completions <bash|zsh|fish>
     solx version   (alias of --version)
     solx help      (alias of --help)
@@ -442,6 +443,35 @@ def config_edit_cmd() -> None:
     editor = os.environ.get("EDITOR") or shutil.which("vi") or "nano"
     editor_argv = shlex.split(editor)
     raise typer.Exit(code=subprocess.call([*editor_argv, str(p)]))
+
+
+@config_app.command(
+    "import-solkeep",
+    help="Migrate a legacy ~/.solkeep keep-list into the config's \\[keep] block.",
+)
+def config_import_solkeep_cmd(
+    solkeep: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--solkeep",
+            help="Keep-list to import (default: ~/.solkeep).",
+        ),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Accept a lossy import (an order-dependent re-include that "
+            "the [keep] block can't preserve).",
+        ),
+    ] = False,
+) -> None:
+    require_sol()
+    from solx import init as init_mod
+
+    raise typer.Exit(
+        code=init_mod.cmd_import_solkeep(solkeep=solkeep, force=force, out=_out())
+    )
 
 
 # --- completions ----------------------------------------------------------

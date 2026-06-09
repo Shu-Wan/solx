@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import os
 import re
-import tomllib
 from dataclasses import dataclass, field
+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # Python 3.10 — backport
+    import tomli as tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -178,14 +182,14 @@ def _parse_keep(body: object, source: str) -> KeepRules | None:
 def load_solkeep(path: Path) -> KeepRules | None:
     """Load a gitignore-style `~/.solkeep` keep-list into `KeepRules`.
 
-    Same format and semantics as the skill's `sol_renew.py`: each line is a
-    keep pattern, `!` negates (carves a subtree out), `#`/blank lines are
-    ignored, a bare path matches that directory *and everything under it*, and
-    the last matching rule wins. `pathspec`'s `GitIgnoreSpec` implements those
-    semantics, so the whole file becomes a single keep matcher (with an empty
-    exclude). Returns None if the file is missing or has no effective rules —
-    so `solx keep` can fall through to its "nothing to match" handling, exactly
-    like `sol_renew.py` exiting when no rules load.
+    The legacy `~/.solkeep` format: each line is a keep pattern, `!` negates
+    (carves a subtree out), `#`/blank lines are ignored, a bare path matches
+    that directory *and everything under it*, and the last matching rule wins.
+    `pathspec`'s `GitIgnoreSpec` implements those semantics, so the whole file
+    becomes a single keep matcher (with an empty exclude). Returns None if the
+    file is missing or has no effective rules — so `solx keep` can fall through
+    to its "nothing to match" handling. `~/.solkeep` is a deprecated fallback
+    (see `keep.SOLKEEP_REMOVED_IN`); the supported home is the config `[keep]`.
     """
     if not path.exists():
         return None
@@ -273,12 +277,41 @@ def import_solkeep(path: Path) -> tuple[list[str], list[str]] | None:
         if not s or s.startswith("#"):
             continue
         if s.startswith("!"):
-            exclude.append(s[1:].strip())
+            carve = s[1:].strip()
+            if carve:  # a bare `!` carves nothing — drop it rather than emit ""
+                exclude.append(carve)
         else:
             include.append(s)
     if not include:  # a keep-list with no keep patterns is nothing to import
         return None
     return include, exclude
+
+
+def solkeep_is_order_sensitive(path: Path) -> bool:
+    """True if `path`'s rules can't be split into include/exclude faithfully.
+
+    `~/.solkeep` is gitignore *last-match-wins*; the config `[keep]` block is
+    `include AND NOT exclude` (see `KeepRules.matches`). The two agree only when
+    every `!` carve-out comes *after* the positive rules it carves. A positive
+    rule appearing *after* a `!` line is an order-dependent re-include that the
+    split into separate include/exclude lists silently drops — so
+    `solx config import-solkeep` warns when it detects one rather than quietly
+    keeping fewer directories.
+    """
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return False
+    seen_carve = False
+    for raw in lines:
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("!"):
+            seen_carve = True
+        elif seen_carve:
+            return True
+    return False
 
 
 def starter_config_text(
@@ -301,12 +334,46 @@ def starter_config_text(
 
 
 def _toml_str(s: str) -> str:
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """Render `s` as a TOML basic string, escaping every char TOML forbids.
+
+    Besides backslash and double-quote, control characters (other than tab) are
+    illegal in a TOML basic string and must be `\\uXXXX`-escaped — otherwise a
+    keep pattern carrying a stray control byte would render an unparseable
+    config. tab is emitted as `\\t`.
+    """
+    out = ['"']
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch < " " or ch == "\x7f":
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    out.append('"')
+    return "".join(out)
 
 
-def _render_keep_block(include: list[str], exclude: list[str]) -> str:
+def render_keep_block(
+    include: list[str], exclude: list[str], *, source: str = "~/.solkeep"
+) -> str:
+    """Public: render a `[keep]` TOML block from include/exclude pattern lists.
+
+    Used by `solx config import-solkeep` to append a migrated keep-list to an
+    existing config.toml. `source` names where the patterns came from, for the
+    provenance comment (the command passes the actual keep-list path).
+    """
+    return _render_keep_block(include, exclude, source=source)
+
+
+def _render_keep_block(
+    include: list[str], exclude: list[str], *, source: str = "~/.solkeep"
+) -> str:
     lines = [
-        "# [keep] imported from ~/.solkeep — directories `solx keep` renews",
+        f"# [keep] imported from {source} — directories `solx keep` renews",
         "# when Sol flags them. Patterns are gitignore-style (** for recursion).",
         "[keep]",
         "include = [",
@@ -319,7 +386,7 @@ def _render_keep_block(include: list[str], exclude: list[str]) -> str:
 
 
 _STARTER_CONFIG_BASE = """\
-# solx config — see https://github.com/Shu-Wan/sol-skills/blob/main/solx/README.md
+# solx config — see https://github.com/Shu-Wan/solx/blob/main/solx/README.md
 #
 # Used by `solx job jump` when dropping into a shell on a compute node.
 default_shell = "bash"
