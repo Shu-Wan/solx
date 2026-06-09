@@ -86,5 +86,5 @@ command tells you and asks you to confirm with `-f`. Compare
 
 ---
 
-Full command reference: [solx.md](solx.md). CSV schema and performance notes:
-[`../skills/sol-skill/references/scratch.md`](../skills/sol-skill/references/scratch.md).
+Full command reference: [solx.md](solx.md). Sol's deletion pipeline + CSV
+schema: [`../skills/sol-skill/references/scratch.md`](../skills/sol-skill/references/scratch.md).
