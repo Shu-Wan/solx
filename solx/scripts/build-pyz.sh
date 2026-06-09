@@ -26,9 +26,9 @@ mkdir -p "$STAGE" "$ROOT/dist"
 
 # Install the LOCKED dependency set so the shipped artifact matches the
 # environment CI tested (`uv run --frozen`), not whatever the resolver picks
-# today. `uv pip install "$ROOT"` re-resolves and can drift (e.g. typer
-# 0.25.1 in uv.lock vs a newer release). Export the locked deps, install those,
-# then add solx itself with --no-deps so nothing re-resolves.
+# today — `uv pip install "$ROOT"` re-resolves and can drift. Export the
+# locked deps, install those, then add solx itself with --no-deps so nothing
+# re-resolves.
 uv export --frozen --no-dev --no-emit-project --project "$ROOT" -o "$STAGE/requirements.txt"
 uv pip install --python "$PY" --target "$STAGE" --quiet -r "$STAGE/requirements.txt"
 uv pip install --python "$PY" --target "$STAGE" --quiet --no-deps "$ROOT"
@@ -36,6 +36,6 @@ rm -f "$STAGE/requirements.txt"
 rm -rf "$STAGE/bin"  # entry-point scripts; the zipapp __main__ replaces them
 
 "$PY" -m compileall -b -q "$STAGE"
-"$PY" -m zipapp "$STAGE" -o "$ROOT/dist/solx.pyz" -m "solx.cli:app" -c
+"$PY" -m zipapp "$STAGE" -o "$ROOT/dist/solx.pyz" -m "solx.main:main" -c
 
 echo "built $ROOT/dist/solx.pyz ($(du -h "$ROOT/dist/solx.pyz" | cut -f1), python $PYVER)"

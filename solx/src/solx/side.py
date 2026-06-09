@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import socket
 import subprocess
+import sys
 from typing import Literal
-
-import typer
 
 Side = Literal["sol", "not-sol"]
 
@@ -44,8 +43,8 @@ def current_node() -> str:
 def require_sol() -> None:
     """Exit 2 with a redirect message if not on Sol. Used by every subcommand."""
     if detect() != "sol":
-        typer.echo(_NOT_SOL_MESSAGE, err=True)
-        raise typer.Exit(code=2)
+        print(_NOT_SOL_MESSAGE, file=sys.stderr)
+        raise SystemExit(2)
 
 
 def _matches_sol(text: str) -> bool:
