@@ -5,7 +5,7 @@ description: Conventions and tooling for ASU's Sol supercomputer, built around t
 license: MIT
 ---
 
-# Sol skills
+# 🌵 Sol skills
 
 Official doc: <https://docs.rc.asu.edu/>.
 

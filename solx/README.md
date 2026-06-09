@@ -1,4 +1,4 @@
-# solx
+# ☀️ solx
 
 A command-line tool for daily work on ASU's
 [Sol supercomputer](https://docs.rc.asu.edu/). `solx` wraps the

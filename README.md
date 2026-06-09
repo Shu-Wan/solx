@@ -1,4 +1,4 @@
-# solx
+# ☀️ solx
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Shu-Wan/solx/ci.yml?branch=main&label=ci&logo=github)](https://github.com/Shu-Wan/solx/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Shu-Wan/solx?logo=github&color=blue)](https://github.com/Shu-Wan/solx/releases)
@@ -62,7 +62,7 @@ reference notes on Sol conventions —
 [ssh tunnels](skills/sol-skill/references/sessions.md),
 [file sharing](skills/sol-skill/references/sharing.md) — live with the skill.
 
-## The agent skill
+## 🌵 The agent skill
 
 [`skills/sol-skill/`](skills/sol-skill/SKILL.md) teaches an AI coding assistant
 to operate on Sol the careful way: detect the environment, install and drive

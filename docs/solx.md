@@ -1,4 +1,4 @@
-# `solx` — user manual
+# ☀️ `solx` — user manual
 
 `solx` is a command-line tool for daily work on ASU's
 [Sol supercomputer](https://docs.rc.asu.edu/). You SSH to Sol yourself, then
