@@ -24,19 +24,19 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Must match build-pyz.sh / install.sh: the embedded bytecode is
-      # interpreter-specific, so the build and the install shebang agree on 3.13.
-      SOLX_PYTHON: "3.13"
+      # interpreter-specific, so the build and the install shebang agree.
+      SOLX_PYTHON: "3.11"
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - name: Install uv (provisioning Python 3.13)
+      - name: Install uv (Python 3.11)
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
+          python-version: "3.11"
           enable-cache: true
-          working-directory: solx   # where uv.lock lives (cache key source)
+          cache-dependency-glob: "solx/uv.lock"   # key the cache off the lockfile
 
       - name: Resolve tag
         id: tag

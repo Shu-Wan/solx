@@ -5,7 +5,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from solx.output import Out
+from solx.output import Out, _Plain, _plain
 
 
 def make_out(*, json_mode: bool = False, interactive: bool = True) -> Out:
@@ -73,3 +73,26 @@ def test_emit_human_mode() -> None:
     out.emit(data={"n": 1}, human=lambda: "human-text")
     assert "human-text" in out.stdout.file.getvalue()
     assert out.stdout.file.getvalue().strip() != '{"n": 1}'
+
+
+# ---- no-rich (agent) path ------------------------------------------------
+
+
+def test_plain_strips_rich_markup() -> None:
+    assert _plain(r"[red]error:[/] bad \[keep] thing") == "error: bad [keep] thing"
+    # interpolated punctuation (a TOML error) is not mistaken for markup
+    assert _plain("oops (at line 11, column 21)") == "oops (at line 11, column 21)"
+
+
+def test_plain_writer_writes_plain_text() -> None:
+    buf = StringIO()
+    _Plain(buf).print("[yellow]warning:[/] x")
+    assert buf.getvalue().strip() == "warning: x"
+
+
+def test_auto_json_uses_plain_writer() -> None:
+    """The JSON path builds a _Plain writer, so nothing imports rich.Console."""
+    out = Out.auto(force="json")
+    assert isinstance(out.stdout, _Plain)
+    assert isinstance(out.stderr, _Plain)
+    assert out.json_mode is True

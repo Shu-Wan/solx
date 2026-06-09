@@ -49,10 +49,14 @@ median of 7, warm):
 - **Typer/Click import ≈ 0.97s** — the dominant cost, paid by *every*
   invocation because `cli.py` builds the Typer app at import time. This
   is most of the ~0.66s floor.
-- **Eager `rich` import** in `jobs.py` / `keep.py` / `init.py`
-  (`from rich.table import Table`, `from rich.prompt import Confirm` at
-  module scope) — so `job list` / `time` pay `rich` on top, *even with
-  `--json`*, which an agent never renders into a table.
+- **`rich` is imported on every *actual* command.** `cli.py` already
+  defers its imports (the 0.3.3 work that made `--version` / `--help` /
+  completions fast), but running a command still pulls `rich` two ways:
+  `output.py`'s `Out.auto` constructs `rich.Console` objects for
+  stdout+stderr *even in `--json` mode*, and `jobs.py` / `keep.py` /
+  `init.py` import `rich.prompt` / `rich.table` at module scope. So
+  `solx job list` pays `rich` even when an agent passes `--json` and
+  never renders a table.
 - **NFS amplification** — each module file is a network round-trip. The
   `.pyz` collapses the file-open storm into one zip open, but still
   parses the zip directory and pays the Typer/`rich` import cost, so it
@@ -60,10 +64,13 @@ median of 7, warm):
 
 **Possible solutions** (rough order of value vs. effort):
 
-1. **Lazy-import `rich`.** Move the `rich.table` / `rich.prompt` imports
-   out of module scope into the human-render / prompt branches, so the
-   `--json` and non-interactive paths (what an agent uses) never import
-   `rich`. Cheap, and directly cuts the agent path.
+1. **Keep `rich` off the agent path.** Have `Out` write JSON and plain
+   diagnostics straight to `sys.stdout`/`sys.stderr` without constructing
+   a `rich.Console`, and lazy-import `rich.table` / `rich.prompt` inside
+   the human-render and prompt branches. Then `--json` and
+   non-interactive runs never import `rich` at all. Moderate (touches the
+   `Out` abstraction and the `init.py` Confirm/Prompt test seams), high
+   value for the agent path.
 2. **Shrink the Typer cost on the hot path** — the biggest lever and the
    hardest. Either a fast pre-dispatch that handles the common leaf
    commands (`job list/time`, `--version`) with `argparse` and only

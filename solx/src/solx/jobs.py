@@ -13,9 +13,6 @@ import shlex
 from dataclasses import asdict
 from typing import Iterable
 
-from rich.prompt import Confirm
-from rich.table import Table
-
 from solx import slurm
 from solx.config import Config, ConfigError
 from solx.output import Out
@@ -25,7 +22,9 @@ from solx.slurm import Job, SlurmError
 # --- shared rendering -----------------------------------------------------
 
 
-def _jobs_table(jobs: Iterable[Job]) -> Table:
+def _jobs_table(jobs: Iterable[Job]):
+    from rich.table import Table  # lazy: only the human-render path needs rich
+
     t = Table(title=None, show_lines=False, header_style="bold")
     for col in ("JOBID", "NAME", "STATE", "TIME", "LEFT", "PARTITION", "NODE / REASON"):
         t.add_column(col)
@@ -182,7 +181,11 @@ def cmd_stop(
                 f"job {jid}, or -n to preview."
             )
             return 2
-        ask = confirm_fn or Confirm.ask
+        ask = confirm_fn
+        if ask is None:
+            from rich.prompt import Confirm  # lazy: only the prompt path needs rich
+
+            ask = Confirm.ask
         prompt = (
             f"Cancel job {jid} (the one you're inside)?"
             if self_cancel

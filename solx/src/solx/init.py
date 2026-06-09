@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import os
 import stat
-import tomllib
 from pathlib import Path
 from typing import Callable
 
-from rich.prompt import Confirm, Prompt
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # Python 3.10 — backport
+    import tomli as tomllib
 
 from solx import config as cfg
 from solx.output import Out
@@ -23,6 +25,8 @@ def _default_walkthrough(out: Out, solkeep: Path | None) -> dict | None:
     into `[keep]`, then pick the login shell `solx job jump` opens. Returns
     ``{"shell": str, "keep": (include, exclude) | None}``.
     """
+    from rich.prompt import Confirm, Prompt  # lazy: interactive walkthrough only
+
     if not Confirm.ask("Walk through a quick setup?", default=False):
         return None
 
@@ -67,7 +71,11 @@ def cmd_init(
         if not out.interactive:
             out.error(f"[red]error:[/] {p} already exists. pass -f to overwrite.")
             return 2
-        ask = confirm_fn or Confirm.ask
+        ask = confirm_fn
+        if ask is None:
+            from rich.prompt import Confirm  # lazy: only the prompt path needs rich
+
+            ask = Confirm.ask
         if not ask(f"{p} already exists. Overwrite?", default=False):
             out.status("[dim]aborted[/]")
             return 1

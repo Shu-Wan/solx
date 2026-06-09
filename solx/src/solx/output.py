@@ -12,19 +12,25 @@ should not have to know a flag exists to get parseable output. So:
   from the stdout-format decision. A non-interactive session never blocks on
   a confirmation prompt (see `solx.jobs` / `solx.keep`).
 
-`Out` bundles those three decisions plus the two consoles so command bodies
-take a single object and stay testable: a test builds an `Out` over
-``StringIO`` consoles with an explicit mode instead of poking globals.
+`Out` bundles those three decisions plus the two streams so command bodies take
+a single object and stay testable: a test builds an `Out` over ``StringIO``
+streams with an explicit mode instead of poking globals.
+
+**`rich` stays off the agent path.** On the JSON / non-interactive path
+`Out.auto` builds a `_Plain` writer (plain text, markup stripped) instead of a
+`rich.Console`, so an agent run (`--json`, or piped output) never imports
+`rich` at all. `rich` is imported only when there's a human terminal to render
+a table or coloured diagnostic for. Command modules import `rich.table` /
+`rich.prompt` lazily for the same reason.
 """
 from __future__ import annotations
 
 import json as _json
+import re
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-# rich is imported inside `Out.auto` (not here) so that importing this module
-# stays cheap on NFS-homed installs.
 if TYPE_CHECKING:
     from rich.console import Console
 
@@ -36,51 +42,107 @@ if TYPE_CHECKING:
 Force = str  # "json" | "plain" | None
 
 
+# Rich style tags ([red], [/], [bold dim], …). The char class deliberately
+# excludes sentence punctuation (commas, quotes) so an interpolated exception
+# string like "(at line 11, column 21)" isn't mistaken for markup. A literal
+# bracket is written escaped as `\[` in our messages, so it is protected first.
+_MARKUP = re.compile(r"\[/?[a-zA-Z0-9 #._]*\]")
+
+
+def _plain(msg: str) -> str:
+    """Strip Rich markup from `msg` for the no-Rich (agent/JSON) path."""
+    msg = msg.replace("\\[", "\x00")  # protect escaped literal brackets
+    msg = _MARKUP.sub("", msg)
+    return msg.replace("\x00", "[")
+
+
+class _Plain:
+    """Minimal stand-in for `rich.Console` on the no-Rich path.
+
+    Exposes just the slice command bodies (and tests) touch — `.print`, which
+    strips markup and writes plain text, and `.file` — so nothing imports
+    `rich` when output is JSON / agent-facing. Only ever receives diagnostic
+    strings (the human table path constructs a real `rich.Console`).
+    """
+
+    is_terminal = False
+
+    def __init__(self, file: Any) -> None:
+        self.file = file
+
+    def print(self, obj: Any = "") -> None:
+        self.file.write(_plain(str(obj)) + "\n")
+
+
 @dataclass
 class Out:
     """A resolved output target: format choice + the two streams.
 
     * ``json_mode``  — emit JSON on the data channel (stdout) instead of Rich.
     * ``interactive`` — stdin is a TTY, so prompting a human is allowed.
-    * ``stdout`` / ``stderr`` — Rich consoles for the data and diagnostic
-      channels respectively.
+    * ``stdout`` / ``stderr`` — the data and diagnostic writers: a
+      ``rich.Console`` in human mode, a ``_Plain`` writer on the agent path.
+      Both expose ``.print`` and ``.file``.
     """
 
     json_mode: bool
     interactive: bool
-    stdout: Console
-    stderr: Console
+    stdout: "Console | _Plain"
+    stderr: "Console | _Plain"
 
     @classmethod
     def auto(
         cls,
         *,
         force: Force | None = None,
-        stdout: Console | None = None,
-        stderr: Console | None = None,
+        stdout: Any | None = None,
+        stderr: Any | None = None,
         interactive: bool | None = None,
     ) -> "Out":
         """Build an `Out`, auto-detecting format from the stdout TTY.
 
-        ``force`` (`"json"`/`"plain"`/`None`) overrides the auto-detect; the
-        CLI passes `"json"` (global `--json`) or `None`. ``interactive``
-        defaults to whether **stdin** is a TTY.
+        ``force`` (`"json"`/`"plain"`/`None`) overrides the auto-detect; the CLI
+        passes `"json"` (global `--json`) or `None`. ``interactive`` defaults to
+        whether **stdin** is a TTY. On the JSON path no `rich.Console` is built
+        (and `rich` is never imported) — a `_Plain` writer is used instead.
         """
-        from rich.console import Console
+        # TTY-ness for format detection — from a caller-supplied stream/console
+        # (tests, embedders) or sys.stdout (production), without importing rich.
+        probe = stdout if stdout is not None else sys.stdout
+        is_tty = getattr(probe, "is_terminal", None)
+        if is_tty is None:
+            try:
+                is_tty = probe.isatty()
+            except (AttributeError, ValueError, OSError):
+                is_tty = False
 
-        so = stdout or Console()
-        se = stderr or Console(stderr=True)
         if force == "json":
             json_mode = True
         elif force == "plain":
             json_mode = False
         else:
-            json_mode = not so.is_terminal
+            json_mode = not is_tty
+
         if interactive is None:
             try:
                 interactive = sys.stdin.isatty()
             except (ValueError, OSError):
                 interactive = False
+
+        so, se = stdout, stderr
+        if so is None or se is None:
+            if json_mode:
+                if so is None:
+                    so = _Plain(sys.stdout)
+                if se is None:
+                    se = _Plain(sys.stderr)
+            else:
+                from rich.console import Console
+
+                if so is None:
+                    so = Console()
+                if se is None:
+                    se = Console(stderr=True)
         return cls(json_mode=json_mode, interactive=interactive, stdout=so, stderr=se)
 
     # --- diagnostics: always stderr, never on the JSON stdout stream --------

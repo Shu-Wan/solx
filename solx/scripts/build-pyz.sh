@@ -10,9 +10,11 @@
 # writes a bytecode cache of its own. The .pyc format is interpreter-
 # specific, so the version here must match the shebang install.sh stamps:
 # both default to PYVER below and read SOLX_PYTHON to override together.
+# 3.11 is the floor with native tomllib (solx supports 3.10+ via the tomli
+# backport, but the artifact targets one interpreter).
 set -euo pipefail
 
-PYVER="${SOLX_PYTHON:-3.13}"
+PYVER="${SOLX_PYTHON:-3.11}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="$ROOT/build/pyz"
 

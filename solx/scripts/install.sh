@@ -9,7 +9,7 @@
 #   SOLX_INSTALL_DIR  install location (default: $XDG_BIN_HOME, falling
 #                     back to ~/.local/bin)
 #   SOLX_PYTHON       interpreter version stamped on the shebang
-#                     (default: 3.13; must match what build-pyz.sh
+#                     (default: 3.11; must match what build-pyz.sh
 #                     compiled with — the embedded bytecode is
 #                     interpreter-specific)
 #
@@ -18,7 +18,7 @@
 # absolute shebang. uv is only needed at install time, not at runtime.
 set -eu
 
-PYVER="${SOLX_PYTHON:-3.13}"
+PYVER="${SOLX_PYTHON:-3.11}"
 BIN="${SOLX_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
 SRC="${1:-https://github.com/Shu-Wan/solx/releases/latest/download/solx.pyz}"
 

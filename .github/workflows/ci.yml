@@ -18,20 +18,24 @@ concurrency:
 
 jobs:
   test:
-    name: test + lint (solx)
+    name: test + lint (py${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
     defaults:
       run:
         working-directory: solx
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv (provisioning Python 3.13)
+      - name: Install uv (Python ${{ matrix.python }})
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
           enable-cache: true
-          working-directory: solx   # where uv.lock lives (cache key source)
+          cache-dependency-glob: "solx/uv.lock"   # key the cache off the lockfile
 
       - name: Sync dependencies (frozen)
         run: uv sync --frozen

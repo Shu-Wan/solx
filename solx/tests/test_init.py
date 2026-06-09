@@ -6,6 +6,7 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
+import rich.prompt
 from rich.console import Console
 
 from solx import init as init_mod
@@ -158,8 +159,8 @@ def test_default_walkthrough_prompts_import_and_shell(tmp_path: Path, monkeypatc
     """The real walkthrough asks to import .solkeep, then picks a shell."""
     solkeep = tmp_path / ".solkeep"
     solkeep.write_text("/scratch/sparky/proj\n")
-    monkeypatch.setattr(init_mod.Confirm, "ask", lambda *a, **kw: True)  # walkthrough + import
-    monkeypatch.setattr(init_mod.Prompt, "ask", lambda *a, **kw: "zsh")
+    monkeypatch.setattr(rich.prompt.Confirm, "ask", lambda *a, **kw: True)  # walkthrough + import
+    monkeypatch.setattr(rich.prompt.Prompt, "ask", lambda *a, **kw: "zsh")
     res = init_mod._default_walkthrough(make_out(interactive=True), solkeep)
     assert res == {"shell": "zsh", "keep": (["/scratch/sparky/proj"], [])}
 
@@ -168,14 +169,14 @@ def test_default_walkthrough_declines_import(tmp_path: Path, monkeypatch) -> Non
     solkeep = tmp_path / ".solkeep"
     solkeep.write_text("/scratch/sparky/proj\n")
     answers = iter([True, False])  # walkthrough yes, import no
-    monkeypatch.setattr(init_mod.Confirm, "ask", lambda *a, **kw: next(answers))
-    monkeypatch.setattr(init_mod.Prompt, "ask", lambda *a, **kw: "bash")
+    monkeypatch.setattr(rich.prompt.Confirm, "ask", lambda *a, **kw: next(answers))
+    monkeypatch.setattr(rich.prompt.Prompt, "ask", lambda *a, **kw: "bash")
     res = init_mod._default_walkthrough(make_out(interactive=True), solkeep)
     assert res == {"shell": "bash", "keep": None}
 
 
 def test_default_walkthrough_declined(monkeypatch) -> None:
-    monkeypatch.setattr(init_mod.Confirm, "ask", lambda *a, **kw: False)
+    monkeypatch.setattr(rich.prompt.Confirm, "ask", lambda *a, **kw: False)
     assert init_mod._default_walkthrough(make_out(interactive=True), None) is None
 
 

@@ -30,8 +30,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from rich.prompt import Confirm
-
 from solx.config import Config, KeepRules, load_solkeep
 from solx.output import Out
 
@@ -300,7 +298,11 @@ def cmd_keep(
                 f"{len(plan.kept)} directories, or -n to preview."
             )
             return 2
-        ask = confirm_fn or Confirm.ask
+        ask = confirm_fn
+        if ask is None:
+            from rich.prompt import Confirm  # lazy: only the prompt path needs rich
+
+            ask = Confirm.ask
         if not ask(
             f"Touch mtimes on {len(plan.kept)} directories?", default=False
         ):
