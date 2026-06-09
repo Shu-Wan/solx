@@ -16,7 +16,7 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
 | Stage | Outcome | Status |
 |---|---|---|
 | 1 — Skill manual-SSH path | The agent skill (manual SSH, `sbatch`, scratch renewal). | ✅ shipped (v0.2.0) |
-| 2 — `solx` CLI (Sol-only) | `solx/` package: jobs, interactive allocation, scratch renewal, config; agent-friendly output. | ✅ shipped (v0.3.0) |
+| 2 — `solx` CLI (Sol-only) | `solx/` package: jobs, interactive allocation, scratch renewal, config; CLI agent output. | ✅ shipped (v0.3.0) |
 | 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx`; single-file install channel + CI releases; one version line; situational job awareness (#9). | ✅ shipped (v0.4.0) |
 | 4 — Startup latency | Get a `solx job` command close to a raw SLURM call so the skill can prefer `solx` without a UX penalty. | ⚪ planned (v0.5.0) |
 | — Laptop side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
@@ -107,20 +107,27 @@ derives from them.
 
 1. **Runs on Sol.** The CLI is meant to be run *on* Sol after a manual
    SSH. No laptop side, no ssh-chain construction, no `~/.ssh/*` reads.
-2. **Intuitive and not disruptive.** Verbs read like Sol-native
+2. **Reduce recall and context switching.** The common path should not
+   require memorizing Slurm flags or bouncing between a website portal
+   and the terminal. Open OnDemand can stay browser-first; `solx` owns
+   the terminal-native loop.
+3. **CLI agent native.** Human-readable output on a TTY, JSON when
+   piped or requested, stdout/stderr separation, meaningful exit codes,
+   and no hidden prompts in non-interactive sessions.
+4. **Intuitive and not disruptive.** Verbs read like Sol-native
    commands (`solx job list`, `solx job start`, `solx keep`). No
    surprising side effects. Mutating commands support `--dry-run`.
-3. **Common CLI conventions.** Noun-verb command groups; flags for leaf
+5. **Common CLI conventions.** Noun-verb command groups; flags for leaf
    commands. Shell completions for bash, zsh, fish.
-4. **Read config, don't infer.** A single TOML config under
+6. **Read config, don't infer.** A single TOML config under
    `$XDG_CONFIG_HOME/solx/config.toml` declares everything. No
    environment-variable trickery, no scanning `~/.ssh/*`.
-5. **Slurm is the source of truth, not us.** No persistent
+7. **Slurm is the source of truth, not us.** No persistent
    `session.json` to go stale. The CLI queries `squeue` whenever it
    needs job state.
-6. **General, not personal.** The starter config ships with
+8. **General, not personal.** The starter config ships with
    placeholders, never with the maintainer's username baked in.
-7. **User experience over the tool.** The skill drives an agent on the
+9. **User experience over the tool.** The skill drives an agent on the
    user's behalf; where a raw SLURM call is faster and just as clear,
    prefer it. `solx` has to *earn* its place per task — which is why the
    startup-latency work above matters.

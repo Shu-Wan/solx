@@ -5,12 +5,14 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](#installation)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A fast command-line companion for ASU's **Sol** supercomputer: request
-interactive jobs from templates, drop onto compute nodes, and keep `/scratch`
-files from being purged — without memorizing Slurm flags. Ships with an agent
-skill so an AI assistant can drive Sol for you.
+Solx is a CLI for ASU's **Sol** supercomputer, designed for agent-assisted
+work so you can stop babysitting Slurm.
 
-SSH to Sol, then run `solx` from a login or compute node.
+- No memorizing SLURM commands.
+- No surprise `/scratch` purges.
+- Let your agent manage your SLURM jobs.
+
+SSH to Sol, run `solx`, and keep the whole loop in your terminal.
 
 ## Installation
 
@@ -49,8 +51,8 @@ What it's good at:
   `solx keep` renews only the directories you listed in `[keep]` that Sol has
   *actually flagged* — never a blanket `touch`.
   → walkthrough: **[docs/scratch.md](docs/scratch.md)**
-- **Built for agents.** Output auto-switches to JSON off a TTY, exit codes are
-  meaningful, and destructive commands refuse rather than hang on a prompt.
+- **Built for CLI agents.** Output auto-switches to JSON off a TTY, exit codes
+  are meaningful, and destructive commands refuse rather than hang on a prompt.
 
 **Learn more:** the full command manual is [docs/solx.md](docs/solx.md). Cached
 reference notes on Sol conventions —
@@ -61,12 +63,14 @@ reference notes on Sol conventions —
 [ssh tunnels](skills/sol-skill/references/sessions.md),
 [file sharing](skills/sol-skill/references/sharing.md) — live with the skill.
 
-## 🌵 The agent skill
+## 🌵 The companion skill
 
 [`skills/sol-skill/`](skills/sol-skill/SKILL.md) teaches an AI coding assistant
-to operate on Sol the careful way: detect the environment, install and drive
-`solx`, choose the right partition, stay fairshare- and time-aware, manage
-modules and data, and reach Sol-side services from a laptop.
+to operate on Sol the careful way. It turns natural requests like "start a GPU
+session," "why is my job pending?", or "keep my scratch project alive" into the
+right `solx` or raw Slurm command, while also handling environment detection,
+partition choice, fairshare and wall-time awareness, modules, data movement, and
+Sol-side services.
 
 ```shell
 gh skill install Shu-Wan/solx sol-skill

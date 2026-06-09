@@ -46,12 +46,12 @@ to the skill should mean adding a row here in the same group.
 | Behavior | Status | Notes |
 |---|---|---|
 | Detects `solx` (`command -v solx`) and prompts to install when missing | 🟡 documented | New in v0.4.0; skill eval pending |
-| Prefers `solx` for job/scratch work; raw Slurm only as a fallback | 🟡 documented | New in v0.4.0; skill eval pending |
+| Uses `solx` for start/jump/keep; raw Slurm for fast one-off status/cancel | 🟡 documented | New in v0.4.0; skill eval pending |
 | `solx` exits 2 off-Sol (wrong-side guard) | 🟢 tested | `solx/tests/` (`require_sol` / `side`) |
 | Drives the `solx job` lifecycle (start/list/time/jump/stop) | 🟢 tested (CLI) | `solx/tests/test_jobs.py`; skill-teaching eval pending |
 | Verb-aware job-id resolution (most-recent for time/jump; stop refuses to guess) | 🟢 tested | `solx/tests/test_slurm.py`, `test_jobs.py` |
 | Destructive-confirm contract (`-y`/`-n`, non-interactive refuse, exit 2) | 🟢 tested | `solx/tests/test_jobs.py`, `test_keep.py` |
-| Agent output: JSON off a TTY, results on stdout / diagnostics on stderr | 🟢 tested | `solx/tests/test_output.py`, `test_jobs.py`, `test_keep.py` |
+| CLI agent output: JSON off a TTY, results on stdout / diagnostics on stderr | 🟢 tested | `solx/tests/test_output.py`, `test_jobs.py`, `test_keep.py` |
 | Per-command latency vs raw SLURM quantified (one-off reads ~15–40× slower) | 🟢 tested | `evals/runner/bench_solx_latency.sh` (L3, real Sol): raw `squeue` ~0.05s vs `solx job` ~1.0–1.7s. Drives the "use raw SLURM for one-off reads" rule; latency reduction is on the roadmap (v0.5.0). |
 | Skill prefers raw `squeue`/`scancel` for one-off reads, `solx` for start/jump/keep | 🟡 documented | New in v0.4.0; skill eval pending |
 

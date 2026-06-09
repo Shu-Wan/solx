@@ -65,6 +65,9 @@ Cross-cutting conventions enforced throughout:
   a custom Host alias, they will tell you.
 - Always preview destructive or long-running operations with
   `--dry-run` (or the equivalent) before executing.
+- `solx` is CLI-agent native in operational terms: use `--json` when
+  parsing, respect stdout/stderr separation, use `--dry-run`, avoid
+  hidden prompts, and know when raw Slurm is faster.
 
 For how this skill is verified, see
 [`docs/coverage.md`](../../docs/coverage.md) in the source repo.

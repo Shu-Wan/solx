@@ -69,6 +69,30 @@ solx keep --dry-run             # preview which scratch files would be renewed
 solx keep                       # renew them (prompts)
 ```
 
+## Design philosophy
+
+`solx` is designed to be usable by both a person at a terminal and an agent
+running shell commands on their behalf. The CLI keeps behavior explicit and
+machine-readable without hiding Slurm as the source of truth.
+
+- **Run on Sol.** `solx` is a Sol-side tool. It does not construct SSH chains,
+  read `~/.ssh/*`, or manage laptop state.
+- **Prefer declared state.** One TOML config defines shells, job templates, and
+  scratch keep paths. Job state comes from Slurm, not a persistent session file.
+- **Expose parseable output.** TTY output is human-readable; piped output or
+  `--json` is JSON. Results go to stdout, diagnostics to stderr, and exit codes
+  distinguish success, operational no-op, and under-specified input.
+- **Make destructive operations explicit.** `job stop` and `keep` show the plan
+  first, support `--dry-run`, prompt by default, and refuse non-interactive runs
+  unless `--yes` or `--dry-run` is supplied.
+- **Bound filesystem changes.** `keep` only updates timestamps for directories
+  that are both configured by the user and flagged by Sol's warning CSVs. It
+  never blanket-touches `/scratch`, and it never reads, moves, or deletes file
+  contents.
+- **Do not replace every Slurm command.** `solx` wraps repeated interactive
+  workflows. For one-off status reads or known-job cancellation, raw Slurm can
+  still be the right tool.
+
 ## Command reference
 
 `solx` is a flat-ish CLI. Common ergonomics: noun-verb subgroups for
@@ -125,7 +149,7 @@ allocation, or `touch` mtimes under `/scratch`. Both follow:
 session** (no stdin TTY) without `-y`/`-n`, both commands **refuse with exit 2**
 rather than hang on a prompt — safe to drive from an agent or cron.
 
-### Output: human or agent
+### Output: human or CLI agent
 
 Output auto-detects — **JSON when stdout is not a TTY**, Rich tables on a
 terminal; the global `--json` (before the subcommand) forces JSON anywhere. A

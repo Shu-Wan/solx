@@ -2,10 +2,18 @@
 
 `solx` is a command-line tool for daily work on ASU's
 [Sol supercomputer](https://docs.rc.asu.edu/). SSH to Sol, then run `solx` from
-a login or compute node. It wraps the Slurm steps you repeat all day — list
-your jobs, request an interactive allocation, open a shell on the compute node,
-cancel, check remaining time — plus renewing `/scratch` files that Sol has
-flagged for deletion.
+a login or compute node. It keeps the routine Slurm loop in the terminal: list
+your jobs, request an interactive allocation from a template, open a shell on
+the compute node, cancel, check remaining time, and renew `/scratch` files that
+Sol has flagged for deletion.
+
+The motivation is practical: you should not have to memorize Slurm flags for
+common interactive work, and you should not have to jump between a website
+portal and the terminal just to keep a session moving. Open OnDemand is still
+the right tool for browser-first workflows; `solx` is the terminal-native path
+for humans, scripts, and CLI agents. The companion
+[`sol-skill`](../skills/sol-skill/SKILL.md) teaches an AI assistant when to use
+`solx`, when raw Slurm is faster, and how to stay within Sol conventions.
 
 Install instructions are in [`solx/README.md`](../solx/README.md). The short
 version, on Sol:
