@@ -5,11 +5,13 @@ automated verification, and what's a known gap. The eval harness
 requires manual orchestration today, so this document is updated by
 hand before each release.
 
-**Version:** v0.3.0 (see [`../CHANGELOG.md`](../CHANGELOG.md))
-**Last verified:** 2026-05-28 (against v0.3.0 — the renewal rows are
-now covered by the runnable L2 `evals/runner/run_l2_renew.py` (8/8) and
-a real end-to-end pass on Sol; other tested rows carry over from
-v0.2.0).
+**Version:** v0.4.0 (see [`../CHANGELOG.md`](../CHANGELOG.md))
+**Last verified:** v0.4.0 restructured the skill around `solx`. The
+`solx` CLI is covered by its own unit suite (`solx/tests/`, 187 tests
+passing) including an end-to-end real-touch renewal test; the
+skill-level L1/L2/L3 evals for the new `solx`-driven flows are **pending
+re-run on Sol** and are marked 🟡 below. Rows for unchanged behaviors
+carry over from the v0.3.0 verification (2026-05-28).
 
 ## Status legend
 
@@ -39,6 +41,18 @@ to the skill should mean adding a row here in the same group.
 | Always previews destructive or long-running ops with `--dry-run` | 🟡 documented | |
 | Never proposes `sudo` | 🟡 documented | Cross-cutting negative assertion |
 
+### `solx` — install it first
+
+| Behavior | Status | Notes |
+|---|---|---|
+| Detects `solx` (`command -v solx`) and prompts to install when missing | 🟡 documented | New in v0.4.0; skill eval pending |
+| Prefers `solx` for job/scratch work; raw Slurm only as a fallback | 🟡 documented | New in v0.4.0; skill eval pending |
+| `solx` exits 2 off-Sol (wrong-side guard) | 🟢 tested | `solx/tests/` (`require_sol` / `side`) |
+| Drives the `solx job` lifecycle (start/list/time/jump/stop) | 🟢 tested (CLI) | `solx/tests/test_jobs.py`; skill-teaching eval pending |
+| Verb-aware job-id resolution (most-recent for time/jump; stop refuses to guess) | 🟢 tested | `solx/tests/test_slurm.py`, `test_jobs.py` |
+| Destructive-confirm contract (`-y`/`-n`, non-interactive refuse, exit 2) | 🟢 tested | `solx/tests/test_jobs.py`, `test_keep.py` |
+| Agent output: JSON off a TTY, results on stdout / diagnostics on stderr | 🟢 tested | `solx/tests/test_output.py`, `test_jobs.py`, `test_keep.py` |
+
 ### Detecting the Environment
 
 | Behavior | Status | Notes |
@@ -55,12 +69,14 @@ to the skill should mean adding a row here in the same group.
 | Steers away from `/home` for large data | 🟢 tested | Verified iter-1 |
 | `.solkeep` syntax (gitignore-style, `!` negation, `**` glob) | 🟢 tested | Verified iter-2 eval A: agent produces correct file with explanation |
 | Refuses to bulk-touch `/scratch` (`find -exec touch`) | 🟡 documented | Negative assertion; not yet probed |
-| `sol_renew.py --dry-run` plan correctness | 🟢 tested | L2 `run_l2_renew.py` (v0.3.0): dry-run exits 0 and touches nothing |
-| `sol_renew.py` actually refreshes kept files (recursively) | 🟢 tested | L2 `run_l2_renew.py` (v0.3.0): mtimes refresh across the tree; also run end-to-end on real Sol |
-| `.solkeep` carve-outs honored at run time (`.venv`/`__pycache__` skipped, non-kept dirs skipped) | 🟢 tested | L2 `run_l2_renew.py` (v0.3.0) |
+| `solx keep --dry-run` plan correctness | 🟢 tested | `solx/tests/test_keep.py`: dry-run plans without touching; JSON plan bounded |
+| `solx keep` refreshes kept files (recursively) | 🟢 tested | `solx/tests/test_keep.py::test_keep_end_to_end_real_touch`: mtimes refresh across the tree |
+| keep-list carve-outs honored at run time (`.venv`/`__pycache__` skipped, non-kept dirs skipped) | 🟢 tested | `solx/tests/test_keep.py` (end-to-end + `build_plan`) |
+| `solx keep` warns but still works on a legacy `~/.solkeep` (support removed 0.5.0) | 🟢 tested | `solx/tests/test_keep.py::test_keep_solkeep_fallback_warns_deprecated` |
+| `solx config import-solkeep` migrates `~/.solkeep` → `[keep]` | 🟢 tested | `solx/tests/test_init.py::test_import_solkeep_*` |
 | File sharing procedure (`chmod` / `install` / `cp` between users) | 🟡 documented | |
 | Scratch-quota-exceeded behavior | 🔴 gap | Would need a fault-injection mock |
-| Concurrent `sol_renew.py` runs | 🔴 gap | No locking; documented behavior is "don't" |
+| Concurrent `solx keep` runs | 🔴 gap | No locking; documented behavior is "don't" |
 
 ### Getting the Software You Need on Sol
 
@@ -84,6 +100,14 @@ to the skill should mean adding a row here in the same group.
 | SBATCH header generation (partition, QOS, time, GPU) | 🟢 tested | Verified iter-5 P5: complete OpenMPI script with correct partition/QOS, `srun --mpi=pmix`, `--export=NONE`, `/scratch` logs |
 | Job lifecycle: `sbatch`, `squeue`, `scancel`, `scontrol update` | 🟡 documented | |
 | Multi-node MPI (`srun --mpi=pmix`) suggestions | 🔴 gap | Not exercised end-to-end |
+
+### Situation-Aware Job Management
+
+| Behavior | Status | Notes |
+|---|---|---|
+| Checks `myfairshare` before submitting; backs off below ~0.05 (no scheduler spam) | 🟡 documented | New in v0.4.0 (issue #9); skill eval pending. `myfairshare` lookup itself 🟢 (iter-5 P3) |
+| Tracks remaining wall-time (`solx job time` / `squeue -O TimeLeft`) and wraps up / hands off before expiry | 🟡 documented | New in v0.4.0 (issue #9); skill eval pending |
+| Uses Sol wrappers directly (`myfairshare`/`myjobs`/`seff`/`showgpus`/…) rather than wrapping them | 🟢 tested | Status-query rows below verified iter-5 P2–P4 |
 
 ### Asking the Cluster About Yourself and Your Jobs
 
@@ -109,7 +133,7 @@ to the skill should mean adding a row here in the same group.
 | Multi-port forwarding (stacked `-L`) | 🟡 documented | |
 | OAuth callback reverse tunnel (`-R`) | 🟡 documented | |
 | Tunnel diagnostics (port-in-use, ControlMaster, wrong-side `-L`) | 🟡 documented | |
-| One-command laptop CLI (`solx`) | ⚪ roadmap | Not yet shipped; see [`ROADMAP.md`](ROADMAP.md) |
+| Laptop-side one-command (`solx up`/`down`, ssh-chain construction) | ⚪ roadmap | Deferred; `solx` is Sol-only today — see [`ROADMAP.md`](ROADMAP.md) |
 | VS Code wrapper (`/usr/local/bin/vscode`) integration | 🔴 gap | Manual smoke only; wrapper itself maintained by ASU |
 
 ### Transferring Data

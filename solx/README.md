@@ -20,21 +20,24 @@ are at <https://docs.rc.asu.edu/>.
 
 ## Install
 
-`solx` provisions its own Python via [`uv`](https://docs.astral.sh/uv/).
+`solx` provisions its own Python via [`uv`](https://docs.astral.sh/uv/)
+(Sol's system `python3` is older than the Python ≥ 3.11 `solx` needs).
+Install `uv` from [astral.sh/uv](https://docs.astral.sh/uv/) first if it
+isn't on your `$PATH`.
 
 ```shell
-# Recommended: as a uv tool — isolated venv, on $PATH automatically.
-uv tool install git+https://github.com/Shu-Wan/sol-skills.git#subdirectory=solx
+# Recommended on Sol: single-file install — one file open at cold start on
+# the NFS home, so startup stays fast. Re-run it to upgrade.
+curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
+
+# Alternative: as a uv tool — isolated venv, on $PATH automatically.
+uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+
 solx --version
 solx init                        # writes ~/.config/solx/config.toml
-$EDITOR ~/.config/solx/config.toml   # tune partitions, [keep] paths, etc.
+solx config edit                 # tune partitions, [keep] paths, etc.
 solx config show                 # sanity-check
 ```
-
-If `uv` isn't on your `$PATH` yet, install it from
-[astral.sh/uv](https://docs.astral.sh/uv/) first. Sol's system `python3`
-is older than what `solx` needs (Python ≥ 3.11); `uv tool install`
-provisions its own interpreter, so you don't have to manage one.
 
 ### Shell completion
 
@@ -91,6 +94,7 @@ related operations, top-level shortcuts where they earn it.
 | `solx keep [--solkeep F] [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]` | Renew CSV-flagged scratch files. Keep-list source: `--solkeep` > the `[keep]` config block > `~/.solkeep` (auto-detected, so an existing `.solkeep` from the skill just works). |
 | `solx config show [--json]` | Print the resolved config. |
 | `solx config edit` | Open `config.toml` in `$EDITOR`. |
+| `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into the config's `[keep]` block. |
 | `solx completions <bash\|zsh\|fish>` | Emit a shell completion script. |
 | `solx --version`, `--help` | — |
 
@@ -138,7 +142,7 @@ human at a terminal gets tables with no flag. Results go to stdout, all
 diagnostics to stderr, so `solx --json job list | jq …` and `solx job time`
 (bare duration) both pipe cleanly. Exit codes: `0` success,
 `1` operational/nothing-to-do, `2` under-specified or unconfirmed. This is the
-[issue #16](https://github.com/Shu-Wan/sol-skills/issues/16) "design for
+[issue #16](https://github.com/Shu-Wan/solx/issues/16) "design for
 agents" behavior; details in [`docs/solx.md`](../docs/solx.md#output-for-scripts).
 
 Other commands (`init`, `job start`, `job list`, `job jump`, `job time`,
@@ -227,8 +231,7 @@ caps the wait so a stuck request surfaces instead of hanging forever.
 
 ## How `solx keep` works under the hood
 
-This is a port of `sol_renew.py` — same mechanism, different config
-location. Sol drops warning CSVs in your `$HOME` when files are aging
+Sol drops warning CSVs in your `$HOME` when files are aging
 out: `scratch-dirs-pending-removal.csv`,
 `scratch-dirs-over-90days.csv`, `scratch-dirs-inactive.csv`. `solx keep`:
 
@@ -240,15 +243,14 @@ out: `scratch-dirs-pending-removal.csv`,
    **both** appear in a CSV and match the keep-list. Never walks
    `/scratch` wholesale.
 
-This preserves the original tool's ethical posture: `solx keep` cannot
-be used to bypass Sol's scratch-retention policy by keeping arbitrary
-files alive on a cron. There's nothing to do until Sol drops a warning
-CSV.
+`solx keep` cannot be used to bypass Sol's scratch-retention policy by
+keeping arbitrary files alive on a cron — there's nothing to do until Sol
+drops a warning CSV.
 
-Flag surface mirrors `sol_renew.py`:
+Flag surface:
 
 - `--solkeep FILE` — use a specific gitignore-style keep-list (overrides
-  `[keep]`). Same format as `sol_renew.py`'s `--solkeep`.
+  `[keep]`). Same format as the legacy `~/.solkeep`.
 - `--stage {pending,over90,inactive,all}` — limit to one CSV. Default `all`.
 - `--csv-dir DIR` — where Sol drops the CSVs. Default `$HOME`.
 - `-j N`, `--jobs N` — parallel touch workers. NFS is the bottleneck;
@@ -256,9 +258,10 @@ Flag surface mirrors `sol_renew.py`:
 - `-n`, `--dry-run` — print plan, don't touch.
 - `-v`, `--verbose` — show the matched/skipped lists.
 
-`solx keep` works without a `solx` config file when a `~/.solkeep` (or
-`--solkeep`) provides the keep-list — so the skill's existing `.solkeep`
-users can adopt `solx` without migrating anything.
+`solx keep` still reads a `~/.solkeep` when no `[keep]` block is
+configured, but prints a deprecation notice — **support is removed in
+0.5.0**. Migrate an existing `~/.solkeep` with `solx config
+import-solkeep`.
 
 ## Limitations
 

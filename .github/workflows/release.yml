@@ -1,0 +1,80 @@
+name: release
+
+# CLI-first release. A pushed `vX.Y.Z` tag builds the single-file zipapp
+# (solx.pyz) and publishes a GitHub Release with it + install.sh attached, so
+#   curl -fsSL .../releases/latest/download/install.sh | sh
+# always fetches the build matching the tag. The skill rides the same tag
+# (one version line — see CHANGELOG.md), installed from the repo tree.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build a release for, e.g. v0.4.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build .pyz + publish release
+    runs-on: ubuntu-latest
+    env:
+      # Must match build-pyz.sh / install.sh: the embedded bytecode is
+      # interpreter-specific, so the build and the install shebang agree on 3.13.
+      SOLX_PYTHON: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install uv (provisioning Python 3.13)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          working-directory: solx   # where uv.lock lives (cache key source)
+
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tag matches solx's version
+        working-directory: solx
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          uv sync --frozen
+          ver="$(uv run --frozen solx --version)"
+          want="${TAG#v}"
+          echo "solx=$ver  tag=$want"
+          if [ "$ver" != "$want" ]; then
+            echo "::error::tag $TAG != solx $ver — bump __init__.py/pyproject.toml or retag" >&2
+            exit 1
+          fi
+
+      - name: Run tests
+        working-directory: solx
+        run: uv run --frozen pytest -q
+
+      - name: Build single-file zipapp
+        run: bash solx/scripts/build-pyz.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # Create on first run; on a re-run (workflow_dispatch) refresh assets.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" solx/dist/solx.pyz solx/scripts/install.sh --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              solx/dist/solx.pyz \
+              solx/scripts/install.sh
+          fi

@@ -6,9 +6,8 @@ with the `[keep]` include/exclude globs from config (via `pathspec`), and
 renew what Sol has explicitly flagged" ethical posture — we never walk
 `/scratch` wholesale.
 
-Mechanism mirrors `skills/sol-skill/scripts/sol_renew.py` (file-level
-sharding, PR #18): execution is a bounded streaming pipeline over one worker
-pool — enumerate a kept directory, split its files into evenly-sized
+Execution is file-level-sharded (PR #18): a bounded streaming pipeline over
+one worker pool — enumerate a kept directory, split its files into evenly-sized
 batches, and `touch` the batches across the pool. A single huge directory
 fans out into many batches, so `-j` scales the parallelism of the whole run
 including its largest directory, not just the count of directories.
@@ -44,6 +43,12 @@ STAGE_FILES = {
 }
 STAGE_ORDER = ("pending", "over90", "inactive")
 STAGES_ALL = "all"
+
+# ~/.solkeep is the legacy keep-list the standalone sol_renew.py used. solx keep
+# still reads it as a last-resort fallback, but the config [keep] block is the
+# supported home now; the implicit fallback and the .solkeep format lose support
+# in this release line.
+SOLKEEP_REMOVED_IN = "0.5.0"
 
 # Files per touch shard. Big enough that per-batch subprocess overhead is
 # negligible, small enough that one huge directory fans out into many batches
@@ -249,9 +254,15 @@ def cmd_keep(
         if keep_rules is None:
             out.error(
                 r"[red]error:[/] no \[keep] block in config and no ~/.solkeep. "
-                r"run `solx config edit` to add a \[keep] block, or create ~/.solkeep."
+                r"run `solx config edit` to add a \[keep] block."
             )
             return 2
+        # The .solkeep fallback is deprecated — nudge migration into [keep].
+        out.status(
+            f"[yellow]deprecated:[/] reading the keep-list from ~/.solkeep is "
+            f"deprecated and loses support in solx {SOLKEEP_REMOVED_IN}. "
+            r"migrate it into your config's \[keep] block:  solx config import-solkeep"
+        )
 
     csv_dir = csv_dir or Path.home()
     if not csv_dir.is_dir():

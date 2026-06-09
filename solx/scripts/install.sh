@@ -20,7 +20,7 @@ set -eu
 
 PYVER="${SOLX_PYTHON:-3.13}"
 BIN="${SOLX_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
-SRC="${1:-https://github.com/Shu-Wan/sol-skills/releases/latest/download/solx.pyz}"
+SRC="${1:-https://github.com/Shu-Wan/solx/releases/latest/download/solx.pyz}"
 
 command -v uv >/dev/null 2>&1 || {
     echo "solx install: uv is required to provision Python $PYVER." >&2

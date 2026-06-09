@@ -31,7 +31,7 @@ The fake `$HOME` (`evals/mocks/home/`) ships with:
 
 The fake `/scratch` tree (`evals/mocks/scratch/sparky/`) has empty
 `my-project/`, `experiments/`, and `old-stuff/` directories so
-`sol_renew.py` has somewhere to "touch" without affecting your real
+`solx keep` has somewhere to "touch" without affecting your real
 filesystem.
 
 ## Toggle the side under test
@@ -47,9 +47,10 @@ single line does not reliably set the variable for `source`.)
 
 ## Toggle the solx-present branch
 
-The mock deliberately ships **no** `solx` shim — that's the default
-"no `solx`" branch the skill needs to exercise. To test the
-`solx`-present branch, drop a shim into `bin/`:
+The mock deliberately ships **no** `solx` shim — that's the
+not-yet-installed branch (the skill should detect the absence and prompt
+to install `solx`). To test the `solx`-present branch, drop a shim into
+`bin/`:
 
 ```shell
 # Use the real solx if you have it installed

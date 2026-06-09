@@ -432,6 +432,19 @@ def test_config_edit_no_config(runner: CliRunner, monkeypatch, tmp_path) -> None
     assert res.exit_code == 2
 
 
+def test_config_import_solkeep_wiring(runner: CliRunner, monkeypatch) -> None:
+    """`solx config import-solkeep --solkeep F` routes to init.cmd_import_solkeep."""
+    captured: list[dict] = []
+    from solx import init as init_mod
+
+    monkeypatch.setattr(
+        init_mod, "cmd_import_solkeep", lambda **kw: captured.append(kw) or 0
+    )
+    res = runner.invoke(cli.app, ["config", "import-solkeep", "--solkeep", "/tmp/mk"])
+    assert res.exit_code == 0
+    assert str(captured[0]["solkeep"]) == "/tmp/mk"
+
+
 # ---- completions --------------------------------------------------------
 
 

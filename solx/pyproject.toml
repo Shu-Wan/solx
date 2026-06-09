@@ -1,6 +1,6 @@
 [project]
 name = "solx"
-version = "0.3.4"
+version = "0.4.0"
 description = "CLI for ASU's Sol supercomputer."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,8 +30,8 @@ dependencies = [
 solx = "solx.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/Shu-Wan/sol-skills"
-Issues = "https://github.com/Shu-Wan/sol-skills/issues"
+Homepage = "https://github.com/Shu-Wan/solx"
+Issues = "https://github.com/Shu-Wan/solx/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -8,17 +8,18 @@ content). Public-facing test methodology lives in
 ## Repo shape
 
 ```text
-sol-skill/
-├── README.md                       # end-user entry point
-├── DEVELOPMENT.md                  # you are here
-├── docs/                           # working/helper docs (plans, public coverage)
+solx/                               # the repo
+├── README.md                       # end-user entry point (CLI + skill)
+├── DEVELOPMENT.md                  # you are here (skill + eval harness)
+├── .github/workflows/              # ci.yml (lint+test) · release.yml (.pyz + GH release on tag)
+├── docs/
 │   ├── ROADMAP.md                  # roadmap
-│   ├── name.md
+│   ├── solx.md                     # solx user manual
 │   └── coverage.md                 # public methodology + coverage matrix
+├── solx/                           # the solx CLI package (see solx/DEVELOPMENT.md)
 ├── skills/sol-skill/               # the shipped skill (what users install)
 │   ├── SKILL.md
-│   ├── scripts/sol_renew.py
-│   └── references/
+│   └── references/                 # solx, module, scratch, slurm, sessions, sharing
 └── evals/                          # eval harness (not shipped with the skill)
     ├── README.md
     ├── evals.example.json          # sanitized template
@@ -112,7 +113,7 @@ environment, each graded differently.
 |---|---|---|---|
 | **L0 — Triggering** | Does the skill's frontmatter description make Claude invoke the skill on Sol-related prompts and *not* on near-misses (generic SLURM, generic Python venv)? | Anywhere with `claude -p` | `skill-creator/scripts/run_loop.py` |
 | **L1 — Static / transcript-only** | Agent's *proposed* commands and reference-file reads. No execution. Catches: wrong placeholder, wrong storage location, missing reference load, suggesting `sudo`, suggesting a bulk-touch, snooping `~/.ssh/config`, forgetting the `command -v solx` branch. | Laptop, Sol login, anywhere | Subagent runs the prompt in a "describe what you'd do" mode; grader greps the transcript for required/forbidden patterns. |
-| **L2 — Mocked Sol** | Real scripts (today: `sol_renew.py`; later: `solx`) executed against a fake Sol environment. Catches: parsing the warning CSVs, `.solkeep` matching (incl. carve-outs), `uv` shebang bootstrap, side-detection logic. | Laptop or Sol login (no privileges needed — pure userland mocks) | Run script → assert on exit code + stdout/stderr + filesystem mutations. Runnable today: `evals/runner/run_l2_renew.py` builds a sandbox (real files + stale mtimes) and asserts the renewal refreshes kept files, honors carve-outs, and skips the rest. (The static `mocks/` CSVs list absolute `/scratch` paths, so they back L1 parsing checks, not real touching.) |
+| **L2 — Mocked Sol** | `solx` run against a fake Sol environment, plus its own unit suite. Catches: parsing the warning CSVs, keep-list matching (incl. carve-outs), side-detection logic, the destructive-confirm contract. | Laptop or Sol login (no privileges needed — pure userland mocks) | Run → assert on exit code + stdout/stderr + filesystem mutations. The renewal mechanism is covered by `solx/tests/test_keep.py` (incl. an end-to-end real-touch test over a real tree with stale mtimes); the static `mocks/` CSVs (absolute `/scratch` paths) back L1 parsing checks. |
 | **L3 — Real Sol smoke** | Things only meaningful on actual Sol: real `module avail`, real `srun`, real ssh tunnel through compute node, the `vscode` wrapper. | Sol, manually, by maintainer | Short checklist (`evals/manual_checklist.md`) the maintainer runs before release |
 
 The classification lives **in the eval file** — each assertion is
@@ -158,8 +159,8 @@ intentionally **absent** from `bin/` — that's how we exercise the
 cd /path/to/sol-skill
 source evals/mocks/activate.sh
 hostname -a                                  # → sc001.sol.rc.asu.edu
-sol_renew.py --dry-run -v                    # exercises CSV + .solkeep parsing
-cat "$MOCK_LOG"                              # see what the script invoked
+solx keep --dry-run -v                       # exercises CSV + keep-list parsing (needs solx)
+cat "$MOCK_LOG"                              # see what was invoked
 ```
 
 ## How to run an eval locally
@@ -258,25 +259,31 @@ description-optimization guide for what makes a good prompt.
 
 ## Release process tie-in
 
-Before tagging a release:
+The CLI and the skill share one version line; a pushed `vX.Y.Z` tag
+triggers `.github/workflows/release.yml` (build `solx.pyz`, publish the
+GitHub Release). Before tagging:
 
-1. Run the full eval suite locally (L1 + L2 against mocks).
-2. Walk the L3 manual checklist on real Sol (login + compute node).
-3. Hand-edit `docs/coverage.md`: bump the "Last verified" date, flip
-   any ✓/–/pending cells in the matrix, refresh "Known gaps".
-4. If the release added a user-visible capability, also touch the
-   "What this skill helps with" bullets in
-   `skills/sol-skill/SKILL.md`.
-5. Commit `docs/coverage.md` (and any matching skill changes) on the
-   release commit so the verification record travels with the tag.
-6. Tag, then package via skill-creator's `package_skill.py` if
-   shipping a `.skill` artifact.
+1. Bump the version in `solx/src/solx/__init__.py`,
+   `solx/pyproject.toml`, and `skills/sol-skill/SKILL.md` (`version:`);
+   refresh `solx/uv.lock` (`uv lock`).
+2. Run the full eval suite locally (L1 + L2) and `solx`'s unit suite
+   (`cd solx && uv run pytest`).
+3. Walk the L3 manual checklist on real Sol (login + compute node).
+4. Hand-edit `docs/coverage.md`: bump the "Last verified" date, flip
+   any cells in the matrix, refresh "Known gaps". Move the
+   `[Unreleased]` notes under a `## [X.Y.Z]` heading in `CHANGELOG.md`.
+5. If the release added a user-visible capability, touch the "What this
+   skill helps with" bullets in `skills/sol-skill/SKILL.md`.
+6. Commit the docs on the release commit, then tag `vX.Y.Z` and push —
+   CI builds and publishes the release.
 
 ## What's in the repo vs. not
 
 | Thing | Location | In git? | Why |
 |---|---|---|---|
-| Skill contents (SKILL.md, references, scripts) | `skills/sol-skill/` | yes | shipped to users |
+| Skill contents (SKILL.md, references) | `skills/sol-skill/` | yes | shipped to users |
+| solx CLI package | `solx/` | yes | the CLI; built to `solx.pyz` by CI on tag |
+| CI workflows | `.github/workflows/` | yes | lint + test, and tag-driven release |
 | Mocks + runner code | `evals/mocks/`, `evals/runner/` | yes | no PII, useful for contributors |
 | Sanitized eval template | `evals/evals.example.json` | yes | shows the schema |
 | Real eval prompts + assertions | `evals/evals.json` | **no** | may reference real ASURITEs, project paths, partitions |
@@ -291,8 +298,7 @@ specific than that stays out of git on purpose.
 ## Dependencies
 
 - [`uv`](https://docs.astral.sh/uv/) — script runner and Python env
-  manager. The mock harness assumes `uv` on `$PATH`, same as
-  `sol_renew.py`.
+  manager. The mock harness assumes `uv` on `$PATH`, same as `solx`.
 - [`claude` CLI](https://docs.claude.com/en/docs/claude-code) — the
   runner shells out to spawn subagents.
 - The

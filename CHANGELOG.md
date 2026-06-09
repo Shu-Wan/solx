@@ -1,27 +1,78 @@
 # Changelog
 
-All notable changes to `sol-skill` are recorded here.
+All notable changes to **solx** — the CLI and its agent skill — are
+recorded here.
 
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
-The version in each entry below matches the `version` field in
-[`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md) and the git
-tag for that release.
+From v0.4.0 the CLI and the skill share **one version line**: each entry's
+version matches `solx/src/solx/__init__.py`, the `version` field in
+[`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git tag,
+and a pushed `vX.Y.Z` tag builds and publishes the release.
 
 ## [Unreleased]
 
-(Changes since v0.3.0 land here. Move them under a new heading on release.)
+## [0.4.0] — 2026-06-08
+
+`solx` becomes the supported path for interactive jobs and scratch
+renewal, and the skill is rewritten to install and drive it. The CLI and
+skill move to one version line, and a pushed `vX.Y.Z` tag now builds the
+single-file `solx.pyz` and publishes a GitHub Release via CI.
+
+### Added
+
+- `solx config import-solkeep` — migrate a legacy `~/.solkeep` into the
+  config `[keep]` block.
+- CI: `.github/workflows/ci.yml` (lint + test on push/PR) and
+  `release.yml` (on a `vX.Y.Z` tag: verify the tag matches `solx
+  --version`, build `solx.pyz`, publish a GitHub Release with `solx.pyz`
+  + `install.sh` attached). `curl … install.sh | sh` is the recommended
+  install/upgrade on Sol.
+- `skills/sol-skill/references/solx.md` — agent-facing `solx` reference.
+- Situational job management (closes #9): SKILL.md + `references/slurm.md`
+  teach checking `myfairshare` before submitting and backing off when
+  it's low (≲0.05 — don't spam the scheduler and waste fairshare),
+  tracking the wall-time left on the current allocation, and wrapping up
+  / handing off before Slurm reclaims the node; plus a helpful-Sol-commands
+  table.
 
 ### Changed
 
-- docs: `PLAN.md` → `ROADMAP.md`; the Stage 3 sub-plan
-  (`stage-3-integration.md`) is folded into the roadmap's
-  "Stage 3 scope (v0.4.0)" section — one roadmap document.
-- `README.md`: agent-skill install section reduced to the common
-  `gh skill install` one-liner (any agentskills.io-spec installer works).
+- SKILL.md rewritten around `solx`: detect it, install it on first use
+  (required for job/scratch work), drive the `solx job` lifecycle and
+  `solx keep`, and fall back to raw Slurm only when `solx` is unavailable.
+- `references/scratch.md`: renewal via `solx keep` and the config
+  `[keep]` block; keep-list pattern syntax retained.
+- Repository renamed `Shu-Wan/sol-skills` → `Shu-Wan/solx`; all hardcoded
+  install URLs updated. Version reconciled to one line (was: skill 0.3.0,
+  solx 0.3.4).
+- `solx keep` prints a deprecation notice when it falls back to
+  `~/.solkeep`.
+- `docs/coverage.md`, `DEVELOPMENT.md`, `docs/ROADMAP.md`: updated for the
+  above.
 
-### solx 0.3.4 — zsh completions work installed on fpath (#26)
+### Deprecated
+
+- `~/.solkeep` and the standalone renewal script are superseded by `solx
+  keep` + the `[keep]` block. `solx keep` still reads a `~/.solkeep` if
+  present; **support is removed in 0.5.0**. Migrate with `solx config
+  import-solkeep`.
+
+### Removed
+
+- `skills/sol-skill/scripts/sol_renew.py` — the bundled renewal script;
+  use `solx keep`.
+- `evals/runner/run_l2_renew.py` — its target was the bundled script; the
+  renewal mechanism is now covered by `solx/tests/test_keep.py`
+  (including an end-to-end real-touch test).
+
+### Earlier `solx` changes, folded into this release
+
+These landed on `main` after the skill's v0.3.0 tag but were never
+released on their own; they ship as part of v0.4.0.
+
+#### solx 0.3.4 — zsh completions work installed on fpath (#26)
 
 - `solx completions zsh` now ends with Click's dual-mode footer instead
   of Typer's bare `compdef`: installed on `fpath`
@@ -33,7 +84,7 @@ tag for that release.
 - Docs (`solx/README.md`, `docs/solx.md`): both zsh install modes, with
   the fpath two-liner as the recommended one.
 
-### solx 0.3.3 — cold-start latency, single-line help aliases, zipapp scripts
+#### solx 0.3.3 — cold-start latency, single-line help aliases, zipapp scripts
 
 - **Cold-start latency on Sol's NFS home** (where every module import is
   a network round-trip): command implementations, `rich`, and `pathspec`
@@ -48,11 +99,11 @@ tag for that release.
   on Sol. Publishing the artifacts to GitHub Releases is Stage 3
   (v0.4.0); see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-### solx 0.3.2 — runtime tab completion + `jump --overlap` (#23)
+#### solx 0.3.2 — runtime tab completion + `jump --overlap` (#23)
 
-### solx 0.3.1 — completions under Typer's vendored Click; `version`/`help` aliases (#22)
+#### solx 0.3.1 — completions under Typer's vendored Click; `version`/`help` aliases (#22)
 
-### solx 0.3.0 (sub-package)
+#### solx 0.3.0 (sub-package)
 
 The `solx/` CLI: agent-friendly output, verb-aware job-id resolution, and a
 file-level-sharded `keep` that also reads the skill's `~/.solkeep`. The skill
@@ -268,8 +319,9 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/sol-skills/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.3.0
-[0.2.1]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.2.1
-[0.2.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.2.0
-[0.1.0]: https://github.com/Shu-Wan/sol-skills/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.4.0
+[0.3.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.3.0
+[0.2.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.2.1
+[0.2.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.2.0
+[0.1.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.1.0

@@ -98,3 +98,68 @@ def cmd_init(
     out.status("[dim]edit it with `solx config edit`, then `solx job start`.[/]")
     out.emit(data={"wrote": str(p)}, human=lambda: f"[green]wrote[/] {p}")
     return 0
+
+
+def cmd_import_solkeep(
+    *,
+    path: Path | None = None,
+    solkeep: Path | None = None,
+    out: Out | None = None,
+) -> int:
+    """Migrate a legacy `~/.solkeep` keep-list into the config's `[keep]` block.
+
+    The implicit `~/.solkeep` fallback (and the `.solkeep` format) is
+    deprecated and loses support in solx 0.5.0; this is the one-shot migration.
+    Reads `solkeep` (default `~/.solkeep`), splits it into include/exclude via
+    `import_solkeep`, and **appends** a rendered `[keep]` block to an existing
+    `config.toml`. Refuses if the config already has an active `[keep]` table —
+    a second one is invalid TOML, so the user must merge by hand there.
+    """
+    out = out or Out.auto()
+    p = path or cfg.config_path()
+    src = solkeep or (Path.home() / ".solkeep")
+
+    if not p.exists():
+        out.error(
+            f"[red]error:[/] no config at {p}. run `solx init` first "
+            "(it imports ~/.solkeep on the way)."
+        )
+        return 2
+
+    imported = cfg.import_solkeep(src)
+    if imported is None:
+        out.error(
+            f"[red]error:[/] nothing to import from {src} (missing or no patterns)."
+        )
+        return 2
+    include, exclude = imported
+
+    try:
+        existing = cfg.load(p)
+    except cfg.ConfigError as e:
+        out.error(f"[red]error:[/] {e}")
+        return 2
+    if existing.keep is not None:
+        out.error(
+            r"[red]error:[/] config already has a \[keep] block. merge the "
+            "patterns by hand with `solx config edit` (a second \\[keep] table "
+            "would be invalid TOML)."
+        )
+        return 2
+
+    block = cfg.render_keep_block(include, exclude)
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write("\n" + block)
+
+    out.status(
+        f"[green]imported[/] {len(include)} include / {len(exclude)} exclude "
+        r"pattern(s) into \[keep]"
+    )
+    out.status(
+        "[dim]review with `solx config show`; ~/.solkeep is no longer needed.[/]"
+    )
+    out.emit(
+        data={"config": str(p), "include": include, "exclude": exclude},
+        human=lambda: f"[green]wrote[/] \\[keep] → {p}",
+    )
+    return 0

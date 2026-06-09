@@ -1,9 +1,9 @@
 # Roadmap: the `solx` CLI
 
 Forward-looking design doc for **`solx`**, a Python CLI for working
-on ASU's **Sol** supercomputer. Not part of any released version
-yet. The agent skill (shipped) covers the manual path; `solx` is an
-additive convenience layer for terminal-driven work on Sol.
+on ASU's **Sol** supercomputer. The Sol-side CLI and its skill
+integration shipped in v0.4.0; what remains forward-looking here is the
+deferred **laptop-side** design.
 
 End-user docs: [`../README.md`](../README.md),
 [`../skills/sol-skill/SKILL.md`](../skills/sol-skill/SKILL.md).
@@ -39,7 +39,7 @@ greenlit it.
 |---|---|---|
 | 1 — Skill manual-SSH path | Shipped in v0.2.0 (see CHANGELOG). | ✅ shipped |
 | 2 — `solx` CLI (Sol-only) | `solx/` package, installable on Sol via `uv tool install`. Covers daily Sol use: jobs, interactive allocation, scratch renewal, config. Shipped as solx v0.3.0 (agent-friendly output, verb-aware job-id resolution, sharded `keep`). Behavior: [`solx.md`](solx.md). | ✅ shipped |
-| 3 — Skill ↔ `solx` integration + distribution | Skill detects `solx` and teaches the CLI flow alongside the manual fallback; `solx` gains a single-file install channel; the two version lines reconcile. Ships as **v0.4.0**. Scope below. | ⚪ planned |
+| 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx` (jobs + `solx keep`), raw-Slurm fallback; single-file install channel + CI-built GitHub releases; version lines reconciled; situational job awareness (#9). | ✅ shipped (v0.4.0) |
 
 ## Design principles
 
@@ -117,64 +117,39 @@ specific laptop-side design.
   recent and `stop` refuses to guess (exit 2). Full rules in
   [`solx.md`](solx.md).
 - **Repo layout**: same repo, CLI under `solx/`, skill under
-  `skills/sol-skill/` — they ship together long-term but Stage 3
-  integration is deferred. The skill currently makes no reference to
-  `solx` and continues to teach `sol_renew.py` for scratch renewal.
+  `skills/sol-skill/`; they ship together on one version line. The repo
+  was renamed `sol-skills` → `solx` at v0.4.0.
+- **Name**: kept `solx` (short, unique, evokes Sol); the project/repo
+  took the CLI's name at v0.4.0. The earlier candidate exploration is
+  retired.
 - **`vscode` / `sbatch` wrappers**: out of scope. `solx` is for
   interactive jobs; for VSCode, run `code tunnel` directly on a
   compute node. For batch work, `sbatch your-script.sbatch` directly.
 - **Skill subcommands** (`solx skill install/remove/...`): reserved
-  in the eventual surface, **not implemented in Stage 2**. They
-  return with Stage 3.
+  in the eventual surface, still **not implemented** as of v0.4.0 (the
+  skill installs via agentskills.io installers). Revisit if it earns
+  its place.
 
-## Stage 3 scope (v0.4.0)
+## Stage 3 — shipped in v0.4.0
 
-Stage 3 is the v0.4.0 release. Work begins only when Stage 2 has
-matured through real Sol use, the command surface is stable, and the
-user greenlights it. Three tracks ship together.
+Stage 3 shipped as v0.4.0:
 
-### Skill ↔ CLI integration
+- The skill installs and drives `solx` (the `solx job` lifecycle and
+  `solx keep`), with raw Slurm as a fallback. `references/solx.md`
+  teaches the CLI workflow.
+- The standalone `sol_renew.py` was removed from the skill and
+  `~/.solkeep` deprecated (support removed in 0.5.0; `solx config
+  import-solkeep` migrates it).
+- `solx` ships a single-file `.pyz` install channel
+  (`curl … install.sh | sh`), and CI builds + publishes a GitHub
+  Release on each `vX.Y.Z` tag.
+- The CLI and skill reconciled onto **one version line**, and the repo
+  was renamed `sol-skills` → `solx`.
+- Situational job awareness — fairshare and remaining-time (#9) — landed
+  in the skill.
 
-- `skills/sol-skill/references/solx.md` — reference doc teaching the
-  agent the `solx`-driven workflow (`init`, `job
-  list/start/jump/time/stop`, `keep`), including the `-y`/`-n`
-  confirmation contract for destructive ops.
-- `skills/sol-skill/SKILL.md` — a `command -v solx` detection branch
-  so the agent prefers `solx` when present and falls back to the
-  manual flow (`sessions.md`, `sol_renew.py`) when not. The manual
-  branch never goes away.
-- `scripts/sol_renew.py` is kept — the zero-install renewal flow
-  remains viable without `solx`.
-- `docs/coverage.md` rows for the detection-branch behaviors; skill
-  version bump in `CHANGELOG.md`.
-
-### Distribution — the `.pyz` channel
-
-Sol's NFS home makes a venv install pay one network round-trip per
-module file, so cold starts are slow (measured: 4.4s for
-`solx --version` from the uv tool venv). A single-file zipapp cuts
-that to one file open (1.6s cold / 0.12s warm). The build and install
-scripts live in `solx/scripts/` (`build-pyz.sh`, `install.sh`);
-v0.4.0 publishes the artifacts:
-
-- Attach `solx.pyz` + `install.sh` to the GitHub Release.
-  `curl -fsSL …/releases/latest/download/install.sh | sh` becomes the
-  recommended install on Sol — it is also the upgrade command.
-  `uv tool install` stays as the package-manager path for generic
-  installs.
-- `solx self update` — channel-aware: running from the `.pyz` it
-  replaces its own file with the latest release artifact; running
-  from a uv-managed venv it prints `uv tool upgrade solx` and exits 2
-  rather than cross-grading the install.
-- README install sections (root + `solx/`) lead with the channel that
-  fits each audience.
-
-### Versioning reconciliation
-
-`solx` versions independently of the skill today (repo tags track the
-skill). The release that carries the `.pyz` artifact must correspond
-to the `solx` version users download, so v0.4.0 reconciles the two
-lines (per-solx tag prefix or a unified version — decided then).
+Detail is in [`../CHANGELOG.md`](../CHANGELOG.md). The remaining
+forward-looking work is below.
 
 ### Out of scope (still)
 
@@ -191,7 +166,7 @@ lines (per-solx tag prefix or a unified version — decided then).
   [`../solx/DEVELOPMENT.md`](../solx/DEVELOPMENT.md). Skill files untouched.
   (The pre-implementation contract `stage-2-solx.md` has been retired now
   that `solx.md` is the living manual.)
-- **Stage 3 (planned, v0.4.0)** — skill ↔ `solx` integration, the
-  `.pyz` distribution channel, and versioning reconciliation; see
-  [Stage 3 scope](#stage-3-scope-v040). Starts only after the user
-  greenlights.
+- **Stage 3 (shipped, v0.4.0)** — skill ↔ `solx` integration, the
+  `.pyz` distribution channel + CI releases, versioning reconciliation,
+  the repo rename, and situational job awareness (#9). See
+  [Stage 3 — shipped](#stage-3--shipped-in-v040).

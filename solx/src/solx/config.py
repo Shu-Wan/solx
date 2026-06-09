@@ -178,14 +178,14 @@ def _parse_keep(body: object, source: str) -> KeepRules | None:
 def load_solkeep(path: Path) -> KeepRules | None:
     """Load a gitignore-style `~/.solkeep` keep-list into `KeepRules`.
 
-    Same format and semantics as the skill's `sol_renew.py`: each line is a
-    keep pattern, `!` negates (carves a subtree out), `#`/blank lines are
-    ignored, a bare path matches that directory *and everything under it*, and
-    the last matching rule wins. `pathspec`'s `GitIgnoreSpec` implements those
-    semantics, so the whole file becomes a single keep matcher (with an empty
-    exclude). Returns None if the file is missing or has no effective rules —
-    so `solx keep` can fall through to its "nothing to match" handling, exactly
-    like `sol_renew.py` exiting when no rules load.
+    The legacy `~/.solkeep` format: each line is a keep pattern, `!` negates
+    (carves a subtree out), `#`/blank lines are ignored, a bare path matches
+    that directory *and everything under it*, and the last matching rule wins.
+    `pathspec`'s `GitIgnoreSpec` implements those semantics, so the whole file
+    becomes a single keep matcher (with an empty exclude). Returns None if the
+    file is missing or has no effective rules — so `solx keep` can fall through
+    to its "nothing to match" handling. `~/.solkeep` is a deprecated fallback
+    (see `keep.SOLKEEP_REMOVED_IN`); the supported home is the config `[keep]`.
     """
     if not path.exists():
         return None
@@ -304,6 +304,15 @@ def _toml_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def render_keep_block(include: list[str], exclude: list[str]) -> str:
+    """Public: render a `[keep]` TOML block from include/exclude pattern lists.
+
+    Used by `solx config import-solkeep` to append a migrated keep-list to an
+    existing config.toml. The leading comment notes the gitignore-style syntax.
+    """
+    return _render_keep_block(include, exclude)
+
+
 def _render_keep_block(include: list[str], exclude: list[str]) -> str:
     lines = [
         "# [keep] imported from ~/.solkeep — directories `solx keep` renews",
@@ -319,7 +328,7 @@ def _render_keep_block(include: list[str], exclude: list[str]) -> str:
 
 
 _STARTER_CONFIG_BASE = """\
-# solx config — see https://github.com/Shu-Wan/sol-skills/blob/main/solx/README.md
+# solx config — see https://github.com/Shu-Wan/solx/blob/main/solx/README.md
 #
 # Used by `solx job jump` when dropping into a shell on a compute node.
 default_shell = "bash"

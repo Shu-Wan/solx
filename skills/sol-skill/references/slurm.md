@@ -10,6 +10,12 @@ so all job scripts must be in the SBATCH format.
 An SBATCH script is a Bash script with special `#SBATCH` headers that
 Slurm interprets before executing the job on compute hardware.
 
+> **Interactive vs batch.** This reference covers **batch** jobs
+> (`sbatch`) and status commands. For **interactive** allocations, drive
+> the `solx job` lifecycle (`start` / `list` / `time` / `jump` / `stop`)
+> — see [solx.md](solx.md). `solx` deliberately doesn't wrap `sbatch`;
+> for batch work, use the SBATCH path below directly.
+
 ## Submitting Jobs
 
 ```shell
@@ -200,3 +206,79 @@ Run `kill -l` to list signal codes, or `man signal` for details.
 
 > **Note:** running `sleep` commands in SBATCH jobs violates
 > ASU policy and the job will be purged.
+
+## Situation-aware job management
+
+The load-bearing rules are in SKILL.md ("Situation-Aware Job
+Management"); this is the backing detail.
+
+### Fairshare
+
+`myfairshare` prints a table; the 0–1 score to read is the rightmost
+**`RealFairShare`** column (the dampened priority value — the wrapper
+reads the current `DampeningFactor`, so prefer it over hand-computing
+from `sshare`).
+Heavy recent usage drives the score down, which makes your jobs queue
+behind everyone else's — a long pending time is usually fairshare, not a
+stuck cluster.
+
+**Below ~0.05 is bad** — treat the account as throttled:
+
+- Don't spam the scheduler. A pile of submissions, or auto-resubmitting
+  on every failure, burns more fairshare and makes the next job queue
+  even longer. Submit fewer, right-sized jobs and let them run.
+- Right-size requests: don't take `public`/GPU/large nodes for work that
+  fits on `htc`; over-asking costs more fairshare per job.
+- Don't cancel-and-resubmit a pending job to chase a better slot — the
+  new job inherits the same priority; you've only spent fairshare.
+- Surface the number to the user instead of quietly firing more work.
+
+### Remaining time on the current allocation
+
+Inside an allocation you're on borrowed wall-time — when it expires
+Slurm kills the job and anything not on durable storage is lost. Check
+what's left:
+
+```shell
+solx job time                          # remaining wall-time (e.g. 2:14:09; D-HH:MM:SS once over a day)
+squeue -h -j "$SLURM_JOB_ID" -o %L     # no-solx equivalent (TimeLeft, no padding)
+scontrol show job "$SLURM_JOB_ID" | grep -o 'TimeLimit=[^ ]*'   # the cap
+```
+
+- **Don't start what can't finish** in the remaining window — chunk it
+  with checkpoints, or request more time up front (a fresh
+  `solx job start` with a longer `time`, or a batch job).
+- **Wrap up early:** as time gets short, stop starting work and flush
+  results/outputs to `/scratch`, checkpoint state, and write a short
+  status summary. `/home` and `/scratch` survive the allocation; the
+  node's local state does not.
+- **Hand off:** leave a resume note or small script (what ran, what's
+  left, the command to continue) so the next session or a follow-up
+  batch job resumes cleanly.
+
+## Helpful Sol commands
+
+ASU ships convenience wrappers on top of Slurm
+(<https://docs.rc.asu.edu/helpful-slurm-commands>). Prefer the native
+Slurm command when it's just as short; reach for a wrapper when its
+formatting or calculation earns it. Call these **directly** — `solx`
+doesn't (and shouldn't) wrap them.
+
+| Command | What it does |
+|---|---|
+| `myjobs` | Your current jobs in the queue (priority/QOS/GPU columns). |
+| `summary` | Per-state counts of your jobs (RUNNING / PENDING / …). |
+| `sq` | The queue; `sq -u $USER` filters to you (a `squeue` wrapper). |
+| `thisjob <jobid>` | Job info including the estimated start time. |
+| `seff <jobid>` | Slurm efficiency (CPU + memory used) for a finished job. |
+| `myfairshare` | Your real fairshare score. |
+| `myquota` | Your `$SCRATCH` quota. |
+| `sinfo` / `showparts` | Cluster / partition capacity (`showparts` is color-coded). |
+| `showgpus` | Free GPUs per node (color-coded). |
+| `ns` | Command-line version of the cluster status page. |
+| `mysacct` | Historical job activity (a preset `sacct` format). |
+| `myaccounts` | Accounts and QOS you can submit under. |
+| `showlimited` | Cluster-wide capacity holds (why jobs are stuck pending). |
+
+Verify against the upstream page if a wrapper behaves unexpectedly — ASU
+maintains them and the set changes over time.

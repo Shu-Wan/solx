@@ -1,0 +1,43 @@
+name: ci
+
+# Lint + test the solx CLI on every push to main and every PR. The agent
+# skill itself is prose + references (no build step); its evals run out of
+# band (see DEVELOPMENT.md), so CI guards the code that ships as an artifact.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test + lint (solx)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solx
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (provisioning Python 3.13)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          working-directory: solx   # where uv.lock lives (cache key source)
+
+      - name: Sync dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uvx ruff check src tests
+
+      - name: Test
+        run: uv run --frozen pytest -q

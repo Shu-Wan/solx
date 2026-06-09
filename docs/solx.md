@@ -11,7 +11,11 @@ Install instructions are in [`solx/README.md`](../solx/README.md). The short
 version, on Sol:
 
 ```shell
-uv tool install git+https://github.com/Shu-Wan/sol-skills.git#subdirectory=solx
+# Recommended on Sol — single-file install (re-run to upgrade):
+curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
+# Or as a uv tool:
+uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+
 solx --version
 solx init        # writes ~/.config/solx/config.toml
 ```
@@ -30,6 +34,7 @@ solx init        # writes ~/.config/solx/config.toml
 | `solx job time [JOBID]` | Print the time remaining on a job. |
 | `solx keep` | Renew `/scratch` files Sol flagged for deletion. |
 | `solx config show` / `edit` | Show or edit your config. |
+| `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into `[keep]`. |
 | `solx completions <bash\|zsh\|fish>` | Print a shell-completion script. |
 | `solx version` (alias `--version`) | Print the version. |
 | `solx help` (alias `--help`) | Show help. |
@@ -231,14 +236,15 @@ their timestamps with `touch`. It only ever touches directories that are
 **both** flagged by Sol **and** in your keep-list — so there's nothing for it
 to do until Sol actually flags something.
 
-**Where the keep-list comes from**, in priority order:
+**Where the keep-list comes from**, in precedence order:
 
 1. `--solkeep <file>` — a specific gitignore-style keep-list, if you pass one.
 2. the `[keep]` block in your `solx` config (`include` / `exclude`).
-3. `~/.solkeep` — the same file the skill's `sol_renew.py` uses. If you already
-   have one, `solx keep` picks it up automatically, and works even without a
-   `solx` config file. (Format: one pattern per line, `!` carves a subtree out,
-   a bare path means that directory and everything under it — last match wins.)
+3. `~/.solkeep` — a **deprecated** legacy keep-list. `solx keep` still reads it
+   if present (so existing setups keep working) but prints a deprecation notice;
+   **support is removed in solx 0.5.0**. Migrate it once with `solx config
+   import-solkeep`. (Format: one pattern per line, `!` carves a subtree out, a
+   bare path means that directory and everything under it — last match wins.)
 
 ```shell
 solx keep --dry-run         # preview exactly which directories would be renewed
@@ -259,8 +265,7 @@ throttle. For a big renewal, run it on a compute node or the data-transfer
 node (`ssh soldtn`).
 
 If there's no keep-list anywhere — no `[keep]` block and no `~/.solkeep` —
-`solx keep` stops and points you to `solx config edit` (or to create a
-`~/.solkeep`).
+`solx keep` stops and points you to `solx config edit`.
 
 ---
 

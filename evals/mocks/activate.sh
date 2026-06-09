@@ -54,7 +54,7 @@ done
 unset _shim
 hash -r 2>/dev/null || true
 
-# Keep uv's cache out of the fake $HOME so a real `sol_renew.py` run
+# Keep uv's cache out of the fake $HOME so a real `solx keep` run
 # doesn't repopulate the mock filesystem with a Python interpreter.
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/sol-skill-uv-cache}"
 

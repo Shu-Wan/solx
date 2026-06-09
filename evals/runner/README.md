@@ -13,19 +13,16 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   user-scope `sol-skill` install. Run it once before each eval
   session. See `DEVELOPMENT.md` ("Baseline isolation") for the why
   and how.
-- **`run_l2_renew.py`** — a standalone, runnable L2 check for the
-  renewal feature. It builds its own sandbox (real files with stale
-  mtimes, including `.venv`/`__pycache__`), points a `.solkeep` and a
-  warning CSV at it, runs `sol_renew.py`, and asserts the filesystem
-  mutations: dry-run touches nothing, kept files (recursively) are
-  refreshed, `.solkeep` carve-outs are left alone, non-kept dirs are
-  skipped. Exits non-zero on any failure, so it works standalone, in
-  CI, or as the L2 grader for the `scratch-renewal-*` evals
-  (`check.l2_script`). Self-bootstraps via `uv`; needs no sandbox, no
-  subagents, no `claude` CLI:
+- **L2 renewal coverage lives in the `solx` package.**
+  `solx/tests/test_keep.py::test_keep_end_to_end_real_touch` builds a
+  real tree with stale mtimes (including `.venv`/`__pycache__`), runs
+  `solx keep`, and asserts the filesystem mutations: kept files
+  (recursively) are refreshed, carve-outs are left alone, non-kept dirs
+  are skipped. It is the L2 grader for the `scratch-renewal-*` evals
+  (`check.l2_script`). Run standalone or in CI:
 
   ```shell
-  evals/runner/run_l2_renew.py        # -v to echo the script's output
+  ( cd solx && uv run pytest tests/test_keep.py -q )
   ```
 
 ## What the runner will do (iteration 1)

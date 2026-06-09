@@ -1,10 +1,9 @@
 # solx — development
 
 Contributor + maintainer guide for the `solx` CLI. End-user docs live
-in [`README.md`](README.md). The Sol-skill agent skill at
-`../skills/sol-skill/` is intentionally untouched by `solx` work in
-this stage; that integration is Stage 3, planned for v0.4.0 — see
-[`../docs/ROADMAP.md`](../docs/ROADMAP.md).
+in [`README.md`](README.md). The agent skill at `../skills/sol-skill/`
+drives `solx` and ships on the same version line; see
+[`../DEVELOPMENT.md`](../DEVELOPMENT.md) for the skill + eval harness.
 
 ## Architecture
 
@@ -20,7 +19,7 @@ solx/src/solx/
 ├── side.py             # Sol-vs-not-Sol guard (each subcommand asks require_sol)
 ├── slurm.py            # squeue/scancel/salloc/srun wrappers + verb-aware resolution
 ├── jobs.py             # `solx job *` command bodies
-├── keep.py             # `solx keep` (port of sol_renew.py, file-level sharded)
+├── keep.py             # `solx keep` (CSV-driven renewal, file-level sharded)
 └── init.py             # `solx init` (write starter config.toml)
 ```
 
@@ -60,11 +59,12 @@ solx/src/solx/
   self-contained. The trade: simpler schema, slightly more typing if
   you want a flag in every template. Worth it; merge logic was
   contributing more confusion than savings.
-- **`keep` mirrors `sol_renew.py`** — same CSV-driven mechanism, same
-  flag surface (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`). The keep list
-  lives in `[keep]` config now instead of `~/.solkeep`; the original
-  ethical posture (only renew what Sol has flagged) carries over.
-  Execution is **file-level sharded** (mirrors `sol_renew.py` PR #18):
+- **`keep`** renews CSV-flagged scratch dirs filtered by the keep-list
+  (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`); it only renews what Sol has
+  flagged. The keep-list lives in the `[keep]` config block; a legacy
+  `~/.solkeep` is read as a **deprecated** fallback (warned, removed in
+  0.5.0 — see `keep.SOLKEEP_REMOVED_IN`; `solx config import-solkeep`
+  migrates it). Execution is **file-level sharded** (PR #18):
   `_pick_lister` (fd/rg/find) → `enumerate_dir` → `shard` → `touch_files`
   on a bounded streaming window, so `-j` scales the biggest single
   directory, not just the directory count. `_execute` has a serial
@@ -131,7 +131,8 @@ After `ssh sparky@sol.asu.edu` (with your ASURITE):
 
 1. **Install fresh**:
    ```shell
-   uv tool install --reinstall git+https://github.com/Shu-Wan/sol-skills.git#subdirectory=solx
+   uv tool install --reinstall git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+   # or the single-file channel: curl -fsSL .../releases/latest/download/install.sh | sh
    solx --version
    ```
 
@@ -248,16 +249,19 @@ After `ssh sparky@sol.asu.edu` (with your ASURITE):
 
 ## Releasing
 
-There is no published release cadence yet — `solx` is pre-1.0 and
-shipped via `uv tool install` from the Git repo directly. When we cut
-a tag:
+The CLI and the skill share one version line, and CI publishes the
+release. To cut `vX.Y.Z`:
 
-1. Bump `solx/src/solx/__init__.py::__version__` and
-   `solx/pyproject.toml::version` (keep them matched).
-2. Run the full test suite + at least the smoke flow above.
-3. Tag at the repo root: `git tag solx-vX.Y.Z` (prefix to distinguish
-   from skill tags, which are unprefixed `vX.Y.Z`).
-4. Push the tag.
+1. Bump `solx/src/solx/__init__.py::__version__`,
+   `solx/pyproject.toml::version`, and the `version:` field in
+   `../skills/sol-skill/SKILL.md` (keep all three matched), then refresh
+   the lock (`uv lock`).
+2. Move the `[Unreleased]` notes under a `## [X.Y.Z]` heading in
+   `../CHANGELOG.md`; update `../docs/coverage.md`.
+3. Run the full test suite + at least the smoke flow above.
+4. Tag `vX.Y.Z` and push it. `.github/workflows/release.yml` verifies the
+   tag matches `solx --version`, builds `solx.pyz`, and publishes a
+   GitHub Release with `solx.pyz` + `install.sh` attached.
 
 ## When in doubt
 
@@ -265,7 +269,8 @@ a tag:
   [`../docs/solx.md`](../docs/solx.md); the roadmap and design decisions are
   in [`../docs/ROADMAP.md`](../docs/ROADMAP.md). When code and docs disagree, raise
   it — usually the code is right and the doc needs an update, but check.
-- The agent skill at `../skills/sol-skill/` is hands-off in this
-  stage. Don't add `solx` references there; that's Stage 3.
-- The repo root `README.md` and `DEVELOPMENT.md` describe the **agent
-  skill**, not `solx`. Keep `solx`-specific content here.
+- The agent skill at `../skills/sol-skill/` drives `solx`
+  (`references/solx.md` is its CLI reference). Keep the skill's user
+  guidance there and `solx` architecture/test detail here.
+- The repo root `README.md` and `DEVELOPMENT.md` cover the whole project
+  (CLI + skill + evals); this file is the `solx` package's internals.

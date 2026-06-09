@@ -188,3 +188,71 @@ def test_init_no_solkeep_keeps_placeholder(tmp_path: Path) -> None:
     c = cfg.load(cfgpath)
     assert c.keep is None
     assert "sparky" in cfgpath.read_text()
+
+
+# ---- config import-solkeep (the .solkeep -> [keep] migration) ------------
+
+_CONFIG_NO_KEEP = """\
+default_shell = "bash"
+default_template = "default"
+
+[jobs.default]
+partition = "lightwork"
+time = "1-0"
+"""
+
+
+def test_import_solkeep_appends_keep_block(tmp_path: Path) -> None:
+    """A config without [keep] + a ~/.solkeep -> a [keep] block is appended."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("/scratch/sparky/proj\n!**/__pycache__\n")
+
+    out = make_out()
+    code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
+    assert code == 0
+    c = cfg.load(cfgpath)
+    assert c.keep is not None
+    assert c.keep.matches("/scratch/sparky/proj/x")
+    assert not c.keep.matches("/scratch/sparky/proj/x/__pycache__")
+    assert "imported" in out.stderr.file.getvalue()
+
+
+def test_import_solkeep_refuses_when_keep_exists(tmp_path: Path) -> None:
+    """A config that already has [keep] is left alone (a 2nd table is invalid TOML)."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(
+        _CONFIG_NO_KEEP + '\n[keep]\ninclude = ["/scratch/sparky/existing"]\n'
+    )
+    before = cfgpath.read_text()
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("/scratch/sparky/proj\n")
+
+    out = make_out()
+    code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
+    assert code == 2
+    assert cfgpath.read_text() == before  # untouched
+    assert "already has" in out.stderr.file.getvalue()
+
+
+def test_import_solkeep_no_config_exits_2(tmp_path: Path) -> None:
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("/scratch/sparky/proj\n")
+    out = make_out()
+    code = init_mod.cmd_import_solkeep(
+        path=tmp_path / "absent.toml", solkeep=solkeep, out=out
+    )
+    assert code == 2
+    assert "solx init" in out.stderr.file.getvalue()
+
+
+def test_import_solkeep_no_patterns_exits_2(tmp_path: Path) -> None:
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("# just a comment\n\n")
+    out = make_out()
+    code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
+    assert code == 2
+    assert cfg.load(cfgpath).keep is None  # nothing appended
