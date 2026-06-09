@@ -146,6 +146,9 @@ solx/                            # the repo
 
 - **Version history** — see [`CHANGELOG.md`](CHANGELOG.md). Current
   release: **v0.4.0**.
+- **Roadmap** — see [`docs/ROADMAP.md`](docs/ROADMAP.md). Next up
+  (v0.5.0): cutting `solx`'s startup latency so it's as fast as a raw
+  SLURM call, plus dropping the deprecated `~/.solkeep`.
 - **What's tested and how** — see [`docs/coverage.md`](docs/coverage.md)
   for the public methodology and per-area coverage matrix.
 - **Contributing / eval harness internals** — see

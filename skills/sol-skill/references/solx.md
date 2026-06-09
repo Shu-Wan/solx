@@ -28,6 +28,18 @@ Both paths use [`uv`](https://docs.astral.sh/uv/) to provision a Python
 network and writes `~/.local/bin/solx` — propose it and get the user's
 OK rather than installing silently.
 
+## When to use `solx` vs raw SLURM
+
+`solx` is built for a human at a keyboard; for an agent it pays a
+Python/NFS startup cost on Sol (~1s+ per `job` command vs ~0.05s for raw
+`squeue`/`scancel` — `evals/runner/bench_solx_latency.sh`). So **for a
+one-off read, run the SLURM command directly** (`squeue --me`,
+`squeue -h -j "$SLURM_JOB_ID" -o %L`, `scancel <id>`); don't loop `solx`
+for status polling. Use `solx` for `job start` (templated allocation that
+waits), `job jump` (pty onto the node), and `keep` (CSV-∩-keep-list
+renewal) — the multi-step ops where it removes real friction. (Cutting
+this startup cost is on the roadmap.)
+
 ## Commands at a glance
 
 | Command | What it does |

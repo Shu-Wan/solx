@@ -71,22 +71,29 @@ For how this skill is verified, see
 
 ## `solx` — install it first
 
-The everyday Sol operations this skill performs — requesting interactive
-allocations, attaching to a compute node, checking remaining time, and
-renewing flagged `/scratch` files — go through **`solx`**, a small CLI
-you run *on Sol*. It reads one config file and shells out to Slurm; it
-never touches your laptop or `~/.ssh/*`. **Treat it as a requirement:
-when you're on Sol and a task needs job or scratch-renewal work, make
-sure `solx` is installed before falling back to raw Slurm.**
+**`solx`** is a small CLI you run *on Sol*; it reads one config file and
+shells out to Slurm, and never touches your laptop or `~/.ssh/*`. It's
+the user's day-to-day tool for templated interactive allocations
+(`job start` / `job jump`) and scratch renewal (`keep`) — install it when
+the user is doing that kind of work.
 
-**Detect, then install if missing.** Once you've confirmed you're on Sol
-(see [Detecting the Environment](#detecting-the-environment)):
+**User experience comes first — don't route through `solx` by reflex.**
+`solx` is built for a human at a keyboard; for an agent it pays a
+Python/NFS startup cost on Sol (~1s+ per `job` command vs ~0.05s for a
+raw `squeue`/`scancel`) and adds nothing over the raw command for a
+one-off read. Pick the tool per task: raw SLURM for status / time-left /
+cancel, `solx` for the multi-step lifecycle and renewal (the friction
+rule below).
+
+**Detect, then install when the task needs it.** Once you've confirmed
+you're on Sol (see [Detecting the Environment](#detecting-the-environment)):
 
 ```shell
-command -v solx        # nothing? install it before job/scratch work
+command -v solx        # missing? install it when the user needs job start/jump or keep
 ```
 
-If it's absent, **prompt the user to install it** (then run `solx init`):
+If it's absent and the task calls for it, **prompt the user to install
+it** (then run `solx init`):
 
 ```shell
 # Recommended on Sol: single-file install, fast cold start on the NFS home.
@@ -105,12 +112,11 @@ install it first. Installing reaches the network and writes to
 `~/.local/bin` — propose the command and get the user's go-ahead (or run
 it with their OK) rather than installing silently.
 
-**If the user declines or can't install `solx`,** stay useful: the raw
-Slurm path still works and is noted alongside each `solx` flow below
-(`salloc`/`interactive` for allocations, `sbatch` for batch, the
-emergency single-path `touch` for scratch). But lead with `solx` — it's
-the supported, agent-friendly path (JSON output off a TTY, exit codes,
-no interactive hangs).
+**If the user declines or can't install `solx`,** nothing is lost for the
+common cases — raw Slurm covers them: `squeue`/`scancel` for status and
+cancel, `salloc`/`interactive` for allocations, `sbatch` for batch, and
+the emergency single-path `touch` for scratch. `solx` changes the
+ergonomics of `job start`/`jump` and `keep`, not what's possible.
 
 The full command surface, the config schema, and the agent-output
 contract are in [references/solx.md](references/solx.md). The short
@@ -120,7 +126,8 @@ version:
 |---|---|
 | `solx init` / `solx config edit` | Write / edit `~/.config/solx/config.toml`. |
 | `solx job start [TEMPLATE]` | Request an interactive allocation from a config template. |
-| `solx job list` · `time` · `jump` · `stop` | List jobs · remaining time · shell onto the node · cancel. |
+| `solx job jump` | Drop a shell onto the job's compute node (`srun --pty`). |
+| `solx job list` · `time` · `stop` | List · time-left · cancel — handy for a human; an agent should usually use raw `squeue`/`scancel` instead (faster, see below). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]`. |
 | `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into `[keep]`. |
 
@@ -128,6 +135,25 @@ version:
 to stdout, diagnostics to stderr, so output pipes cleanly. Destructive
 commands (`job stop`, `keep`) prompt unless `-y`, refuse in a
 non-interactive session rather than hang, and preview with `-n`.
+
+**`solx` vs raw SLURM — pick by friction, not reflex.** A `solx job`
+command pays ~1s+ of Python/NFS startup on Sol's home filesystem, where a
+raw `squeue`/`scancel` returns in ~0.05s (measured — see
+`evals/runner/bench_solx_latency.sh`). So for a quick one-off — list
+jobs, check time left, cancel — run the SLURM command directly and don't
+loop `solx` for status polling:
+
+```shell
+squeue --me                                # not `solx job list`
+squeue -h -j "$SLURM_JOB_ID" -o %L         # time left; not `solx job time`
+scancel <jobid>                            # not `solx job stop`, when you know the id
+```
+
+Reach for `solx` where it removes real friction across several steps:
+`solx job start` (allocate from a template and wait), `solx job jump`
+(drop a shell onto the compute node), and `solx keep` (the
+CSV-∩-keep-list renewal). There the startup cost is amortized against
+work that raw SLURM makes tedious.
 
 ## Detecting the Environment
 
@@ -321,12 +347,12 @@ allocation keeps running in the background until you attach.
 ```shell
 solx job start debug         # request the [jobs.debug] template; prints the job id
 solx job start debug -n      # dry run: print the salloc argv, submit nothing
-solx job list                # see it (RUNNING)
-solx job time                # how much wall-time is left
 solx job jump                # open a shell on the compute node (srun --pty)
 # … work …
 exit                         # back to the login node; the allocation stays alive
-solx job stop                # cancel it when done (prompts; -y to skip)
+# status + cancel: the raw SLURM call is faster than solx (see "solx vs raw SLURM"):
+squeue --me                  # still RUNNING?   squeue -h -j <id> -o %L  for time left
+scancel <jobid>              # cancel when done
 ```
 
 Templates live in `~/.config/solx/config.toml` (`solx config edit`);

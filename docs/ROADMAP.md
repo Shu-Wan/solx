@@ -2,8 +2,8 @@
 
 Forward-looking design doc for **`solx`**, a Python CLI for working
 on ASU's **Sol** supercomputer. The Sol-side CLI and its skill
-integration shipped in v0.4.0; what remains forward-looking here is the
-deferred **laptop-side** design.
+integration shipped in v0.4.0. The next focus is **cutting `solx`'s
+startup latency** (below); the **laptop-side** design stays deferred.
 
 End-user docs: [`../README.md`](../README.md),
 [`../skills/sol-skill/SKILL.md`](../skills/sol-skill/SKILL.md).
@@ -11,61 +11,112 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
 [`coverage.md`](coverage.md). Released history:
 [`../CHANGELOG.md`](../CHANGELOG.md).
 
-## Pivot — what changed and why
-
-Earlier drafts of this plan envisioned a "one magic command from the
-laptop" — `solx up <profile>` would SSH to Sol, allocate, open
-tunnels, and drop the user into a shell, in one shot. That vision
-threads laptop-side ssh-client behavior, ControlMaster, Duo, and
-Slurm queue-wait races, none of which are unit-testable and all of
-which need real laptop ↔ Sol round-trips to validate.
-
-Rather than ship a brittle one-command flow, we are **deferring the
-laptop side entirely** until the design is more mature. `solx` is
-now a CLI you run **on Sol**: the user reaches Sol the manual way (per the
-already-shipped `references/sessions.md`), then runs `solx` from
-there. Everything `solx` does — list jobs, start an interactive
-allocation, drop into a shell on the compute node, cancel, query
-remaining time, keep `/scratch` files alive — happens on Sol.
-
-The laptop side is not cancelled, just **deferred for further
-discussion**. It returns when the Sol-side primitives are stable,
-the design has been re-thought from scratch, and the user has
-greenlit it.
-
 ## Stages
 
 | Stage | Outcome | Status |
 |---|---|---|
-| 1 — Skill manual-SSH path | Shipped in v0.2.0 (see CHANGELOG). | ✅ shipped |
-| 2 — `solx` CLI (Sol-only) | `solx/` package, installable on Sol via `uv tool install`. Covers daily Sol use: jobs, interactive allocation, scratch renewal, config. Shipped as solx v0.3.0 (agent-friendly output, verb-aware job-id resolution, sharded `keep`). Behavior: [`solx.md`](solx.md). | ✅ shipped |
-| 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx` (jobs + `solx keep`), raw-Slurm fallback; single-file install channel + CI-built GitHub releases; version lines reconciled; situational job awareness (#9). | ✅ shipped (v0.4.0) |
+| 1 — Skill manual-SSH path | The agent skill (manual SSH, `sbatch`, scratch renewal). | ✅ shipped (v0.2.0) |
+| 2 — `solx` CLI (Sol-only) | `solx/` package: jobs, interactive allocation, scratch renewal, config; agent-friendly output. | ✅ shipped (v0.3.0) |
+| 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx`; single-file install channel + CI releases; one version line; situational job awareness (#9). | ✅ shipped (v0.4.0) |
+| 4 — Startup latency | Get a `solx job` command close to a raw SLURM call so the skill can prefer `solx` without a UX penalty. | ⚪ planned (v0.5.0) |
+| — Laptop side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
+
+Shipped-stage detail lives in [`../CHANGELOG.md`](../CHANGELOG.md).
+
+## Next: cut `solx` startup latency
+
+`solx` is the user's convenience tool, but on Sol's NFS home it pays a
+Python-startup tax that a raw SLURM binary doesn't. Because the agent
+skill must put **user experience first**, it currently steers an agent to
+raw `squeue`/`scancel` for one-off reads (see SKILL.md, "`solx` vs raw
+SLURM") and reserves `solx` for the multi-step lifecycle and renewal.
+Closing the latency gap is the next goal — a `solx job` command should
+cost on the order of a raw SLURM call, so the skill no longer has to
+choose between ergonomics and speed.
+
+**Measured** (`evals/runner/bench_solx_latency.sh`, Sol compute node,
+median of 7, warm):
+
+| Command | Time |
+|---|---|
+| `squeue --me` (raw) | ~0.05s |
+| `solx job list` | ~1.7s |
+| `solx job time` | ~1.0s |
+| `solx --version` (startup floor) | ~0.66s |
+
+**Why it's slow** (`python -X importtime`):
+
+- **Typer/Click import ≈ 0.97s** — the dominant cost, paid by *every*
+  invocation because `cli.py` builds the Typer app at import time. This
+  is most of the ~0.66s floor.
+- **Eager `rich` import** in `jobs.py` / `keep.py` / `init.py`
+  (`from rich.table import Table`, `from rich.prompt import Confirm` at
+  module scope) — so `job list` / `time` pay `rich` on top, *even with
+  `--json`*, which an agent never renders into a table.
+- **NFS amplification** — each module file is a network round-trip. The
+  `.pyz` collapses the file-open storm into one zip open, but still
+  parses the zip directory and pays the Typer/`rich` import cost, so it
+  helps cold-start more than warm-start.
+
+**Possible solutions** (rough order of value vs. effort):
+
+1. **Lazy-import `rich`.** Move the `rich.table` / `rich.prompt` imports
+   out of module scope into the human-render / prompt branches, so the
+   `--json` and non-interactive paths (what an agent uses) never import
+   `rich`. Cheap, and directly cuts the agent path.
+2. **Shrink the Typer cost on the hot path** — the biggest lever and the
+   hardest. Either a fast pre-dispatch that handles the common leaf
+   commands (`job list/time`, `--version`) with `argparse` and only
+   imports Typer for help/completions, or migrate the CLI off Typer to
+   `click`/`argparse` outright. Must preserve the command surface,
+   aliases, and completion behavior.
+3. **Keep the `.pyz` the default install.** Already recommended; it
+   removes the per-file NFS round-trips. Keep the precompiled bytecode in
+   sync with the shebang interpreter (it is).
+4. **Rejected for now: a resident daemon.** A long-lived `solx` server
+   the thin client talks to would amortize import cost, but it adds a
+   lifecycle, a socket, and stale-state risk that conflicts with the
+   "Slurm is the source of truth, no persistent state" principle below.
+
+**Goal:** a warm `solx job list` in the low hundreds of milliseconds —
+close enough to raw `squeue` that preferring `solx` carries no UX
+penalty. Targeted for **v0.5.0** (alongside dropping `~/.solkeep`).
+
+## Out of scope (still)
+
+- **Laptop-side `solx`** (`up/down/forward/info`, ssh-chain
+  construction) — deferred. The original "one magic command from the
+  laptop" threaded ssh-client behavior, ControlMaster, Duo, and queue
+  races, none of which are unit-testable. It returns only when the
+  Sol-side primitives are stable, the design is re-thought from scratch,
+  and the user greenlights it. `solx` stays a tool you run **on Sol**.
+- **PyPI publication.** Install is via the `.pyz` channel or
+  `uv tool install` from Git.
 
 ## Design principles
 
-These are the load-bearing constraints for `solx`. Every decision
-below derives from them.
+These are the load-bearing constraints for `solx`. Every decision below
+derives from them.
 
 1. **Runs on Sol.** The CLI is meant to be run *on* Sol after a manual
-   SSH. No laptop side, no ssh-chain construction, no `~/.ssh/*`
-   reads. If you want one-command magic from your laptop, that's a
-   separate (deferred) conversation.
+   SSH. No laptop side, no ssh-chain construction, no `~/.ssh/*` reads.
 2. **Intuitive and not disruptive.** Verbs read like Sol-native
-   commands. `solx job list`, `solx job start`, `solx keep`. No
+   commands (`solx job list`, `solx job start`, `solx keep`). No
    surprising side effects. Mutating commands support `--dry-run`.
-3. **Common CLI conventions.** Noun-verb command groups (`solx job
-   list/start/stop/jump/time`) for related operations; flags for
-   leaf commands (`solx keep --dry-run`). Shell completions provided
-   for bash, zsh, fish.
+3. **Common CLI conventions.** Noun-verb command groups; flags for leaf
+   commands. Shell completions for bash, zsh, fish.
 4. **Read config, don't infer.** A single TOML config under
    `$XDG_CONFIG_HOME/solx/config.toml` declares everything. No
-   environment-variable trickery, no hidden discovery, no scanning
-   `~/.ssh/*`.
+   environment-variable trickery, no scanning `~/.ssh/*`.
 5. **Slurm is the source of truth, not us.** No persistent
    `session.json` to go stale. The CLI queries `squeue` whenever it
    needs job state.
 6. **General, not personal.** The starter config ships with
    placeholders, never with the maintainer's username baked in.
+7. **User experience over the tool.** The skill drives an agent on the
+   user's behalf; where a raw SLURM call is faster and just as clear,
+   prefer it. `solx` has to *earn* its place per task — which is why the
+   startup-latency work above matters.
 
 ## Command surface, config, and behavior → `solx.md`
 
@@ -74,99 +125,46 @@ contract, and the `keep` mechanism live in the user manual
 [`solx.md`](solx.md) — the **single source of truth** for what `solx` does.
 Contributor/architecture notes are in
 [`../solx/DEVELOPMENT.md`](../solx/DEVELOPMENT.md). This roadmap stays focused
-on *why* and *what's next*; it deliberately does not restate the API (so it
-can't drift out of sync with the implementation).
+on *why* and *what's next*; it deliberately does not restate the API.
 
 ## Security model
 
 `solx` is Sol-only by design, so the security surface is small:
 
-- Never read `~/.ssh/*`. The CLI doesn't invoke `ssh` at all in this
-  release.
+- Never read `~/.ssh/*`. The CLI doesn't invoke `ssh` at all.
 - The single config (`$XDG_CONFIG_HOME/solx/config.toml`) is created
   with mode 0600.
-- `solx keep` only touches files under directories the user has
-  declared in `[keep]`. Mutates `atime`/`mtime` only — never reads,
-  moves, or deletes content.
-- Destructive commands (`job stop`, `keep`) prompt for confirmation
-  by default; `-y` skips the prompt for scripts; `-n` / `--dry-run`
-  prints the planned action without executing (and without
-  prompting). `-y` and `-n` are mutually exclusive.
-- `job start` also has a `--dry-run` mode, but its purpose is
-  different — it prints the underlying `salloc` argv so the user can
-  preview the allocation request. No prompt either way (starting an
-  allocation isn't destructive in the data-loss sense).
+- `solx keep` only touches files under directories the user has declared
+  in `[keep]`. Mutates `atime`/`mtime` only — never reads, moves, or
+  deletes content.
+- Destructive commands (`job stop`, `keep`) prompt by default; `-y`
+  skips the prompt for scripts; `-n` / `--dry-run` prints the planned
+  action without executing. `-y` and `-n` are mutually exclusive.
+- `job start --dry-run` prints the underlying `salloc` argv to preview
+  the allocation request (no prompt — starting an allocation isn't
+  destructive in the data-loss sense).
 
-When laptop-side work returns (deferred), a fresh security review of
-that surface comes with it. Nothing in this stage commits us to a
-specific laptop-side design.
+When laptop-side work returns (deferred), a fresh security review of that
+surface comes with it.
 
 ## Decisions confirmed
 
-- **CLI framework**: Typer + Rich. Defer Textual.
-- **Config**: single TOML under `$XDG_CONFIG_HOME/solx/config.toml`.
-  No multi-file split, no `[shared]` merge — one config, easy to
-  read.
-- **Glob library for `[keep]`**: `pathspec` (mature; handles
-  `include` + `exclude` arrays similar to Ruff's config style).
+- **CLI framework**: Typer + Rich today — but Typer's import cost is the
+  main startup-latency lever, so it is **under review** (see
+  [Next](#next-cut-solx-startup-latency)). Textual deferred.
+- **Config**: single TOML under `$XDG_CONFIG_HOME/solx/config.toml`. No
+  multi-file split, no `[shared]` merge.
+- **Glob library for `[keep]`**: `pathspec` (gitignore-style include +
+  exclude).
 - **State tracking**: none. `squeue -u $USER` is the source of truth.
-  No `session.json`, no stale-state class of bugs. Cost: one `squeue`
-  call per command — fine on a login node.
-- **Default jobid resolution**: verb-aware — argument > `$SLURM_JOB_ID`
-  (inside an allocation) > `squeue`, where `time`/`jump` auto-pick the most
-  recent and `stop` refuses to guess (exit 2). Full rules in
-  [`solx.md`](solx.md).
+- **Default jobid resolution**: verb-aware — argument > `$SLURM_JOB_ID` >
+  `squeue`, where `time`/`jump` auto-pick the most recent and `stop`
+  refuses to guess (exit 2). Full rules in [`solx.md`](solx.md).
 - **Repo layout**: same repo, CLI under `solx/`, skill under
-  `skills/sol-skill/`; they ship together on one version line. The repo
-  was renamed `sol-skills` → `solx` at v0.4.0.
-- **Name**: kept `solx` (short, unique, evokes Sol); the project/repo
-  took the CLI's name at v0.4.0. The earlier candidate exploration is
-  retired.
-- **`vscode` / `sbatch` wrappers**: out of scope. `solx` is for
-  interactive jobs; for VSCode, run `code tunnel` directly on a
-  compute node. For batch work, `sbatch your-script.sbatch` directly.
-- **Skill subcommands** (`solx skill install/remove/...`): reserved
-  in the eventual surface, still **not implemented** as of v0.4.0 (the
-  skill installs via agentskills.io installers). Revisit if it earns
-  its place.
-
-## Stage 3 — shipped in v0.4.0
-
-Stage 3 shipped as v0.4.0:
-
-- The skill installs and drives `solx` (the `solx job` lifecycle and
-  `solx keep`), with raw Slurm as a fallback. `references/solx.md`
-  teaches the CLI workflow.
-- The standalone `sol_renew.py` was removed from the skill and
-  `~/.solkeep` deprecated (support removed in 0.5.0; `solx config
-  import-solkeep` migrates it).
-- `solx` ships a single-file `.pyz` install channel
-  (`curl … install.sh | sh`), and CI builds + publishes a GitHub
-  Release on each `vX.Y.Z` tag.
-- The CLI and skill reconciled onto **one version line**, and the repo
-  was renamed `sol-skills` → `solx`.
-- Situational job awareness — fairshare and remaining-time (#9) — landed
-  in the skill.
-
-Detail is in [`../CHANGELOG.md`](../CHANGELOG.md). The remaining
-forward-looking work is below.
-
-### Out of scope (still)
-
-- Laptop-side `solx` (`up/down/forward/info`, ssh-chain construction)
-  — deferred for a separate design discussion.
-- PyPI publication.
-
-## What ships when
-
-- **Stage 2 (shipped, solx v0.3.0)** — the `solx/` package: Sol-only CLI
-  with agent-friendly output, verb-aware job-id resolution, and a
-  file-level-sharded `keep`. Behavior is documented in
-  [`solx.md`](solx.md); contributor notes in
-  [`../solx/DEVELOPMENT.md`](../solx/DEVELOPMENT.md). Skill files untouched.
-  (The pre-implementation contract `stage-2-solx.md` has been retired now
-  that `solx.md` is the living manual.)
-- **Stage 3 (shipped, v0.4.0)** — skill ↔ `solx` integration, the
-  `.pyz` distribution channel + CI releases, versioning reconciliation,
-  the repo rename, and situational job awareness (#9). See
-  [Stage 3 — shipped](#stage-3--shipped-in-v040).
+  `skills/sol-skill/`, one version line. Repo renamed `sol-skills` →
+  `solx` at v0.4.0; the name `solx` was kept (short, unique, evokes Sol).
+- **`vscode` / `sbatch` wrappers**: out of scope. For VSCode, run
+  `code tunnel` on a compute node; for batch, `sbatch` directly.
+- **Skill subcommands** (`solx skill install/remove/...`): reserved, not
+  implemented as of v0.4.0 (the skill installs via agentskills.io
+  installers). Revisit if it earns its place.

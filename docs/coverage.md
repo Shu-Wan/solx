@@ -52,6 +52,8 @@ to the skill should mean adding a row here in the same group.
 | Verb-aware job-id resolution (most-recent for time/jump; stop refuses to guess) | 🟢 tested | `solx/tests/test_slurm.py`, `test_jobs.py` |
 | Destructive-confirm contract (`-y`/`-n`, non-interactive refuse, exit 2) | 🟢 tested | `solx/tests/test_jobs.py`, `test_keep.py` |
 | Agent output: JSON off a TTY, results on stdout / diagnostics on stderr | 🟢 tested | `solx/tests/test_output.py`, `test_jobs.py`, `test_keep.py` |
+| Per-command latency vs raw SLURM quantified (one-off reads ~15–40× slower) | 🟢 tested | `evals/runner/bench_solx_latency.sh` (L3, real Sol): raw `squeue` ~0.05s vs `solx job` ~1.0–1.7s. Drives the "use raw SLURM for one-off reads" rule; latency reduction is on the roadmap (v0.5.0). |
+| Skill prefers raw `squeue`/`scancel` for one-off reads, `solx` for start/jump/keep | 🟡 documented | New in v0.4.0; skill eval pending |
 
 ### Detecting the Environment
 

@@ -13,6 +13,11 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   user-scope `sol-skill` install. Run it once before each eval
   session. See `DEVELOPMENT.md` ("Baseline isolation") for the why
   and how.
+- **`bench_solx_latency.sh`** — L3 latency benchmark (real Sol,
+  read-only): times `solx job` commands against the equivalent raw
+  SLURM call and reports the delta. Quantifies `solx`'s Python/NFS
+  startup tax that informs the skill's "`solx` vs raw SLURM" rule and the
+  startup-latency roadmap item. Usage: `evals/runner/bench_solx_latency.sh [N]`.
 - **L2 renewal coverage lives in the `solx` package.**
   `solx/tests/test_keep.py::test_keep_end_to_end_real_touch` builds a
   real tree with stale mtimes (including `.venv`/`__pycache__`), runs
