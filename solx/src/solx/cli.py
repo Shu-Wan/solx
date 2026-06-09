@@ -447,7 +447,7 @@ def config_edit_cmd() -> None:
 
 @config_app.command(
     "import-solkeep",
-    help="Migrate a legacy ~/.solkeep keep-list into the config's [keep] block.",
+    help="Migrate a legacy ~/.solkeep keep-list into the config's \\[keep] block.",
 )
 def config_import_solkeep_cmd(
     solkeep: Annotated[

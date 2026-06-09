@@ -40,7 +40,12 @@ jobs:
 
       - name: Resolve tag
         id: tag
-        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        env:
+          # Bind into env and reference shell vars — never interpolate a
+          # tag/input directly into a run: line (GitHub script-injection).
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "tag=${INPUT_TAG:-$REF_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Verify the tag matches solx's version
         working-directory: solx

@@ -43,6 +43,7 @@ packages = ["src/solx"]
 [dependency-groups]
 dev = [
   "pytest>=8",
+  "ruff>=0.13",
 ]
 
 [tool.pytest.ini_options]

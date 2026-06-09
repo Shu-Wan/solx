@@ -14,7 +14,18 @@
 # Usage: evals/runner/bench_solx_latency.sh [N]    (N = timed runs/command, default 7)
 set -u
 
+# Force a C locale: `time`/`%R` and awk honor LC_NUMERIC, so under a
+# comma-decimal locale (common on shared logins) `sort -n` and the median
+# arithmetic would silently mis-handle the timings.
+export LC_ALL=C
+
 N="${1:-7}"
+case "$N" in
+    '' | *[!0-9]* | 0)
+        echo "usage: bench_solx_latency.sh [N]  (N = positive integer runs/command)" >&2
+        exit 2
+        ;;
+esac
 
 command -v squeue >/dev/null 2>&1 || {
     echo "not on Sol (no squeue on PATH) — run this on a Sol login/compute node." >&2
@@ -27,20 +38,30 @@ command -v solx >/dev/null 2>&1 || {
 
 _median() { sort -n | awk '{a[NR]=$1} END{print (NR%2)?a[(NR+1)/2]:(a[NR/2]+a[NR/2+1])/2}'; }
 
-# bench "<label>" cmd args...  — prints "<label>  <median>s (n=N)"
+# bench "<label>" cmd args...  — prints "<label>  warm <median>s (n=N) · cold <t>s"
+# Reports BOTH the warm median (steady state for repeated calls in a session)
+# and the cold first invocation (the NFS/import-storm tax a fresh session
+# pays once). A command that exits non-zero is reported as failed and never
+# folded into the median, so a Slurm hiccup can't masquerade as a fast read.
 bench() {
     label="$1"; shift
-    "$@" >/dev/null 2>&1            # warm-up (not timed) so we report steady state
+    # First invocation = cold (caches cold); it also warms the rest.
+    cold="$( { TIMEFORMAT='%R'; time "$@" >/dev/null 2>&1; } 2>&1 )"
+    if [ $? -ne 0 ]; then
+        printf '  %-28s (command failed — skipped)\n' "$label"
+        return
+    fi
     times=""
     i=0
     while [ "$i" -lt "$N" ]; do
+        i=$((i + 1))
         t="$( { TIMEFORMAT='%R'; time "$@" >/dev/null 2>&1; } 2>&1 )"
+        [ $? -eq 0 ] || continue   # don't fold a failed run into the median
         times="$times$t
 "
-        i=$((i + 1))
     done
     med="$(printf '%s' "$times" | grep . | _median)"
-    printf '  %-28s %ss (n=%d)\n' "$label" "$med" "$N"
+    printf '  %-28s warm %ss (n=%d) · cold %ss\n' "$label" "${med:-?}" "$N" "$cold"
 }
 
 echo "host: $(hostname)   SLURM_JOB_ID=${SLURM_JOB_ID:-<login node>}   solx $(solx --version 2>/dev/null)"

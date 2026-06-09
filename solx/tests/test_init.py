@@ -256,3 +256,66 @@ def test_import_solkeep_no_patterns_exits_2(tmp_path: Path) -> None:
     code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
     assert code == 2
     assert cfg.load(cfgpath).keep is None  # nothing appended
+
+
+def test_import_solkeep_escapes_control_char(tmp_path: Path) -> None:
+    """A pattern with a control byte is escaped, not left to corrupt the config."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("/scratch/sparky/a\x1bb\n")  # interior ESC
+    code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=make_out())
+    assert code == 0
+    c = cfg.load(cfgpath)  # must still parse — no corruption on disk
+    assert c.keep is not None
+    assert "/scratch/sparky/a\x1bb" in c.keep.raw_include
+
+
+def test_import_solkeep_order_sensitive_warns(tmp_path: Path) -> None:
+    """A re-include under an earlier `!` carve-out can't be preserved -> warn."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text(
+        "/scratch/sparky/proj\n"
+        "!/scratch/sparky/proj/big\n"
+        "/scratch/sparky/proj/big/keep\n"  # re-include AFTER the carve-out
+    )
+    out = make_out()
+    code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
+    assert code == 0
+    err = out.stderr.file.getvalue()
+    assert "warning" in err and "carve-out" in err
+
+
+def test_import_solkeep_faithful_shape_no_warn(tmp_path: Path) -> None:
+    """Includes-then-carve-outs (the safe shape) migrates without a warning."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("/scratch/sparky/proj\n!**/__pycache__\n")
+    out = make_out()
+    init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
+    assert "warning" not in out.stderr.file.getvalue()
+
+
+def test_import_solkeep_bare_bang_dropped(tmp_path: Path) -> None:
+    """A bare `!` carves nothing and must not become an empty exclude pattern."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text("/scratch/sparky/proj\n! \n")
+    code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=make_out())
+    assert code == 0
+    c = cfg.load(cfgpath)
+    assert "" not in (c.keep.raw_exclude or ())
+
+
+def test_import_solkeep_records_source_path(tmp_path: Path) -> None:
+    """Importing from a non-default path records that path in the block comment."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / "mykeep.txt"
+    solkeep.write_text("/scratch/sparky/proj\n")
+    init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=make_out())
+    assert str(solkeep) in cfgpath.read_text()  # provenance comment names the real source

@@ -37,7 +37,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Lint
-        run: uvx ruff check src tests
+        run: uv run --frozen ruff check src tests   # pinned via uv.lock (dev group)
 
       - name: Test
         run: uv run --frozen pytest -q

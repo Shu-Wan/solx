@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import stat
+import tomllib
 from pathlib import Path
 from typing import Callable
 
@@ -109,11 +110,17 @@ def cmd_import_solkeep(
     """Migrate a legacy `~/.solkeep` keep-list into the config's `[keep]` block.
 
     The implicit `~/.solkeep` fallback (and the `.solkeep` format) is
-    deprecated and loses support in solx 0.5.0; this is the one-shot migration.
-    Reads `solkeep` (default `~/.solkeep`), splits it into include/exclude via
-    `import_solkeep`, and **appends** a rendered `[keep]` block to an existing
-    `config.toml`. Refuses if the config already has an active `[keep]` table —
-    a second one is invalid TOML, so the user must merge by hand there.
+    deprecated and loses support in a future release (see
+    `keep.SOLKEEP_REMOVED_IN`); this is the one-shot migration. Reads `solkeep`
+    (default `~/.solkeep`), splits it into include/exclude via `import_solkeep`,
+    and appends a rendered `[keep]` block to an existing `config.toml`. The
+    merged document is validated before anything is written, so a pattern that
+    can't round-trip through TOML never leaves a corrupt config on disk.
+    Refuses if the config already has an active `[keep]` table — a second one
+    is invalid TOML, so the user must merge by hand there. `.solkeep` is
+    gitignore last-match-wins while `[keep]` is include-minus-exclude, so an
+    order-dependent re-include can't be preserved; the command warns when it
+    sees one (`solkeep_is_order_sensitive`).
     """
     out = out or Out.auto()
     p = path or cfg.config_path()
@@ -121,8 +128,7 @@ def cmd_import_solkeep(
 
     if not p.exists():
         out.error(
-            f"[red]error:[/] no config at {p}. run `solx init` first "
-            "(it imports ~/.solkeep on the way)."
+            f"[red]error:[/] no config at {p}. run `solx init` first, then re-run this."
         )
         return 2
 
@@ -147,17 +153,37 @@ def cmd_import_solkeep(
         )
         return 2
 
-    block = cfg.render_keep_block(include, exclude)
-    with p.open("a", encoding="utf-8") as fh:
-        fh.write("\n" + block)
+    block = cfg.render_keep_block(include, exclude, source=str(src))
+    # Validate the merged document before touching the file: a pattern that
+    # can't round-trip through TOML must never leave a corrupt config on disk.
+    new_text = p.read_text(encoding="utf-8").rstrip("\n") + "\n\n" + block
+    try:
+        tomllib.loads(new_text)
+    except tomllib.TOMLDecodeError as e:
+        out.error(
+            f"[red]error:[/] importing these patterns would produce invalid TOML "
+            f"({e}); config left unchanged. Fix {src} or run `solx config edit`."
+        )
+        return 1
+    p.write_text(new_text, encoding="utf-8")
 
     out.status(
         f"[green]imported[/] {len(include)} include / {len(exclude)} exclude "
         r"pattern(s) into \[keep]"
     )
-    out.status(
-        "[dim]review with `solx config show`; ~/.solkeep is no longer needed.[/]"
-    )
+    if cfg.solkeep_is_order_sensitive(src):
+        out.status(
+            r"[yellow]warning:[/] this keep-list re-includes a path under an "
+            r"earlier `!` carve-out. A \[keep] block (include minus exclude) "
+            "can't preserve that ordering, so it may now renew fewer "
+            f"directories. Compare `solx keep --dry-run` against {src} and keep "
+            "the old file until you've confirmed the result matches."
+        )
+    else:
+        out.status(
+            "[dim]review with `solx config show`, then verify with "
+            "`solx keep --dry-run` before removing the old keep-list.[/]"
+        )
     out.emit(
         data={"config": str(p), "include": include, "exclude": exclude},
         human=lambda: f"[green]wrote[/] \\[keep] → {p}",
