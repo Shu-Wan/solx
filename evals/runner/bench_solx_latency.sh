@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Benchmark solx's per-command latency against the equivalent raw SLURM
-# command, on Sol. solx wraps squeue/salloc/srun in Python; on Sol's NFS home
-# each invocation pays interpreter start + module imports (rich, the command
-# body) that a raw SLURM binary does not. This quantifies that tax so the
-# skill's "solx vs raw SLURM" guidance is grounded in real numbers rather than
-# a guess.
+# command, on Sol. solx wraps squeue/salloc/srun in Python; each invocation
+# pays interpreter start plus the command body's imports, which a raw SLURM
+# binary does not. This quantifies that cost so the skill's "solx vs raw
+# SLURM" guidance is grounded in real numbers rather than a guess.
 #
 # This is an L3 (real-Sol) measurement — the numbers only mean anything on a
 # Sol login/compute node, where the NFS home and a live Slurm controller are
@@ -81,8 +80,9 @@ echo "startup floor:"
 bench "solx --version"      solx --version
 
 echo
-echo "Takeaway: a raw SLURM read is ~0.05-0.07s; a solx 'job' command pays Python"
-echo "startup + imports on the NFS home (~1-2s here), independent of install"
-echo "channel. Use raw squeue/scancel for one-off status/cancel; reserve solx"
-echo "for the multi-step lifecycle (job start/jump) and keep, where it removes"
-echo "real friction. See skills/sol-skill/SKILL.md ('solx vs raw SLURM')."
+echo "Takeaway: a raw SLURM read is ~0.08s; a warm solx 'job' read is ~0.13s with"
+echo "the recommended single-file (.pyz) install — the same order, so either is"
+echo "fine for one-off status reads. A venv install on the NFS home is slower"
+echo "(~1s warm): if your numbers above look like that, switch to the .pyz"
+echo "channel (curl ... install.sh | sh). See skills/sol-skill/SKILL.md"
+echo "('solx vs raw SLURM')."

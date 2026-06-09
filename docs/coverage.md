@@ -46,14 +46,14 @@ to the skill should mean adding a row here in the same group.
 | Behavior | Status | Notes |
 |---|---|---|
 | Detects `solx` (`command -v solx`) and prompts to install when missing | 🟡 documented | New in v0.4.0; skill eval pending |
-| Uses `solx` for start/jump/keep; raw Slurm for fast one-off status/cancel | 🟡 documented | New in v0.4.0; skill eval pending |
+| Uses `solx` for the job lifecycle and keep; raw Slurm as the no-`solx` fallback | 🟡 documented | Guidance updated for v0.5.0; skill eval pending |
 | `solx` exits 2 off-Sol (wrong-side guard) | 🟢 tested | `solx/tests/` (`require_sol` / `side`) |
 | Drives the `solx job` lifecycle (start/list/time/jump/stop) | 🟢 tested (CLI) | `solx/tests/test_jobs.py`; skill-teaching eval pending |
 | Verb-aware job-id resolution (most-recent for time/jump; stop refuses to guess) | 🟢 tested | `solx/tests/test_slurm.py`, `test_jobs.py` |
 | Destructive-confirm contract (`-y`/`-n`, non-interactive refuse, exit 2) | 🟢 tested | `solx/tests/test_jobs.py`, `test_keep.py` |
 | CLI agent output: JSON off a TTY, results on stdout / diagnostics on stderr | 🟢 tested | `solx/tests/test_output.py`, `test_jobs.py`, `test_keep.py` |
-| Per-command latency vs raw SLURM quantified (one-off reads ~15–40× slower) | 🟢 tested | `evals/runner/bench_solx_latency.sh` (L3, real Sol): raw `squeue` ~0.05s vs `solx job` ~1.0–1.7s. Drives the "use raw SLURM for one-off reads" rule; latency reduction is on the roadmap (v0.5.0). |
-| Skill prefers raw `squeue`/`scancel` for one-off reads, `solx` for start/jump/keep | 🟡 documented | New in v0.4.0; skill eval pending |
+| Per-command latency vs raw SLURM quantified (one-off reads at parity as of v0.5.0) | 🟢 tested | `evals/runner/bench_solx_latency.sh` (L3, real Sol): raw `squeue` ~0.08s vs warm `solx job` ~0.13s (`.pyz` install). Full measured table in `docs/ROADMAP.md`. |
+| Skill treats `solx` and raw `squeue`/`scancel` as equivalent for one-off reads; raw forms documented as fallback | 🟡 documented | Updated for v0.5.0; skill eval pending |
 
 ### Detecting the Environment
 
@@ -74,7 +74,7 @@ to the skill should mean adding a row here in the same group.
 | `solx keep --dry-run` plan correctness | 🟢 tested | `solx/tests/test_keep.py`: dry-run plans without touching; JSON plan bounded |
 | `solx keep` refreshes kept files (recursively) | 🟢 tested | `solx/tests/test_keep.py::test_keep_end_to_end_real_touch`: mtimes refresh across the tree |
 | keep-list carve-outs honored at run time (`.venv`/`__pycache__` skipped, non-kept dirs skipped) | 🟢 tested | `solx/tests/test_keep.py` (end-to-end + `build_plan`) |
-| `solx keep` warns but still works on a legacy `~/.solkeep` (support removed 0.5.0) | 🟢 tested | `solx/tests/test_keep.py::test_keep_solkeep_fallback_warns_deprecated` |
+| `solx keep` warns but still works on a legacy `~/.solkeep` (support removed 1.0.0) | 🟢 tested | `solx/tests/test_keep.py::test_keep_solkeep_fallback_warns_deprecated` |
 | `solx config import-solkeep` migrates `~/.solkeep` → `[keep]` | 🟢 tested | `solx/tests/test_init.py::test_import_solkeep_*` |
 | File sharing procedure (`chmod` / `install` / `cp` between users) | 🟡 documented | |
 | Scratch-quota-exceeded behavior | 🔴 gap | Would need a fault-injection mock |

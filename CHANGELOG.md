@@ -13,6 +13,61 @@ and a pushed `vX.Y.Z` tag builds and publishes the release.
 
 ## [Unreleased]
 
+The CLI's dispatch layer is rewritten on the Python standard library and
+startup latency drops to the same order as a raw SLURM call, so the
+skill no longer steers agents to raw `squeue` for one-off reads.
+
+### Added
+
+- `evals/parity/` — a behavioral parity matrix for the CLI: 67 cases
+  covering the full command surface, each run in an isolated fake
+  `$HOME` against deterministic SLURM mocks, compared byte-for-byte
+  against a captured golden run. Used to verify the dispatch rewrite
+  reproduces v0.4.0 behavior; goldens are environment-captured, not
+  committed. See `evals/parity/README.md`.
+
+### Changed
+
+- **CLI dispatch is stdlib `argparse`** (`solx/src/solx/main.py`; entry
+  point `solx.main:main`, replacing `solx.cli:app`). Importing the entry
+  module costs nothing beyond the interpreter baseline:
+  `--version`/`version` short-circuit before the parser tree is built,
+  command bodies import inside their handlers, and `--json`/piped runs
+  never load `rich`. Command surface, aliases, exit codes, and the
+  output contract are unchanged (verified with `evals/parity/`).
+- **Startup latency** (Sol compute node, NFS `$HOME`, warm median of 9;
+  full table in `docs/ROADMAP.md`): with the recommended `.pyz` install,
+  `solx --version` 1.345s → **0.018s** (75×), `solx job list` 2.505s →
+  **0.126s** (19.9×), `solx job time` 2.505s → **0.127s** (19.7×) — vs
+  ~0.076s for raw `squeue`. Venv installs (both versions on NFS):
+  1.137s → 0.281s, 2.500s → 1.020s, 1.251s → 0.945s. SKILL.md and the
+  manual now treat `solx` and raw SLURM reads as equivalent.
+- **Static shell completions**: `solx completions <bash|zsh|fish>`
+  renders the command surface from one description
+  (`solx/src/solx/_completions.py`) into fully static scripts — nothing
+  execs `solx` at completion time, so the first Tab of a session costs
+  no interpreter start. Both zsh install modes (eval/source and fpath
+  autoload) keep working; install lines unchanged.
+- **`--json` placement is a superset**: still accepted before the
+  subcommand (`solx --json job list`), now also after it
+  (`solx job list --json`) — except after `job start`, where
+  post-command tokens pass through to `salloc`.
+- `dist/solx.pyz` is built with the build interpreter's shebang so it
+  runs in place; `install.sh` re-stamps the shebang with the destination
+  machine's interpreter.
+
+### Removed
+
+- Dependencies `typer` (and with it `click` and `shellingham`). Runtime
+  dependencies are now `rich` (human tables and prompts only) and
+  `pathspec` (+ the `tomli` backport on Python 3.10).
+
+### Deferred
+
+- `~/.solkeep` removal moves from 0.5.0 to **1.0.0**. `solx keep` keeps
+  reading a legacy `~/.solkeep` (with a deprecation notice) through the
+  0.5.x line; migrate with `solx config import-solkeep`.
+
 ## [0.4.0] — 2026-06-08
 
 `solx` becomes the supported path for interactive jobs and scratch
