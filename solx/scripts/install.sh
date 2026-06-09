@@ -41,9 +41,15 @@ mkdir -p "$BIN"
 # Remove first: a previous `uv tool install` leaves a symlink here, and
 # writing through it would clobber the tool venv's entry point instead.
 rm -f "$BIN/solx"
+# The artifact carries the build machine's shebang so it runs in place;
+# drop it and stamp one bound to this machine's interpreter.
+SKIP=0
+if [ "$(head -c 2 "$TMP")" = "#!" ]; then
+    SKIP="$(head -n 1 "$TMP" | wc -c)"
+fi
 {
     printf '#!%s\n' "$PY"
-    cat "$TMP"
+    tail -c +$((SKIP + 1)) "$TMP"
 } >"$BIN/solx"
 chmod +x "$BIN/solx"
 
