@@ -457,11 +457,21 @@ def config_import_solkeep_cmd(
             help="Keep-list to import (default: ~/.solkeep).",
         ),
     ] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Accept a lossy import (an order-dependent re-include that "
+            "the [keep] block can't preserve).",
+        ),
+    ] = False,
 ) -> None:
     require_sol()
     from solx import init as init_mod
 
-    raise typer.Exit(code=init_mod.cmd_import_solkeep(solkeep=solkeep, out=_out()))
+    raise typer.Exit(
+        code=init_mod.cmd_import_solkeep(solkeep=solkeep, force=force, out=_out())
+    )
 
 
 # --- completions ----------------------------------------------------------

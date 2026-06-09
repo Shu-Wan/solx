@@ -440,9 +440,10 @@ def test_config_import_solkeep_wiring(runner: CliRunner, monkeypatch) -> None:
     monkeypatch.setattr(
         init_mod, "cmd_import_solkeep", lambda **kw: captured.append(kw) or 0
     )
-    res = runner.invoke(cli.app, ["config", "import-solkeep", "--solkeep", "/tmp/mk"])
+    res = runner.invoke(cli.app, ["config", "import-solkeep", "--solkeep", "/tmp/mk", "-f"])
     assert res.exit_code == 0
     assert str(captured[0]["solkeep"]) == "/tmp/mk"
+    assert captured[0]["force"] is True
 
 
 # ---- completions --------------------------------------------------------

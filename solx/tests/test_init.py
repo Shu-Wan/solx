@@ -271,21 +271,39 @@ def test_import_solkeep_escapes_control_char(tmp_path: Path) -> None:
     assert "/scratch/sparky/a\x1bb" in c.keep.raw_include
 
 
-def test_import_solkeep_order_sensitive_warns(tmp_path: Path) -> None:
-    """A re-include under an earlier `!` carve-out can't be preserved -> warn."""
+_ORDER_SENSITIVE_SOLKEEP = (
+    "/scratch/sparky/proj\n"
+    "!/scratch/sparky/proj/big\n"
+    "/scratch/sparky/proj/big/keep\n"  # re-include AFTER the carve-out
+)
+
+
+def test_import_solkeep_order_sensitive_refuses_without_force(tmp_path: Path) -> None:
+    """A lossy re-include is refused (exit 2, nothing written) unless -f."""
     cfgpath = tmp_path / "config.toml"
     cfgpath.write_text(_CONFIG_NO_KEEP)
     solkeep = tmp_path / ".solkeep"
-    solkeep.write_text(
-        "/scratch/sparky/proj\n"
-        "!/scratch/sparky/proj/big\n"
-        "/scratch/sparky/proj/big/keep\n"  # re-include AFTER the carve-out
-    )
+    solkeep.write_text(_ORDER_SENSITIVE_SOLKEEP)
     out = make_out()
     code = init_mod.cmd_import_solkeep(path=cfgpath, solkeep=solkeep, out=out)
+    assert code == 2
+    assert "carve-out" in out.stderr.file.getvalue()
+    assert cfg.load(cfgpath).keep is None  # nothing written
+
+
+def test_import_solkeep_order_sensitive_force_writes_with_warning(tmp_path: Path) -> None:
+    """With -f the lossy import proceeds but warns that ordering isn't preserved."""
+    cfgpath = tmp_path / "config.toml"
+    cfgpath.write_text(_CONFIG_NO_KEEP)
+    solkeep = tmp_path / ".solkeep"
+    solkeep.write_text(_ORDER_SENSITIVE_SOLKEEP)
+    out = make_out()
+    code = init_mod.cmd_import_solkeep(
+        path=cfgpath, solkeep=solkeep, force=True, out=out
+    )
     assert code == 0
-    err = out.stderr.file.getvalue()
-    assert "warning" in err and "carve-out" in err
+    assert "warning" in out.stderr.file.getvalue()
+    assert cfg.load(cfgpath).keep is not None
 
 
 def test_import_solkeep_faithful_shape_no_warn(tmp_path: Path) -> None:

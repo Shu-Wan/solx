@@ -105,6 +105,7 @@ def cmd_import_solkeep(
     *,
     path: Path | None = None,
     solkeep: Path | None = None,
+    force: bool = False,
     out: Out | None = None,
 ) -> int:
     """Migrate a legacy `~/.solkeep` keep-list into the config's `[keep]` block.
@@ -117,10 +118,15 @@ def cmd_import_solkeep(
     merged document is validated before anything is written, so a pattern that
     can't round-trip through TOML never leaves a corrupt config on disk.
     Refuses if the config already has an active `[keep]` table — a second one
-    is invalid TOML, so the user must merge by hand there. `.solkeep` is
-    gitignore last-match-wins while `[keep]` is include-minus-exclude, so an
-    order-dependent re-include can't be preserved; the command warns when it
-    sees one (`solkeep_is_order_sensitive`).
+    is invalid TOML, so the user must merge by hand there.
+
+    `.solkeep` is gitignore last-match-wins while `[keep]` is
+    include-minus-exclude, so an order-dependent re-include (a positive rule
+    under an earlier `!` carve-out) can't be preserved — the split would renew
+    *fewer* directories, and since `[keep]` then takes precedence over
+    `~/.solkeep` (see `keep.cmd_keep`), keeping the old file does not preserve
+    the prior behavior. Such a **lossy** import is **refused** unless `force`
+    is set, so the semantic change is never silent.
     """
     out = out or Out.auto()
     p = path or cfg.config_path()
@@ -153,6 +159,23 @@ def cmd_import_solkeep(
         )
         return 2
 
+    # A lossy migration (order-dependent re-include) changes which directories
+    # get renewed and can't be undone by keeping ~/.solkeep, since [keep] wins.
+    # Refuse it unless the user explicitly accepts with -f, so nothing is
+    # silently written.
+    lossy = cfg.solkeep_is_order_sensitive(src)
+    if lossy and not force:
+        out.error(
+            rf"[red]error:[/] {src} re-includes a path under an earlier `!` "
+            r"carve-out. A \[keep] block (include minus exclude) can't preserve "
+            "that ordering, so the migration would renew FEWER directories — and "
+            r"\[keep] then takes precedence over ~/.solkeep, so keeping the old "
+            "file won't preserve current behavior. Compare `solx keep --dry-run` "
+            "before and after, then re-run with -f to accept the change (or edit "
+            "the config by hand)."
+        )
+        return 2
+
     block = cfg.render_keep_block(include, exclude, source=str(src))
     # Validate the merged document before touching the file: a pattern that
     # can't round-trip through TOML must never leave a corrupt config on disk.
@@ -171,13 +194,11 @@ def cmd_import_solkeep(
         f"[green]imported[/] {len(include)} include / {len(exclude)} exclude "
         r"pattern(s) into \[keep]"
     )
-    if cfg.solkeep_is_order_sensitive(src):
+    if lossy:  # only reachable with -f
         out.status(
-            r"[yellow]warning:[/] this keep-list re-includes a path under an "
-            r"earlier `!` carve-out. A \[keep] block (include minus exclude) "
-            "can't preserve that ordering, so it may now renew fewer "
-            f"directories. Compare `solx keep --dry-run` against {src} and keep "
-            "the old file until you've confirmed the result matches."
+            r"[yellow]warning:[/] ordering not preserved (re-include under a `!` "
+            "carve-out) — verify with `solx keep --dry-run` against the old "
+            f"{src} and adjust the \\[keep] block if it renews too little."
         )
     else:
         out.status(
