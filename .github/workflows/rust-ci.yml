@@ -1,0 +1,32 @@
+name: rust-ci
+
+on:
+  push:
+    paths:
+      - "solx-rs/**"
+      - ".github/workflows/rust-ci.yml"
+  pull_request:
+    paths:
+      - "solx-rs/**"
+      - ".github/workflows/rust-ci.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solx-rs
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solx-rs
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test
