@@ -55,13 +55,28 @@ A typical session:
 ```shell
 solx config edit           # set up your templates and [keep] paths
 solx job start debug       # request an allocation; prints the job id
-solx job list              # see it (RUNNING)
-solx job time              # how much time is left
 solx job jump              # open a shell on the compute node
 # … do your work …
 exit                       # back to the login node; the allocation stays alive
-solx job stop              # cancel it when you're done
 ```
+
+## For a one-off, raw Slurm is faster
+
+A `solx job` command pays Python startup on Sol's NFS home (≈1 s) where the
+underlying Slurm command returns in ≈0.05 s. So for a quick **status**,
+**time-left**, or **cancel**, skip `solx` and run Slurm (or Sol's wrappers)
+directly:
+
+```shell
+squeue --me                              # not `solx job list`     (also: myjobs, sq)
+squeue -h -j "$SLURM_JOB_ID" -o %L       # time left, inside a job (not `solx job time`)
+scancel <jobid>                          # cancel a known job      (not `solx job stop`)
+myfairshare                              # scheduling priority
+```
+
+`solx` earns its cost on the multi-step operations: `job start` (allocate from a
+template and wait), `job jump` (drop a shell onto the node), and `keep`. That
+gap is being closed — see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
