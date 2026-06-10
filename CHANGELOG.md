@@ -17,6 +17,23 @@ The CLI's dispatch layer is rewritten on the Python standard library and
 startup latency drops to the same order as a raw SLURM call, so the
 skill no longer steers agents to raw `squeue` for one-off reads.
 
+### Highlights
+
+Startup latency, warm median on a Sol compute node (NFS `$HOME`, the
+single-file `.pyz` install `install.sh` writes to `~/.local/bin`):
+
+| command | raw `squeue` | v0.4.0 | **v0.5.0** | speedup |
+|---|---|---|---|---|
+| `solx --version` | — | 1.35s | **0.10s** | 13× |
+| `solx job list` | 0.08s | 2.51s | **0.39s** | 6.4× |
+| `solx job time` | 0.08s | 2.51s | **0.31s** | 8.1× |
+
+A `solx job` read now costs the same order as a raw SLURM call. Absolute
+startup over NFS scales with node load — Python pays a per-module open
+storm, so v0.4.0 can reach ~2.5s under contention — and the win is
+removing that import tree. On node-local disk the floor is lower still
+(`--version` ~0.02s). Full table in `docs/ROADMAP.md`.
+
 ### Upgrading
 
 - Completion scripts installed as files must be regenerated after
@@ -48,13 +65,13 @@ skill no longer steers agents to raw `squeue` for one-off reads.
   never load `rich`. Command surface, aliases, exit codes, and the
   output contract are unchanged apart from the two documented supersets
   below (`--json` placement and `-h`); verified with `evals/parity/`.
-- **Startup latency** (Sol compute node, NFS `$HOME`, warm median of 9;
-  full table in `docs/ROADMAP.md`): with the recommended `.pyz` install,
-  `solx --version` 1.345s → **0.018s** (75×), `solx job list` 2.505s →
-  **0.126s** (19.9×), `solx job time` 2.505s → **0.127s** (19.7×) — vs
-  ~0.076s for raw `squeue`. Venv installs (both versions on NFS):
-  1.137s → 0.281s, 2.500s → 1.020s, 1.251s → 0.945s. SKILL.md and the
-  manual now treat `solx` and raw SLURM reads as equivalent.
+- **Startup latency** drops to the order of a raw SLURM call (see
+  Highlights above; full table in `docs/ROADMAP.md`): removing the
+  Typer/`click`/`rich` import tree cuts a `solx job` read from seconds to
+  ~0.1–0.4s warm on the NFS `$HOME` install, ~13× / 6.4× / 8.1× over
+  v0.4.0 on `--version` / `job list` / `job time`. On node-local disk the
+  floor is lower still (`--version` ~0.02s). SKILL.md and the manual now
+  treat `solx` and raw SLURM reads as equivalent.
 - **Static shell completions**: `solx completions <bash|zsh|fish>`
   renders the command surface from one description
   (`solx/src/solx/_completions.py`) into fully static scripts — nothing

@@ -60,12 +60,12 @@ cold-ish first run in parentheses):
 raw squeue rows: `job list` = `squeue --me`; `job time` =
 `squeue -h -j $SLURM_JOB_ID -o %L`. Caveats that keep the table honest:
 
-- In the `.pyz` channel users actually install, that's **75×** on
-  `--version`, **19.9×** on `job list`, **19.7×** on `job time`.
-  Venv-to-venv, where both versions sit on NFS, the gains are 4.0× /
-  2.5× / 1.3×. Part of the pyz-vs-pyz delta reflects filesystem
-  placement (the v0.5.0 artifact sat on local `/tmp`, the v0.4.0 one on
-  NFS), not code alone.
+- The `.pyz` column places the v0.5.0 artifact on node-local `/tmp` and
+  the v0.4.0 one on NFS, so the raw 75× / 19.9× / 19.7× overstates code
+  alone. Installed apples-to-apples on NFS `$HOME` (where `install.sh`
+  writes it), v0.5.0 `.pyz` is ~0.10s / 0.39s / 0.31s — **13× / 6.4× /
+  8.1×** over v0.4.0. Venv-to-venv on NFS: 4.0× / 2.5× / 1.3×. Node-local
+  `/tmp` is the best case (`--version` ~0.02s).
 - The remaining gap vs raw `squeue` is ~50ms: interpreter startup plus
   the `squeue` subprocess fork are all that's left.
 - "Cold" is the first invocation in the benchmark process only — page
