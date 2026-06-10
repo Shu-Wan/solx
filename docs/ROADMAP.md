@@ -4,7 +4,7 @@ Forward-looking design doc for **`solx`**, a CLI for working
 on ASU's **Sol** supercomputer. The Sol-side CLI and its skill
 integration shipped in v0.4.0; v0.5.0 cut startup latency to the same
 order as a raw SLURM call. The next focus is the **native single-binary
-rewrite** (below); the **laptop-side** design stays deferred.
+rewrite** (below); the **local-machine-side** design stays deferred.
 
 End-user docs: [`../README.md`](../README.md),
 [`../skills/sol-skill/SKILL.md`](../skills/sol-skill/SKILL.md).
@@ -21,7 +21,7 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
 | 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx`; single-file install channel + CI releases; one version line; situational job awareness (#9). | ✅ shipped (v0.4.0) |
 | 4 — Startup latency | Thin spine: stdlib `argparse` dispatch, `rich` only on human render paths, static completion scripts. A warm `solx job` read costs ~0.13s with the `.pyz` install — same order as raw `squeue`. | ✅ shipped (v0.5.0) |
 | 5 — Native single binary | Rewrite `solx` as one native executable (Rust): cold-start immunity on the NFS home, no Python/`uv` runtime requirement, single-file install. | 🟡 in development (`v1.0-rust` branch, targets v1.0) |
-| — Laptop side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
+| — Local-machine side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
 
 Shipped-stage detail lives in [`../CHANGELOG.md`](../CHANGELOG.md).
 
@@ -90,9 +90,9 @@ that verified the dispatch rewrite against captured v0.4.0 output.
 
 ## Out of scope (still)
 
-- **Laptop-side `solx`** (`up/down/forward/info`, ssh-chain
+- **Local-machine-side `solx`** (`up/down/forward/info`, ssh-chain
   construction) — deferred. The original "one magic command from the
-  laptop" threaded ssh-client behavior, ControlMaster, Duo, and queue
+  local machine" threaded ssh-client behavior, ControlMaster, Duo, and queue
   races, none of which are unit-testable. It returns only when the
   Sol-side primitives are stable, the design is re-thought from scratch,
   and the user greenlights it. `solx` stays a tool you run **on Sol**.
@@ -105,7 +105,7 @@ These are the load-bearing constraints for `solx`. Every decision below
 derives from them.
 
 1. **Runs on Sol.** The CLI is meant to be run *on* Sol after a manual
-   SSH. No laptop side, no ssh-chain construction, no `~/.ssh/*` reads.
+   SSH. No local-machine side, no ssh-chain construction, no `~/.ssh/*` reads.
 2. **Reduce recall and context switching.** The common path should not
    require memorizing Slurm flags or bouncing between a website portal
    and the terminal. Open OnDemand can stay browser-first; `solx` owns
@@ -158,7 +158,7 @@ on *why* and *what's next*; it deliberately does not restate the API.
   the allocation request (no prompt — starting an allocation isn't
   destructive in the data-loss sense).
 
-When laptop-side work returns (deferred), a fresh security review of that
+When local-machine-side work returns (deferred), a fresh security review of that
 surface comes with it.
 
 ## Decisions confirmed
