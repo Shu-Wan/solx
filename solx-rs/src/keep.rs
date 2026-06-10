@@ -57,11 +57,15 @@ pub const BATCH: usize = 2000;
 /// reported. Counts are always exact; the lists are a sample.
 pub const JSON_LIST_CAP: usize = 100;
 
-/// The default `-j` worker count.
+/// The default `-j` worker count: `max(1, min(8, ncpus / 4))`.
+///
+/// `ncpus` is the count of ONLINE system CPUs (`sysconf(_SC_NPROCESSORS_ONLN)`,
+/// i.e. Python `os.cpu_count()` semantics), NOT the cgroup/affinity-limited
+/// parallelism of the current process — inside a 4-core Slurm allocation on a
+/// 128-CPU node the default is still 8.
 pub fn default_jobs() -> u64 {
-    let cpus = std::thread::available_parallelism()
-        .map(|n| n.get() as u64)
-        .unwrap_or(2);
+    let n = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
+    let cpus = if n > 0 { n as u64 } else { 2 };
     (cpus / 4).clamp(1, 8)
 }
 
@@ -78,25 +82,43 @@ pub struct Plan {
 /// Return the `Directory` column from one of Sol's warning CSVs.
 ///
 /// A missing file is fine — Sol only drops the CSV when there's something
-/// to flag. An empty result means nothing to do for that stage.
-pub fn load_csv_dirs(csv_path: &Path) -> Vec<String> {
+/// to flag. An empty result means nothing to do for that stage. An existing
+/// file that can't be read or decoded is a hard error (the command must
+/// fail loudly rather than treat the stage as "nothing flagged").
+///
+/// A UTF-8 BOM is treated as part of the first header cell's name (so a
+/// BOM'd `Directory` header is not the `Directory` column and the file
+/// yields no directories).
+pub fn load_csv_dirs(csv_path: &Path) -> Result<Vec<String>, String> {
     if !csv_path.exists() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    let mut reader = match csv::ReaderBuilder::new().flexible(true).from_path(csv_path) {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
-    };
-    let dir_idx = match reader
-        .headers()
-        .ok()
-        .and_then(|h| h.iter().position(|name| name == "Directory"))
+    let read_err =
+        |e: &dyn std::fmt::Display| format!("unable to read {}: {e}", csv_path.display());
+    let has_bom = std::fs::File::open(csv_path)
+        .and_then(|mut f| {
+            use std::io::Read;
+            let mut head = [0u8; 3];
+            let n = f.read(&mut head)?;
+            Ok(n == 3 && head == [0xEF, 0xBB, 0xBF])
+        })
+        .map_err(|e| read_err(&e))?;
+    let mut reader = csv::ReaderBuilder::new()
+        .flexible(true)
+        .from_path(csv_path)
+        .map_err(|e| read_err(&e))?;
+    let headers = reader.headers().map_err(|e| read_err(&e))?;
+    let dir_idx = match headers
+        .iter()
+        .enumerate()
+        .position(|(i, name)| name == "Directory" && !(i == 0 && has_bom))
     {
         Some(i) => i,
-        None => return Vec::new(),
+        None => return Ok(Vec::new()),
     };
     let mut dirs = Vec::new();
-    for record in reader.records().flatten() {
+    for record in reader.records() {
+        let record = record.map_err(|e| read_err(&e))?;
         if let Some(d) = record.get(dir_idx) {
             let d = d.trim();
             if !d.is_empty() {
@@ -104,15 +126,15 @@ pub fn load_csv_dirs(csv_path: &Path) -> Vec<String> {
             }
         }
     }
-    dirs
+    Ok(dirs)
 }
 
 /// Walk the chosen stages' CSVs and split flagged dirs into kept/skipped.
-pub fn build_plan(csv_dir: &Path, stages: &[String], keep: &KeepRules) -> Plan {
+pub fn build_plan(csv_dir: &Path, stages: &[String], keep: &KeepRules) -> Result<Plan, String> {
     let mut plan = Plan::default();
     let mut seen: HashSet<String> = HashSet::new();
     for stage in stages {
-        for d in load_csv_dirs(&csv_dir.join(stage_file(stage))) {
+        for d in load_csv_dirs(&csv_dir.join(stage_file(stage)))? {
             if !seen.insert(d.clone()) {
                 continue;
             }
@@ -124,7 +146,7 @@ pub fn build_plan(csv_dir: &Path, stages: &[String], keep: &KeepRules) -> Plan {
             }
         }
     }
-    plan
+    Ok(plan)
 }
 
 // --- enumeration + touching ---------------------------------------------------
@@ -293,14 +315,29 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
         vec![opts.stage.clone()]
     };
 
-    let plan = build_plan(&csv_dir, &stages, keep_rules);
-    report_plan(out, &plan, &csv_dir, &stages, opts.verbose);
+    let plan = match build_plan(&csv_dir, &stages, keep_rules) {
+        Ok(p) => p,
+        Err(e) => {
+            out.error(&format!("error: {e}"));
+            return 1;
+        }
+    };
+    if let Err(e) = report_plan(out, &plan, &csv_dir, &stages, opts.verbose) {
+        out.error(&format!("error: {e}"));
+        return 1;
+    }
 
     if plan.kept.is_empty() {
         if out.json_mode {
             // Still emit a document so an agent gets structured output, not
             // empty stdout, when nothing is flagged.
-            out.json(&plan_json(&plan, &csv_dir, &stages, opts.dry_run));
+            match plan_json(&plan, &csv_dir, &stages, opts.dry_run) {
+                Ok(doc) => out.json(&doc),
+                Err(e) => {
+                    out.error(&format!("error: {e}"));
+                    return 1;
+                }
+            }
         } else {
             out.status("no flagged directories matched  — nothing to do.");
         }
@@ -309,7 +346,13 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
 
     if opts.dry_run {
         if out.json_mode {
-            out.json(&plan_json(&plan, &csv_dir, &stages, true));
+            match plan_json(&plan, &csv_dir, &stages, true) {
+                Ok(doc) => out.json(&doc),
+                Err(e) => {
+                    out.error(&format!("error: {e}"));
+                    return 1;
+                }
+            }
         }
         return 0;
     }
@@ -346,7 +389,13 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
             "kept": plan.kept.iter().take(JSON_LIST_CAP).map(|(_, d)| d.clone()).collect::<Vec<_>>(),
         });
         if kept_truncated {
-            summary["full_plan_path"] = json!(dump_full_plan(&plan, &csv_dir, &stages));
+            match dump_full_plan(&plan, &csv_dir, &stages) {
+                Ok(path) => summary["full_plan_path"] = json!(path),
+                Err(e) => {
+                    out.error(&format!("error: {e}"));
+                    return 1;
+                }
+            }
         }
         out.json(&summary);
     } else {
@@ -368,9 +417,15 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
 }
 
 /// Print the plan summary to stderr (human) — stdout stays the data channel.
-fn report_plan(out: &Out, plan: &Plan, csv_dir: &Path, stages: &[String], verbose: bool) {
+fn report_plan(
+    out: &Out,
+    plan: &Plan,
+    csv_dir: &Path,
+    stages: &[String],
+    verbose: bool,
+) -> Result<(), String> {
     if out.json_mode {
-        return;
+        return Ok(());
     }
     out.status(&format!(
         "csv-dir: {}  stages: {}",
@@ -383,7 +438,7 @@ fn report_plan(out: &Out, plan: &Plan, csv_dir: &Path, stages: &[String], verbos
         plan.skipped.len()
     ));
     if plan.kept.len() > JSON_LIST_CAP || plan.skipped.len() > JSON_LIST_CAP {
-        let path = dump_full_plan(plan, csv_dir, stages);
+        let path = dump_full_plan(plan, csv_dir, stages)?;
         out.status(&format!(
             "full plan ({} dirs): {path}",
             plan.kept.len() + plan.skipped.len()
@@ -406,6 +461,7 @@ fn report_plan(out: &Out, plan: &Plan, csv_dir: &Path, stages: &[String], verbos
             }
         }
     }
+    Ok(())
 }
 
 /// Bounded plan document: exact counts, a capped sample of each list.
@@ -414,7 +470,12 @@ fn report_plan(out: &Out, plan: &Plan, csv_dir: &Path, stages: &[String], verbos
 /// file and its path returned under `full_plan_path` — so the response
 /// stays small enough for an agent's context while the full detail is one
 /// `cat` away.
-fn plan_json(plan: &Plan, csv_dir: &Path, stages: &[String], dry_run: bool) -> Value {
+fn plan_json(
+    plan: &Plan,
+    csv_dir: &Path,
+    stages: &[String],
+    dry_run: bool,
+) -> Result<Value, String> {
     let entry = |(stage, dir): &(String, String)| json!({"stage": stage, "dir": dir});
     let kept_truncated = plan.kept.len() > JSON_LIST_CAP;
     let skipped_truncated = plan.skipped.len() > JSON_LIST_CAP;
@@ -430,13 +491,19 @@ fn plan_json(plan: &Plan, csv_dir: &Path, stages: &[String], dry_run: bool) -> V
         "skipped": plan.skipped.iter().take(JSON_LIST_CAP).map(entry).collect::<Vec<_>>(),
     });
     if kept_truncated || skipped_truncated {
-        doc["full_plan_path"] = json!(dump_full_plan(plan, csv_dir, stages));
+        doc["full_plan_path"] = json!(dump_full_plan(plan, csv_dir, stages)?);
     }
-    doc
+    Ok(doc)
 }
 
-/// Write the complete (untruncated) plan to a temp file; return its path.
-fn dump_full_plan(plan: &Plan, csv_dir: &Path, stages: &[String]) -> String {
+/// Write the complete (untruncated) plan to `solx-keep-plan-*.json` in the
+/// system temp dir; return its path.
+///
+/// The file is created owner-only (0600) with bounded name-collision
+/// retries, and stays on disk after the run. A creation or write failure is
+/// an error (the document enumerates the user's scratch layout, so a
+/// truncated or missing spill must never be advertised as complete).
+fn dump_full_plan(plan: &Plan, csv_dir: &Path, stages: &[String]) -> Result<String, String> {
     let entry = |(stage, dir): &(String, String)| json!({"stage": stage, "dir": dir});
     let doc = json!({
         "csv_dir": csv_dir.display().to_string(),
@@ -444,30 +511,17 @@ fn dump_full_plan(plan: &Plan, csv_dir: &Path, stages: &[String]) -> String {
         "kept": plan.kept.iter().map(entry).collect::<Vec<_>>(),
         "skipped": plan.skipped.iter().map(entry).collect::<Vec<_>>(),
     });
-    let (mut file, path) = create_temp_file();
-    let _ = file.write_all(to_python_json(&doc).as_bytes());
-    path
-}
-
-/// Create `solx-keep-plan-*.json` in the system temp dir.
-fn create_temp_file() -> (std::fs::File, String) {
-    let dir = std::env::temp_dir();
-    let pid = std::process::id();
-    for attempt in 0.. {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0);
-        let path = dir.join(format!("solx-keep-plan-{pid}-{nanos}-{attempt}.json"));
-        if let Ok(file) = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            return (file, path.display().to_string());
-        }
-    }
-    unreachable!("temp file attempts are unbounded")
+    let temp = tempfile::Builder::new()
+        .prefix("solx-keep-plan-")
+        .suffix(".json")
+        .tempfile()
+        .map_err(|e| format!("unable to create the full-plan temp file: {e}"))?;
+    let (mut file, path) = temp
+        .keep()
+        .map_err(|e| format!("unable to keep the full-plan temp file: {e}"))?;
+    file.write_all(to_python_json(&doc).as_bytes())
+        .map_err(|e| format!("unable to write {}: {e}", path.display()))?;
+    Ok(path.display().to_string())
 }
 
 // --- execution -------------------------------------------------------------------
@@ -622,7 +676,7 @@ mod tests {
         let p = dir.path().join("scratch-dirs-pending-removal.csv");
         write_csv(&p, &["/scratch/sparky/a", "/scratch/sparky/b"]);
         assert_eq!(
-            load_csv_dirs(&p),
+            load_csv_dirs(&p).unwrap(),
             ["/scratch/sparky/a", "/scratch/sparky/b"]
         );
     }
@@ -630,7 +684,9 @@ mod tests {
     #[test]
     fn load_csv_dirs_missing_file() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(load_csv_dirs(&dir.path().join("absent.csv")).is_empty());
+        assert!(load_csv_dirs(&dir.path().join("absent.csv"))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -638,7 +694,45 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("x.csv");
         fs::write(&p, "User,Directory,Size\nsparky,/scratch/sparky/a,12G\n").unwrap();
-        assert_eq!(load_csv_dirs(&p), ["/scratch/sparky/a"]);
+        assert_eq!(load_csv_dirs(&p).unwrap(), ["/scratch/sparky/a"]);
+    }
+
+    #[test]
+    fn load_csv_dirs_bom_header_yields_no_directories() {
+        // A BOM is part of the first header cell's name, so the column
+        // lookup misses and the file contributes nothing.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("bom.csv");
+        fs::write(&p, b"\xEF\xBB\xBFDirectory,Size\n/scratch/sparky/a,1G\n").unwrap();
+        assert!(load_csv_dirs(&p).unwrap().is_empty());
+        // With the Directory column not first, the BOM lands on another
+        // header and the column still resolves.
+        let p2 = dir.path().join("bom2.csv");
+        fs::write(&p2, b"\xEF\xBB\xBFSize,Directory\n1G,/scratch/sparky/a\n").unwrap();
+        assert_eq!(load_csv_dirs(&p2).unwrap(), ["/scratch/sparky/a"]);
+    }
+
+    #[test]
+    fn load_csv_dirs_invalid_utf8_record_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("bad.csv");
+        fs::write(&p, b"Directory,Size\n/scratch/sparky/\xFF\xFE,1G\n").unwrap();
+        let err = load_csv_dirs(&p).unwrap_err();
+        assert!(err.contains("unable to read"));
+        assert!(err.contains("bad.csv"));
+    }
+
+    #[test]
+    fn load_csv_dirs_unreadable_file_is_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("locked.csv");
+        write_csv(&p, &["/scratch/sparky/a"]);
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o000)).unwrap();
+        let err = load_csv_dirs(&p).unwrap_err();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(err.contains("unable to read"));
+        assert!(err.contains("locked.csv"));
     }
 
     #[test]
@@ -653,7 +747,7 @@ mod tests {
             &["/scratch/sparky/proj-b"],
         );
         let rules = keep(&["/scratch/sparky/proj-a", "/scratch/sparky/proj-b"], &[]);
-        let plan = build_plan(dir.path(), &stages_all(), &rules);
+        let plan = build_plan(dir.path(), &stages_all(), &rules).unwrap();
         let kept: Vec<&str> = plan.kept.iter().map(|(_, d)| d.as_str()).collect();
         assert_eq!(kept, ["/scratch/sparky/proj-a", "/scratch/sparky/proj-b"]);
         let skipped: Vec<&str> = plan.skipped.iter().map(|(_, d)| d.as_str()).collect();
@@ -672,7 +766,7 @@ mod tests {
             &["/scratch/sparky/a"],
         );
         let rules = keep(&["/scratch/sparky/a"], &[]);
-        let plan = build_plan(dir.path(), &stages_all(), &rules);
+        let plan = build_plan(dir.path(), &stages_all(), &rules).unwrap();
         assert_eq!(plan.kept.len(), 1);
         assert_eq!(plan.kept[0].0, "pending"); // first stage wins
     }
@@ -688,7 +782,7 @@ mod tests {
             ],
         );
         let rules = keep(&["/scratch/sparky/proj/**"], &["**/__pycache__"]);
-        let plan = build_plan(dir.path(), &["pending".to_string()], &rules);
+        let plan = build_plan(dir.path(), &["pending".to_string()], &rules).unwrap();
         let kept: Vec<&str> = plan.kept.iter().map(|(_, d)| d.as_str()).collect();
         assert_eq!(kept, ["/scratch/sparky/proj/run-1"]);
         let skipped: Vec<&str> = plan.skipped.iter().map(|(_, d)| d.as_str()).collect();
@@ -710,7 +804,7 @@ mod tests {
                 "/scratch/sparky/x",
             ],
         );
-        let plan = build_plan(dir.path(), &["pending".to_string()], &rules);
+        let plan = build_plan(dir.path(), &["pending".to_string()], &rules).unwrap();
         let kept: Vec<&str> = plan.kept.iter().map(|(_, d)| d.as_str()).collect();
         assert_eq!(kept, ["/scratch/sparky/proj/run"]);
     }
