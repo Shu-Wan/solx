@@ -77,6 +77,43 @@ def test_help_subcommand_aliases_flag(capsys) -> None:
         assert cmd in out
 
 
+def test_version_subcommand_rejects_extra_args(capsys) -> None:
+    """`solx version bogus` is a usage error, not a version print."""
+    assert invoke(["version", "bogus"]) == 2
+    assert __version__ not in capsys.readouterr().out
+
+
+def test_version_subcommand_help(capsys) -> None:
+    """`solx version --help` shows the command's help, not the version."""
+    assert invoke(["version", "--help"]) == 0
+    assert "usage: solx version" in capsys.readouterr().out
+
+
+def test_version_flag_with_unknown_option_before(capsys) -> None:
+    assert invoke(["--bogus", "--version"]) == 2
+    assert __version__ not in capsys.readouterr().out
+
+
+def test_version_flag_with_unknown_option_after(capsys) -> None:
+    assert invoke(["--version", "--bogus"]) == 2
+    assert __version__ not in capsys.readouterr().out
+
+
+def test_help_subcommand_rejects_extra_args(capsys) -> None:
+    """`solx help` takes no arguments: `solx help job` is a usage error."""
+    assert invoke(["help", "job"]) == 2
+
+
+def test_solx_complete_env_exits_silently(monkeypatch, capsys) -> None:
+    """With _SOLX_COMPLETE set (a <=0.4.0 completion script calling back in),
+    solx exits 0 with no output, so the script offers zero candidates."""
+    monkeypatch.setenv("_SOLX_COMPLETE", "complete_zsh")
+    assert invoke(["job", "list"]) == 0
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err == ""
+
+
 def test_no_args_prints_help_and_exits_2(capsys) -> None:
     assert invoke([]) == 2
     assert "usage: solx" in capsys.readouterr().out
@@ -224,6 +261,96 @@ def test_job_start_template_after_double_dash(monkeypatch) -> None:
     assert captured[0]["dry_run"] is True
 
 
+def test_job_start_double_dash_shields_dry_run_flag(monkeypatch) -> None:
+    """With the template set, a `-n` after `--` is salloc passthrough, not
+    a dry-run flag."""
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_start", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(main_mod, "_load_or_exit", lambda *a, **kw: fake_config())
+
+    assert invoke(["job", "start", "gpu", "--", "-n"]) == 0
+    assert captured[0]["template_name"] == "gpu"
+    assert captured[0]["dry_run"] is False
+    assert captured[0]["passthrough"] == ["-n"]
+
+
+def test_job_start_double_dash_shields_flag_with_value(monkeypatch) -> None:
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_start", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(main_mod, "_load_or_exit", lambda *a, **kw: fake_config())
+
+    assert invoke(["job", "start", "gpu", "--", "-n", "4"]) == 0
+    assert captured[0]["dry_run"] is False
+    assert captured[0]["passthrough"] == ["-n", "4"]
+
+
+def test_job_start_double_dash_shields_timeout(monkeypatch) -> None:
+    """With the template unset, the first token after `--` names the
+    template even when it looks like a known flag."""
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_start", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(main_mod, "_load_or_exit", lambda *a, **kw: fake_config())
+
+    assert invoke(["job", "start", "--", "--timeout", "30s"]) == 0
+    assert captured[0]["template_name"] == "--timeout"
+    assert captured[0]["timeout_override"] is None
+    assert captured[0]["passthrough"] == ["30s"]
+
+
+def test_job_start_second_double_dash_forwarded(monkeypatch) -> None:
+    """The first `--` is consumed; later `--` tokens are forwarded literally."""
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_start", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(main_mod, "_load_or_exit", lambda *a, **kw: fake_config())
+
+    assert invoke(["job", "start", "gpu", "-n", "--", "--mem=1G", "--", "-c", "2"]) == 0
+    assert captured[0]["template_name"] == "gpu"
+    assert captured[0]["dry_run"] is True
+    assert captured[0]["passthrough"] == ["--mem=1G", "--", "-c", "2"]
+
+
+def test_job_start_bundled_shorts_expand(monkeypatch) -> None:
+    """`-nn` unbundles to `-n -n` when every letter is a known short flag."""
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_start", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(main_mod, "_load_or_exit", lambda *a, **kw: fake_config())
+
+    assert invoke(["job", "start", "-nn"]) == 0
+    assert captured[0]["dry_run"] is True
+    assert captured[0]["template_name"] is None
+    assert captured[0]["passthrough"] == []
+
+
+def test_job_start_bundle_with_unknown_letter_is_passthrough(monkeypatch) -> None:
+    """A short bundle with any unknown letter is forwarded whole to salloc."""
+    captured: list[dict] = []
+    from solx import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "cmd_start", lambda **kw: captured.append(kw) or 0)
+    monkeypatch.setattr(main_mod, "_load_or_exit", lambda *a, **kw: fake_config())
+
+    assert invoke(["job", "start", "-nx"]) == 0
+    assert captured[0]["dry_run"] is False
+    assert captured[0]["template_name"] is None
+    assert captured[0]["passthrough"] == ["-nx"]
+
+
+def test_job_start_dry_run_rejects_explicit_value(capsys) -> None:
+    """`--dry-run=true` is a usage error: the flag takes no value."""
+    assert invoke(["job", "start", "--dry-run=true"]) == 2
+    assert "--dry-run" in capsys.readouterr().err
+
+
 def test_job_start_mixed_passthrough_order(monkeypatch) -> None:
     """Known options are consumed wherever they appear; everything else is
     passthrough in its original order."""
@@ -312,6 +439,13 @@ def test_keep_invalid_stage(capsys) -> None:
     assert invoke(["keep", "--stage", "bogus"]) == 2
     captured = capsys.readouterr()
     assert "invalid --stage" in captured.err or "invalid --stage" in captured.out
+
+
+@pytest.mark.parametrize("jobs", ["0", "-2"])
+def test_keep_jobs_below_one_exits_2(jobs: str, capsys) -> None:
+    assert invoke(["keep", "-n", "-j", jobs]) == 2
+    captured = capsys.readouterr()
+    assert "invalid --jobs" in captured.err or "invalid --jobs" in captured.out
 
 
 def test_keep_solkeep_flag_and_missing_config(monkeypatch, tmp_path) -> None:
