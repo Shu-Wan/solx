@@ -121,6 +121,39 @@ removing that import tree. On node-local disk the floor is lower still
   reading a legacy `~/.solkeep` (with a deprecation notice) through the
   0.5.x line; migrate with `solx config import-solkeep`.
 
+The CLI is reimplemented as a single native binary (Rust), so every
+command starts in ~1ms with no Python interpreter and no per-module NFS
+reads — startup no longer degrades under node load or a cold NFS cache.
+
+### Highlights
+
+Startup latency, warm median on a Sol compute node (NFS `$HOME`):
+
+| command | raw `squeue` | v0.5.0 (Python) | **v1.0 (Rust)** | speedup |
+|---|---|---|---|---|
+| `solx --version` | — | 0.10s | **0.010s** | 10× |
+| `solx job list` | 0.08s | 0.39s | **0.12s** | 3.3× |
+| `solx job time` | 0.08s | 0.31s | **0.12s** | 2.6× |
+
+The binary tracks raw `squeue` — its residual over `squeue` is just the
+`squeue` subprocess it spawns — and, unlike the Python builds, its
+startup is flat regardless of node load or cache state. 4.9MB,
+glibc-only, no runtime dependencies (no Python, `uv`, or `rustc` on the
+target).
+
+### Changed
+
+- The CLI is rewritten in Rust (`solx-rs/`), preserving the v0.5.0
+  command surface, output contract, and exit codes; behavioral parity is
+  verified against the v0.5.0 golden matrix (`evals/parity/`). The agent
+  skill is unchanged.
+
+### Added
+
+- Release artifact is a prebuilt static binary
+  (`x86_64-unknown-linux-musl`); install is download + `chmod +x`, no
+  toolchain required. See `solx-rs/README.md`.
+
 ## [0.4.0] — 2026-06-08
 
 `solx` becomes the supported path for interactive jobs and scratch
