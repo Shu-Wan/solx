@@ -30,3 +30,30 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+
+  build:
+    # Build the portable release binary and attach it to the run, so a
+    # reviewer can download it from Checks -> Artifacts and test the PR's
+    # solx on Sol without a Rust toolchain. The musl target links libc
+    # statically, so the artifact runs on any x86-64 Linux — Sol's RHEL 8
+    # included — regardless of the host glibc.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solx-rs
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solx-rs
+      - name: Build (musl static)
+        run: cargo build --release --target x86_64-unknown-linux-musl
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: solx-x86_64-linux-musl
+          path: solx-rs/target/x86_64-unknown-linux-musl/release/solx
+          if-no-files-found: error

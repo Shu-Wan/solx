@@ -79,5 +79,37 @@ $ cargo test
   in `tests/mocks/bin` and a tempdir HOME/XDG, asserting stdout, stderr,
   and exit codes for the core flows.
 
-CI (`.github/workflows/rust-ci.yml`) runs the same three commands on every
-push/PR touching `solx-rs/`.
+CI (`.github/workflows/rust-ci.yml`) runs the same three commands (`check`
+job) on every push/PR touching `solx-rs/`, plus a `build` job that
+compiles the portable binary and uploads it (see below).
+
+## Building and installing
+
+A native development build, for running on the same machine:
+
+```console
+$ export CARGO_TARGET_DIR=/tmp/solx-rs-target   # keep artifacts off the NFS home
+$ cargo build --release                          # -> $CARGO_TARGET_DIR/release/solx
+$ cp "$CARGO_TARGET_DIR/release/solx" ~/.local/bin-test/solx
+```
+
+This links the host's glibc, so it runs on the box it was built on (Sol
+included). For a binary that runs anywhere — the form CI uploads and a
+release ships — build the statically linked musl target:
+
+```console
+$ rustup target add x86_64-unknown-linux-musl    # one-time; no musl-gcc needed
+$ cargo build --release --target x86_64-unknown-linux-musl
+```
+
+The result is a self-contained executable (`ldd` reports "statically
+linked") with no libc-version dependency.
+
+**From a PR, without a toolchain.** The `build` job attaches the musl
+binary as the `solx-x86_64-linux-musl` artifact on every push/PR.
+Download it from the PR's *Checks → Artifacts*, `chmod +x`, and run it
+on Sol as-is — no install step, no toolchain:
+
+```console
+$ chmod +x solx && ./solx --version
+```
