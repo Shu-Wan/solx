@@ -1,10 +1,12 @@
 """Static shell completion scripts for solx (bash, zsh, fish).
 
-One data structure (`COMMANDS`) describes the CLI surface — commands,
-subcommands, flags, one-line descriptions matching the help strings — and
-each `*_script()` function renders it into a fully static script: nothing
-shells back into solx at completion time, so the first Tab of a session
-costs no interpreter start.
+One data structure (`COMMANDS`) mirrors the CLI surface: its commands,
+subcommands, and flags correspond one-to-one to `main.py`'s parser tree
+(a pinning test in `tests/test_completions.py` walks both and fails on any
+drift), while the descriptions are one-line summaries of the parser's help
+strings. Each `*_script()` function renders the table into a fully static
+script: nothing shells back into solx at completion time, so the first Tab
+of a session costs no interpreter start.
 
 The zsh script works in both install modes: eval/source (`compdef` registers
 the completer) and fpath autoload (`solx completions zsh > ~/.zfunc/_solx`,
@@ -18,12 +20,13 @@ from __future__ import annotations
 Flag = tuple[tuple[str, ...], "str | tuple[str, ...] | None", str]
 
 _JSON: Flag = (("--json",), None, "Force JSON output (machine-readable).")
+HELP_FLAG: Flag = (("-h", "--help"), None, "Show this help message and exit.")
 
 STAGE_CHOICES = ("all", "pending", "over90", "inactive")
 SHELL_CHOICES = ("bash", "zsh", "fish")
 
 GLOBAL_FLAGS: list[Flag] = [
-    (("-h", "--help"), None, "Show this help message and exit."),
+    HELP_FLAG,
     (("--version",), None, "Show version and exit."),
     _JSON,
 ]
@@ -150,15 +153,18 @@ def bash_script() -> str:
         if "sub" in spec:
             subs = spec["sub"]
             sub_arms = "\n".join(
-                f'                {sname}) flags="{" ".join(_flag_words(sspec.get("flags", [])))} --help" ;;'
+                f'                {sname}) flags="{" ".join([*_flag_words(sspec.get("flags", [])), "-h", "--help"])}" ;;'
                 for sname, sspec in subs.items()
             )
             pattern = f"{name}|jobs" if name == "job" else name
             group_arms.append(
                 f"""        {pattern})
-            if [[ -z "$sub" && "$cur" != -* ]]; then
-                COMPREPLY=($(compgen -W "{" ".join(subs)}" -- "$cur"))
-                return
+            if [[ -z "$sub" ]]; then
+                if [[ "$cur" != -* ]]; then
+                    mapfile -t COMPREPLY < <(compgen -W "{" ".join(subs)}" -- "$cur")
+                    return
+                fi
+                flags="-h --help"
             fi
             case "$sub" in
 {sub_arms}
@@ -173,7 +179,7 @@ def bash_script() -> str:
                 choices = " ".join(pos[1])
             leaf_arms.append(
                 f"""        {name})
-            flags="{" ".join(words)} --help"
+            flags="{" ".join([*words, "-h", "--help"])}"
             words="{choices}"
             ;;"""
             )
@@ -185,6 +191,15 @@ _solx() {{
     COMPREPLY=()
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
+
+    # On a mid-word Tab, COMP_WORDS carries the whole word; complete against
+    # only the part left of the cursor.
+    if [[ -n "${{COMP_LINE-}}" ]]; then
+        local left="${{COMP_LINE:0:COMP_POINT}}"
+        while [[ -n "$cur" && "${{left%"$cur"}}" == "$left" ]]; do
+            cur="${{cur%?}}"
+        done
+    fi
 
     # First two non-flag words decide the (sub)command context.
     local i word cmd="" sub=""
@@ -198,18 +213,22 @@ _solx() {{
         fi
     done
 
-    # Option values.
+    # Option values. Path candidates go through mapfile (no word splitting,
+    # no glob expansion — spaces and metacharacters survive) and `compopt -o
+    # filenames` (where available) so readline escapes what it inserts.
     case "$prev" in
         --csv-dir)
-            COMPREPLY=($(compgen -d -- "$cur"))
+            type compopt &> /dev/null && compopt -o filenames 2> /dev/null
+            mapfile -t COMPREPLY < <(compgen -d -- "$cur")
             return
             ;;
         --solkeep)
-            COMPREPLY=($(compgen -f -- "$cur"))
+            type compopt &> /dev/null && compopt -o filenames 2> /dev/null
+            mapfile -t COMPREPLY < <(compgen -f -- "$cur")
             return
             ;;
         --stage)
-            COMPREPLY=($(compgen -W "{" ".join(STAGE_CHOICES)}" -- "$cur"))
+            mapfile -t COMPREPLY < <(compgen -W "{" ".join(STAGE_CHOICES)}" -- "$cur")
             return
             ;;
         -j|--jobs|--timeout)
@@ -219,9 +238,9 @@ _solx() {{
 
     if [[ -z "$cmd" ]]; then
         if [[ "$cur" == -* ]]; then
-            COMPREPLY=($(compgen -W "{" ".join(_flag_words(GLOBAL_FLAGS))}" -- "$cur"))
+            mapfile -t COMPREPLY < <(compgen -W "{" ".join(_flag_words(GLOBAL_FLAGS))}" -- "$cur")
         else
-            COMPREPLY=($(compgen -W "{top}" -- "$cur"))
+            mapfile -t COMPREPLY < <(compgen -W "{top}" -- "$cur")
         fi
         return
     fi
@@ -231,9 +250,11 @@ _solx() {{
 {arms}
     esac
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
-    elif [[ -n "$words" ]]; then
-        COMPREPLY=($(compgen -W "$words" -- "$cur"))
+        mapfile -t COMPREPLY < <(compgen -W "$flags" -- "$cur")
+    elif [[ -n "$words" && -z "$sub" ]]; then
+        # $words holds positional choices; offer them only until the
+        # positional is filled.
+        mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
     fi
 }}
 
@@ -313,6 +334,7 @@ _solx_{name}() {{
     typeset -A opt_args
 
     _arguments -C \\
+        '(-h --help)'{{-h,--help}}'[Show this help message and exit.]' \\
         '1: :->subcommand' \\
         '*:: :->subargs'
 
@@ -445,6 +467,13 @@ def fish_script() -> str:
             if name == "job":
                 seen = "__fish_seen_subcommand_from job jobs"
             subnames = " ".join(spec["sub"])
+            # Group level (no subcommand picked yet): only -h/--help.
+            lines.extend(
+                _fish_flag_lines(
+                    [HELP_FLAG],
+                    f"{seen}; and not __fish_seen_subcommand_from {subnames}",
+                )
+            )
             for sname, sspec in spec["sub"].items():
                 lines.append(
                     f"complete -c solx -n '{seen}; and not __fish_seen_subcommand_from {subnames}' "
@@ -452,16 +481,22 @@ def fish_script() -> str:
                 )
                 lines.extend(
                     _fish_flag_lines(
-                        sspec.get("flags", []),
+                        [*sspec.get("flags", []), HELP_FLAG],
                         f"{seen}; and __fish_seen_subcommand_from {sname}",
                     )
                 )
         else:
             condition = f"__fish_seen_subcommand_from {name}"
-            lines.extend(_fish_flag_lines(spec.get("flags", []), condition))
+            lines.extend(
+                _fish_flag_lines([*spec.get("flags", []), HELP_FLAG], condition)
+            )
             pos = spec.get("positional")
             if pos is not None and isinstance(pos[1], tuple):
+                choices = " ".join(pos[1])
+                # Offer the positional's choices only until one is given.
                 lines.append(
-                    f"complete -c solx -n '{condition}' -a '{' '.join(pos[1])}'"
+                    f"complete -c solx "
+                    f"-n '{condition}; and not __fish_seen_subcommand_from {choices}' "
+                    f"-a '{choices}'"
                 )
     return "\n".join(lines)

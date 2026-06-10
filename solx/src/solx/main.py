@@ -18,8 +18,9 @@ Surface (see docs/solx.md):
 
 Global output flag: `--json` forces JSON; by default output auto-detects
 (Rich tables on a terminal, JSON when stdout is not a TTY). See `solx.output`.
-Every leaf subcommand except `job start` also accepts a trailing `--json`;
-after `job start`, a `--json` belongs to the salloc passthrough.
+Every output-producing leaf subcommand also accepts a trailing `--json`.
+After `job start`, a `--json` belongs to the salloc passthrough; `config
+edit`, `completions`, `version`, and `help` take no `--json` at all.
 """
 from __future__ import annotations
 
@@ -657,7 +658,6 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         description="Open the config in $EDITOR.",
         allow_abbrev=False,
     )
-    _add_json(p)
     p.set_defaults(func=_cmd_config_edit)
 
     p = config_sub.add_parser(
@@ -690,17 +690,15 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         allow_abbrev=False,
     )
     p.add_argument("shell", help="Target shell: bash, zsh, or fish.")
-    _add_json(p)
     p.set_defaults(func=_cmd_completions)
 
-    # -- meta: version / help
+    # -- meta: version / help (no --json: their output is one fixed text)
     p = sub.add_parser(
         "version",
         help="Show version and exit (alias of --version).",
         description="Show version and exit (alias of --version).",
         allow_abbrev=False,
     )
-    _add_json(p)
     p.set_defaults(func=_cmd_version)
 
     p = sub.add_parser(
@@ -709,7 +707,6 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         description="Show help and exit (alias of --help).",
         allow_abbrev=False,
     )
-    _add_json(p)
     p.set_defaults(func=_cmd_help)
 
     return parser, p_start
