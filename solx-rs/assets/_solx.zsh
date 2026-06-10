@@ -5,6 +5,7 @@ _solx_job() {
     typeset -A opt_args
 
     _arguments -C \
+        '(-h --help)'{-h,--help}'[Show this help message and exit.]' \
         '1: :->subcommand' \
         '*:: :->subargs'
 
@@ -65,6 +66,7 @@ _solx_config() {
     typeset -A opt_args
 
     _arguments -C \
+        '(-h --help)'{-h,--help}'[Show this help message and exit.]' \
         '1: :->subcommand' \
         '*:: :->subargs'
 
