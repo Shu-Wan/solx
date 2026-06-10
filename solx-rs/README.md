@@ -9,30 +9,16 @@ Python `solx` package in this repository (see [`../docs/solx.md`](../docs/solx.m
 for the full command reference). One binary, no interpreter or virtualenv on the
 critical path — a cold start from NFS home is a single exec.
 
-## Build
-
-Requires stable Rust (`rust-toolchain.toml` selects the channel; rustup
-installs it on first build).
-
-```console
-$ cd solx-rs
-$ cargo build --release
-$ ./target/release/solx --version
-```
-
-On Sol, keep build artifacts off NFS:
-
-```console
-$ export CARGO_TARGET_DIR=/tmp/solx-rs-target
-$ cargo build --release
-```
-
 ## Install
 
-Copy the release binary anywhere on `PATH`:
+The supported install is a prebuilt single binary from a CI release: no
+Rust toolchain, no Python, no `uv` on the box. Download it, make it
+executable, and put it anywhere on `PATH`:
 
 ```console
-$ install -m 755 target/release/solx ~/.local/bin/solx
+$ curl -fLo solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
+$ chmod +x solx
+$ mv solx ~/.local/bin/
 ```
 
 Then set up as usual:
@@ -40,6 +26,55 @@ Then set up as usual:
 ```console
 $ solx init                       # write the starter config
 $ solx completions zsh > ~/.zfunc/_solx   # optional tab completion
+```
+
+## Toolchain on Sol
+
+Contributor setup for building from source — users installing a release
+binary never need any of this. None of it requires sudo.
+
+* **Rust via rustup, user-install.**
+
+  ```console
+  $ curl https://sh.rustup.rs | sh -s -- -y --profile minimal
+  ```
+
+  Installs to `~/.cargo` and works on both login and compute nodes.
+  `rust-toolchain.toml` pins the channel; rustup fetches it on first build.
+
+* **Build artifacts on node-local storage.** Build artifacts on the NFS
+  home are painfully slow; point `CARGO_TARGET_DIR` at node-local storage.
+  The `~/.cargo` registry cache staying on NFS is a one-time acceptable
+  cost.
+
+  ```console
+  $ export CARGO_TARGET_DIR=/tmp/solx-rs-target
+  ```
+
+* **crates.io connectivity.** crates.io is reachable from compute nodes
+  but rejects UA-less HEAD probes with 403, so `curl -I` reports failure
+  on a working connection. Verify with a real GET:
+
+  ```console
+  $ curl -fsS https://index.crates.io/config.json
+  ```
+
+* **glibc.** A binary built on Sol links against RHEL 8's glibc 2.28 and
+  runs on Sol. CI releases target `x86_64-unknown-linux-musl` (fully
+  static) for portability.
+
+With the toolchain in place:
+
+```console
+$ cd solx-rs
+$ cargo build --release
+$ "${CARGO_TARGET_DIR:-target}/release/solx" --version
+```
+
+To run a local build, copy it onto `PATH`:
+
+```console
+$ install -m 755 "${CARGO_TARGET_DIR:-target}/release/solx" ~/.local/bin/solx
 ```
 
 ## Output contract

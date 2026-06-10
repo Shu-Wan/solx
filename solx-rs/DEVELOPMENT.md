@@ -61,8 +61,12 @@ Notable porting decisions:
 
 ## Tests
 
+Toolchain setup on Sol (rustup user-install, `CARGO_TARGET_DIR`, crates.io
+access, glibc vs musl) is covered in
+[`README.md` → Toolchain on Sol](README.md#toolchain-on-sol).
+
 ```console
-$ export CARGO_TARGET_DIR=/tmp/solx-rs-target   # on Sol: keep off NFS
+$ export CARGO_TARGET_DIR=/tmp/solx-rs-target
 $ cargo fmt --all --check
 $ cargo clippy --all-targets -- -D warnings
 $ cargo test
