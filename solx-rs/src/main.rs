@@ -46,7 +46,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[command(
     name = "solx",
     about = "CLI for ASU's Sol supercomputer.",
-    disable_version_flag = true
+    disable_version_flag = true,
+    disable_help_subcommand = true
 )]
 struct Cli {
     /// Show version and exit.
@@ -104,6 +105,9 @@ enum Cmd {
         #[command(subcommand)]
         command: Option<ConfigCmd>,
     },
+
+    /// Show help and exit (alias of --help).
+    Help,
 }
 
 #[derive(clap::Args)]
@@ -205,26 +209,25 @@ fn main() {
 }
 
 fn run() -> i32 {
+    // Runtime-completion invocations (the `_SOLX_COMPLETE` env protocol
+    // that installed completion scripts use to call back into solx) never
+    // execute a command: exit 0 silently.
+    if std::env::var_os("_SOLX_COMPLETE").is_some() {
+        return 0;
+    }
+
     let argv: Vec<String> = std::env::args().skip(1).collect();
 
-    // Leading global flags resolve before anything else: `--version` is
-    // eager, and `--json` must be known here so a `job start` invocation can
-    // hand its raw tail to the Click-style parser (clap would otherwise eat
-    // the `--` separator and the passthrough options).
+    // A leading `--json` resolves before anything else so a `job start`
+    // invocation can hand its raw tail to the Click-style parser (clap
+    // would otherwise eat the `--` separator and the passthrough options).
+    // `--version` is left to clap: only an invocation it fully validates
+    // prints the version (junk alongside the flag is a usage error).
     let mut i = 0;
     let mut json = false;
-    while i < argv.len() {
-        match argv[i].as_str() {
-            "--json" => {
-                json = true;
-                i += 1;
-            }
-            "--version" => {
-                println!("{VERSION}");
-                return 0;
-            }
-            _ => break,
-        }
+    while i < argv.len() && argv[i] == "--json" {
+        json = true;
+        i += 1;
     }
     let rest = &argv[i..];
 
@@ -266,6 +269,10 @@ fn run() -> i32 {
             println!("{VERSION}");
             0
         }
+        Some(Cmd::Help) => {
+            print!("{}", root_help());
+            0
+        }
         Some(Cmd::Completions { shell }) => completions::cmd_completions(&shell),
         Some(Cmd::Init { force }) => {
             require_sol();
@@ -290,7 +297,7 @@ fn run() -> i32 {
                 jobs::cmd_list(&slurm::real_runner, &out)
             }
             // Unreachable in practice: `job start` is intercepted on the raw
-            // argv above. Kept for completeness (and `--help` rendering).
+            // argv above. Kept for completeness.
             Some(JobCmd::Start { rest }) => run_job_start(json, &rest),
             Some(JobCmd::Stop {
                 jobid,
@@ -330,18 +337,28 @@ fn run() -> i32 {
     }
 }
 
+/// The root help text, with the binary name in the usage line.
+fn root_help() -> String {
+    Cli::command().bin_name("solx").render_help().to_string()
+}
+
 /// Print the help for a (sub)command path on stdout; exit code 2
 /// (a no-args invocation is a usage error that still shows the way out).
 fn print_group_help(path: &[&str]) -> i32 {
-    let mut cmd = Cli::command();
-    let target = match path {
-        [] => &mut cmd,
-        [group] => cmd
-            .find_subcommand_mut(group)
-            .expect("known subcommand group"),
+    match path {
+        [] => print!("{}", root_help()),
+        [group] => {
+            // Render with the full `solx <group>` usage prefix.
+            let mut cmd = Cli::command();
+            let mut sub = cmd
+                .find_subcommand_mut(group)
+                .expect("known subcommand group")
+                .clone()
+                .bin_name(format!("solx {group}"));
+            print!("{}", sub.render_help());
+        }
         _ => unreachable!("only root and one-level groups print help here"),
-    };
-    print!("{}", target.render_help());
+    }
     2
 }
 
@@ -364,7 +381,29 @@ fn run_jump(jobid: Option<&str>, quiet: bool, json: bool) -> i32 {
     jobs::cmd_jump(&config, jobid, quiet, &slurm::real_runner, &out)
 }
 
+/// `job start` help. The command's tail is parsed by
+/// [`jobs::parse_start_tail`], not clap, so its help is rendered here: the
+/// full `solx job start` usage plus the contract options (`-n/--dry-run`,
+/// `--timeout`), the TEMPLATE argument, and the salloc passthrough.
+const JOB_START_HELP: &str = "\
+Start an interactive allocation from a config template.
+
+Unrecognized options and everything after `--` pass through to salloc.
+
+Usage: solx job start [OPTIONS] [TEMPLATE] [SALLOC_ARGS]...
+
+Arguments:
+  [TEMPLATE]        Template name; defaults to default_template
+  [SALLOC_ARGS]...  Extra arguments forwarded to salloc
+
+Options:
+  -n, --dry-run             Print salloc argv without submitting
+      --timeout <DURATION>  Override start_timeout (e.g. \"5m\", \"1h\")
+  -h, --help                Print help
+";
+
 fn run_job_start(json: bool, tail: &[String]) -> i32 {
+    require_sol();
     let parsed = match jobs::parse_start_tail(tail) {
         Ok(p) => p,
         Err(e) => {
@@ -373,15 +412,9 @@ fn run_job_start(json: bool, tail: &[String]) -> i32 {
         }
     };
     if parsed.help {
-        let mut cmd = Cli::command();
-        let start = cmd
-            .find_subcommand_mut("job")
-            .and_then(|j| j.find_subcommand_mut("start"))
-            .expect("job start subcommand");
-        print!("{}", start.render_help());
+        print!("{JOB_START_HELP}");
         return 0;
     }
-    require_sol();
     let out = Out::auto(json);
     let config = match load_or_exit(&out) {
         Ok(c) => c,
@@ -535,11 +568,13 @@ fn run_config_edit() -> i32 {
         .filter(|s| !s.is_empty())
         .or_else(|| which("vi"))
         .unwrap_or_else(|| "nano".to_string());
+    // An unparseable $EDITOR (e.g. an unbalanced quote) is a hard runtime
+    // failure, not a usage error: one clean line, exit 1.
     let argv = match shlex::split(&editor) {
         Some(argv) if !argv.is_empty() => argv,
         _ => {
             eprintln!("error: unparseable $EDITOR value {}", py_repr(&editor));
-            return 2;
+            return 1;
         }
     };
     match std::process::Command::new(&argv[0])

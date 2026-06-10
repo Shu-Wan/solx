@@ -452,3 +452,192 @@ fn trailing_json_is_accepted_on_leaves() {
         .success()
         .stdout(predicate::str::contains("\"job_id\""));
 }
+
+#[test]
+fn version_with_junk_arguments_exits_2() {
+    // Only the bare `--version` / `version` forms print the version.
+    let sb = Sandbox::new();
+    sb.cmd().args(["version", "bogus"]).assert().code(2);
+    sb.cmd().args(["--bogus", "--version"]).assert().code(2);
+    sb.cmd().args(["--version", "--bogus"]).assert().code(2);
+}
+
+#[test]
+fn help_command_rejects_arguments() {
+    let sb = Sandbox::new();
+    sb.cmd()
+        .arg("help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage: solx"));
+    sb.cmd().args(["help", "job"]).assert().code(2).stdout("");
+}
+
+#[test]
+fn dash_h_prints_help_and_exits_0() {
+    let sb = Sandbox::new();
+    sb.cmd()
+        .arg("-h")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage: solx"));
+}
+
+#[test]
+fn group_help_usage_carries_binary_name() {
+    let sb = Sandbox::new();
+    sb.cmd()
+        .arg("job")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("Usage: solx job"));
+    sb.cmd()
+        .arg("config")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("Usage: solx config"));
+}
+
+#[test]
+fn job_start_help_documents_contract_options() {
+    let sb = Sandbox::new().with_config();
+    for flags in [["job", "start", "--help"], ["job", "start", "-h"]] {
+        let assert = sb.cmd().args(flags).assert().success();
+        let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+        assert!(stdout.contains("Usage: solx job start"));
+        assert!(stdout.contains("-n, --dry-run"));
+        assert!(stdout.contains("--timeout"));
+        assert!(stdout.contains("[TEMPLATE]"));
+        assert!(stdout.contains("salloc"));
+    }
+}
+
+#[test]
+fn job_start_dry_run_with_value_exits_2() {
+    let sb = Sandbox::new().with_config();
+    sb.cmd()
+        .args(["job", "start", "--dry-run=true"])
+        .assert()
+        .code(2)
+        .stderr("error: Option '--dry-run' does not take a value.\n");
+}
+
+#[test]
+fn job_start_submit_line_keeps_equals_tokens_bare() {
+    // The `submitting:` argv render quotes nothing in the gpu template.
+    let sb = Sandbox::new().with_config();
+    sb.cmd()
+        .args(["--json", "job", "start", "gpu"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "submitting: salloc --no-shell -J solx-gpu -p public -t 0-4 \
+             --gres=gpu:a100:1 --mem=64G --cpus-per-task=8",
+        ));
+}
+
+#[test]
+fn keep_jobs_zero_or_negative_exits_2() {
+    let sb = Sandbox::new().with_config();
+    sb.cmd().args(["keep", "-n", "-j", "0"]).assert().code(2);
+    sb.cmd().args(["keep", "-n", "-j", "-2"]).assert().code(2);
+}
+
+#[test]
+fn keep_unreadable_csv_exits_1_naming_the_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = Sandbox::new().with_config();
+    sb.write_home(
+        "scratch-dirs-pending-removal.csv",
+        "Directory,Size\n/scratch/sparky/proj-a,1G\n",
+    );
+    let csv = sb.home.path().join("scratch-dirs-pending-removal.csv");
+    fs::set_permissions(&csv, fs::Permissions::from_mode(0o000)).unwrap();
+    sb.cmd()
+        .args(["--json", "keep", "-n"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(
+            predicate::str::contains("error: unable to read")
+                .and(predicate::str::contains("scratch-dirs-pending-removal.csv")),
+        );
+    fs::set_permissions(&csv, fs::Permissions::from_mode(0o644)).unwrap();
+}
+
+#[test]
+fn keep_trailing_slash_flagged_dir_is_kept() {
+    let sb = Sandbox::new().with_config();
+    sb.write_home(
+        "scratch-dirs-pending-removal.csv",
+        "Directory,Size\n/scratch/sparky/proj-a/,1G\n",
+    );
+    sb.cmd()
+        .args(["--json", "keep", "-n"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("\"kept_count\": 1")
+                .and(predicate::str::contains("/scratch/sparky/proj-a/")),
+        );
+}
+
+#[test]
+fn config_validation_error_strips_table_context() {
+    let sb = Sandbox::new();
+    fs::write(
+        sb.home.path().join(".config/solx/config.toml"),
+        "default_shell = \"bash\"\ndefault_template = \"default\"\n\
+         [jobs.default]\npartition = \"x\"\n",
+    )
+    .unwrap();
+    sb.cmd()
+        .args(["config", "show"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "config.toml:: required key `time` is missing",
+        ));
+}
+
+#[test]
+fn invalid_toml_error_is_one_line() {
+    let sb = Sandbox::new();
+    fs::write(
+        sb.home.path().join(".config/solx/config.toml"),
+        "default_shell = [unclosed\n",
+    )
+    .unwrap();
+    let assert = sb.cmd().args(["config", "show"]).assert().code(2);
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
+    assert_eq!(
+        stderr.lines().count(),
+        1,
+        "single-line TOML error: {stderr}"
+    );
+    assert!(stderr.contains("error: invalid TOML in"));
+    assert!(stderr.contains("(at line 1, column"));
+}
+
+#[test]
+fn config_edit_unparseable_editor_exits_1() {
+    let sb = Sandbox::new().with_config();
+    sb.cmd()
+        .args(["config", "edit"])
+        .env("EDITOR", "vim '")
+        .assert()
+        .code(1)
+        .stderr("error: unparseable $EDITOR value \"vim '\"\n");
+}
+
+#[test]
+fn solx_complete_env_exits_0_silently() {
+    let sb = Sandbox::new().with_config();
+    sb.cmd()
+        .args(["job", "list"])
+        .env("_SOLX_COMPLETE", "complete_zsh")
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+}

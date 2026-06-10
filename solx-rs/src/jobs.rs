@@ -130,8 +130,10 @@ pub struct StartTail {
 ///
 /// The grammar matches an ignore-unknown-options + allow-extra-args command:
 ///
-/// * `-n` / `--dry-run` and `--timeout VALUE` (or `--timeout=VALUE`) are
-///   consumed wherever they appear before the first `--`.
+/// * `-n` / `--dry-run`, `-h` / `--help`, and `--timeout VALUE` (or
+///   `--timeout=VALUE`) are consumed wherever they appear before the first
+///   `--`. An explicit value on the flag form (`--dry-run=...`) is a usage
+///   error.
 /// * The first `--` is dropped; everything after it is treated as bare
 ///   tokens (no option parsing).
 /// * The first unconsumed bare token — even one after `--` that looks like
@@ -159,7 +161,10 @@ pub fn parse_start_tail(args: &[String]) -> Result<StartTail, String> {
             i += 1;
             continue;
         }
-        if tok == "--help" {
+        if tok.starts_with("--dry-run=") {
+            return Err("Option '--dry-run' does not take a value.".to_string());
+        }
+        if tok == "-h" || tok == "--help" {
             tail.help = true;
             i += 1;
             continue;
@@ -548,6 +553,65 @@ mod tests {
         let t = parse_start_tail(&strs(&["-nc"])).unwrap();
         assert!(t.dry_run);
         assert_eq!(t.template.as_deref(), Some("-c"));
+    }
+
+    #[test]
+    fn start_tail_bundled_dry_run_shorts() {
+        // `-nn` unbundles to two dry-run flags (golden js-bundled-shorts).
+        let t = parse_start_tail(&strs(&["-nn"])).unwrap();
+        assert!(t.dry_run);
+        assert_eq!(t.template, None);
+        assert!(t.passthrough.is_empty());
+    }
+
+    #[test]
+    fn start_tail_dashdash_shields_dry_run_for_salloc() {
+        // golden js-dd-shield-n / js-dd-shield-n4: with the template slot
+        // filled, `--` forwards -n (and its value) to salloc.
+        let t = parse_start_tail(&strs(&["gpu", "--", "-n"])).unwrap();
+        assert_eq!(t.template.as_deref(), Some("gpu"));
+        assert!(!t.dry_run);
+        assert_eq!(t.passthrough, ["-n"]);
+
+        let t = parse_start_tail(&strs(&["gpu", "--", "-n", "4"])).unwrap();
+        assert_eq!(t.passthrough, ["-n", "4"]);
+    }
+
+    #[test]
+    fn start_tail_dashdash_option_fills_template_slot() {
+        // golden js-dd-shield-timeout: the first token after `--` becomes
+        // the template even when it looks like a flag.
+        let t = parse_start_tail(&strs(&["--", "--timeout", "30s"])).unwrap();
+        assert_eq!(t.template.as_deref(), Some("--timeout"));
+        assert_eq!(t.timeout, None);
+        assert_eq!(t.passthrough, ["30s"]);
+    }
+
+    #[test]
+    fn start_tail_double_dashdash_forwards_literal() {
+        // golden js-dd-dd: only the first `--` is consumed.
+        let t = parse_start_tail(&strs(&["gpu", "-n", "--", "--mem=1G", "--", "-c", "2"])).unwrap();
+        assert_eq!(t.template.as_deref(), Some("gpu"));
+        assert!(t.dry_run);
+        assert_eq!(t.passthrough, ["--mem=1G", "--", "-c", "2"]);
+    }
+
+    #[test]
+    fn start_tail_dry_run_with_value_is_usage_error() {
+        let err = parse_start_tail(&strs(&["--dry-run=true"])).unwrap_err();
+        assert_eq!(err, "Option '--dry-run' does not take a value.");
+        let err = parse_start_tail(&strs(&["gpu", "--dry-run="])).unwrap_err();
+        assert_eq!(err, "Option '--dry-run' does not take a value.");
+    }
+
+    #[test]
+    fn start_tail_short_help_token() {
+        let t = parse_start_tail(&strs(&["-h"])).unwrap();
+        assert!(t.help);
+        // After `--`, -h is passthrough-bound, not help.
+        let t = parse_start_tail(&strs(&["gpu", "--", "-h"])).unwrap();
+        assert!(!t.help);
+        assert_eq!(t.passthrough, ["-h"]);
     }
 
     // ---- table rendering ----------------------------------------------------
