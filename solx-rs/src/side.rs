@@ -16,7 +16,7 @@ const NOT_SOL_MESSAGE: &str = "solx is Sol-only — SSH to a Sol login node firs
 /// Return `true` if the current host is on the Sol cluster.
 ///
 /// Looks for any token ending in `.sol.rc.asu.edu` in `hostname -a` output
-/// and the kernel hostname.
+/// and the DNS-resolved FQDN of the kernel hostname.
 pub fn is_sol() -> bool {
     matches_sol(&hostname_a())
 }
@@ -41,10 +41,106 @@ fn kernel_hostname() -> String {
         .unwrap_or_default()
 }
 
+/// The DNS-resolved fully qualified name for this host (Python
+/// `socket.getfqdn()` semantics): resolve the kernel hostname to an
+/// address, reverse-resolve that address, and take the first of the
+/// returned primary name + aliases that contains a dot (else the primary
+/// name); the kernel hostname is returned unchanged when resolution fails.
+/// On Sol compute nodes the kernel hostname is the short name (e.g.
+/// `scc041`) and the resolver supplies the `.sol.rc.asu.edu` form.
+fn fqdn() -> String {
+    let name = kernel_hostname();
+    if name.is_empty() {
+        return name;
+    }
+    match reverse_names(&name) {
+        Some((primary, aliases)) => std::iter::once(primary.clone())
+            .chain(aliases)
+            .find(|n| n.contains('.'))
+            .unwrap_or(primary),
+        None => name,
+    }
+}
+
+extern "C" {
+    // Not re-exported by the libc crate; the glibc prototype.
+    fn gethostbyaddr(
+        addr: *const libc::c_void,
+        len: libc::socklen_t,
+        family: libc::c_int,
+    ) -> *mut libc::hostent;
+}
+
+/// Resolve `name` forward to its first address, then reverse-resolve the
+/// address. Returns the primary host name and its aliases, or `None` when
+/// either resolution step fails.
+fn reverse_names(name: &str) -> Option<(String, Vec<String>)> {
+    use std::ffi::{CStr, CString};
+
+    let c_name = CString::new(name).ok()?;
+    let mut hints: libc::addrinfo = unsafe { std::mem::zeroed() };
+    hints.ai_family = libc::AF_UNSPEC;
+    let mut res: *mut libc::addrinfo = std::ptr::null_mut();
+    let rc = unsafe { libc::getaddrinfo(c_name.as_ptr(), std::ptr::null(), &hints, &mut res) };
+    if rc != 0 || res.is_null() {
+        return None;
+    }
+
+    // Extract (address bytes, family) from the first result.
+    let addr: Option<(Vec<u8>, libc::c_int)> = unsafe {
+        let family = (*res).ai_family;
+        let sockaddr = (*res).ai_addr;
+        match family {
+            libc::AF_INET => {
+                let sin = sockaddr as *const libc::sockaddr_in;
+                let bytes = (*sin).sin_addr.s_addr.to_ne_bytes().to_vec();
+                Some((bytes, family))
+            }
+            libc::AF_INET6 => {
+                let sin6 = sockaddr as *const libc::sockaddr_in6;
+                Some(((*sin6).sin6_addr.s6_addr.to_vec(), family))
+            }
+            _ => None,
+        }
+    };
+    unsafe { libc::freeaddrinfo(res) };
+    let (bytes, family) = addr?;
+
+    // glibc gethostbyaddr returns the primary name plus aliases (a
+    // getnameinfo lookup yields only one name, which on Sol is the short
+    // one — the FQDN arrives as an alias).
+    let hostent = unsafe {
+        gethostbyaddr(
+            bytes.as_ptr() as *const libc::c_void,
+            bytes.len() as libc::socklen_t,
+            family,
+        )
+    };
+    if hostent.is_null() {
+        return None;
+    }
+    unsafe {
+        let h_name = (*hostent).h_name;
+        if h_name.is_null() {
+            return None;
+        }
+        let primary = CStr::from_ptr(h_name).to_string_lossy().into_owned();
+        let mut aliases = Vec::new();
+        let mut p = (*hostent).h_aliases;
+        if !p.is_null() {
+            while !(*p).is_null() {
+                aliases.push(CStr::from_ptr(*p).to_string_lossy().into_owned());
+                p = p.add(1);
+            }
+        }
+        Some((primary, aliases))
+    }
+}
+
 /// Run `hostname -a` (2s timeout) and return its output combined with the
-/// kernel hostname; fall back to the kernel hostname alone on failure.
+/// resolved FQDN; fall back to the FQDN alone on failure.
 fn hostname_a() -> String {
-    let fqdn = kernel_hostname();
+    let fqdn = fqdn();
     let child = Command::new("hostname")
         .arg("-a")
         .stdin(Stdio::null())
