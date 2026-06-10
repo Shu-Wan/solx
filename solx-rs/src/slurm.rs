@@ -376,9 +376,24 @@ pub fn parse_granted_jobid(stderr_text: &str) -> Result<String, SlurmError> {
     )))
 }
 
-/// Join argv for display, quoting like Python's `shlex.join`.
+/// Join argv for display, quoting like Python's `shlex.join`: a token is
+/// quoted only when it contains a character outside `[A-Za-z0-9_@%+=:,./-]`
+/// (so `=`-style flags like `--gres=gpu:a100:1` stay bare), using single
+/// quotes with embedded `'` rendered as `'"'"'`.
 pub fn shell_join(argv: &[String]) -> String {
-    shlex::try_join(argv.iter().map(|s| s.as_str())).unwrap_or_else(|_| argv.join(" "))
+    argv.iter()
+        .map(|s| shlex_quote(s))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shlex_quote(s: &str) -> String {
+    let safe = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);
+    if !s.is_empty() && s.chars().all(safe) {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\"'\"'"))
+    }
 }
 
 /// Invoke salloc and return the granted jobid.
@@ -826,5 +841,41 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         assert_eq!(shell_join(&argv), "salloc --no-shell -J solx-default");
+    }
+
+    #[test]
+    fn shell_join_keeps_equals_tokens_bare() {
+        // The gpu-template argv: every `=`/`:`-bearing token stays unquoted,
+        // matching Python's shlex.join.
+        let argv: Vec<String> = [
+            "salloc",
+            "--no-shell",
+            "-J",
+            "solx-gpu",
+            "-p",
+            "public",
+            "-t",
+            "0-4",
+            "--gres=gpu:a100:1",
+            "--mem=64G",
+            "--cpus-per-task=8",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            shell_join(&argv),
+            "salloc --no-shell -J solx-gpu -p public -t 0-4 \
+             --gres=gpu:a100:1 --mem=64G --cpus-per-task=8"
+        );
+    }
+
+    #[test]
+    fn shell_join_quotes_unsafe_tokens() {
+        let argv: Vec<String> = ["echo", "a b", "", "it's", "a*b"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(shell_join(&argv), r#"echo 'a b' '' 'it'"'"'s' 'a*b'"#);
     }
 }
