@@ -156,6 +156,34 @@ codes against deterministic SLURM mocks), see the parity matrix at
 - `config_path` / `write_config` for TOML round-trip tests.
 - `SAMPLE_CONFIG_TOML` exports a known-good full config.
 
+## Building and installing locally
+
+Build the single-file zipapp from the worktree and install it under a
+throwaway prefix, so it never shadows the `solx` you already have on
+`PATH`:
+
+```shell
+cd solx
+bash scripts/build-pyz.sh                                   # -> dist/solx.pyz
+SOLX_INSTALL_DIR="$HOME/.local/bin-test" bash scripts/install.sh dist/solx.pyz
+"$HOME/.local/bin-test/solx" --version
+```
+
+`install.sh` re-stamps the shebang with the destination machine's
+interpreter, so always install the `.pyz` through it — running the raw
+`dist/solx.pyz` relies on whatever interpreter path was baked in at build
+time.
+
+**From a PR, without building.** Every push and pull request runs the
+`build` job in `.github/workflows/ci.yml`, which attaches the zipapp as
+the `solx-pyz` artifact. Download it from the PR's *Checks → Artifacts*,
+then install it the same way (the CI build's shebang points at a runner
+path, so `install.sh` re-stamping it is required, not optional):
+
+```shell
+SOLX_INSTALL_DIR="$HOME/.local/bin-test" bash solx/scripts/install.sh ~/Downloads/solx.pyz
+```
+
 ## Manual smoke on Sol
 
 The unit tests cover every code path that doesn't require real

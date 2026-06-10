@@ -45,3 +45,35 @@ jobs:
 
       - name: Test
         run: uv run --frozen pytest -q
+
+  build:
+    # Build the single-file zipapp and attach it to the run, so a reviewer
+    # can install and test the PR's solx on Sol without building it: download
+    # solx.pyz from Checks -> Artifacts, then run it through install.sh (which
+    # re-stamps the shebang for the local interpreter — see DEVELOPMENT.md).
+    name: build solx.pyz
+    runs-on: ubuntu-latest
+    env:
+      SOLX_PYTHON: "3.11"   # the zipapp's embedded bytecode is 3.11-specific
+    defaults:
+      run:
+        working-directory: solx
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv (Python 3.11)
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          working-directory: solx
+
+      - name: Build zipapp
+        run: bash scripts/build-pyz.sh
+
+      - name: Upload zipapp
+        uses: actions/upload-artifact@v4
+        with:
+          name: solx-pyz
+          path: solx/dist/solx.pyz
+          if-no-files-found: error
