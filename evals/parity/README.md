@@ -1,11 +1,12 @@
 # evals/parity/ — `solx` behavioral parity matrix
 
 A black-box regression harness for the `solx` CLI. It runs one `solx`
-binary through **67 cases** covering the whole command surface — meta
+binary through **80 cases** covering the whole command surface — meta
 (`--version`, help, unknown commands), `job list/start/stop/jump/time`,
 `jump`, `keep`, `config`, `init`, `completions`, aliases, `--json` in
-both positions, and error paths — and captures stdout, stderr, and exit
-code per case. Comparing two captured runs byte-for-byte proves (or
+both positions, dispatch edge cases (`--` shielding, bundled shorts,
+junk around `version`, `-h`), and error paths — and captures stdout,
+stderr, and exit code per case. Comparing two captured runs byte-for-byte proves (or
 disproves) that two `solx` builds behave identically, which is what
 makes a dispatch-layer or runtime rewrite safe to ship.
 
@@ -22,7 +23,7 @@ evals/parity/
 │                       #   env toggles: MOCK_SQUEUE_EMPTY=1, MOCK_SQUEUE_FAIL=1,
 │                       #   MOCK_SQUEUE_TWORUNNING=1 select canned squeue variants
 ├── fixtures/           # config.toml variants, ~/.solkeep variants, warning CSVs
-├── run_matrix.sh       # run the 67 cases against one solx binary
+├── run_matrix.sh       # run the 80 cases against one solx binary
 └── compare_runs.py     # compare two captured runs (stdlib python3 only)
 ```
 

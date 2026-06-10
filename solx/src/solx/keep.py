@@ -44,8 +44,8 @@ STAGES_ALL = "all"
 
 # ~/.solkeep is the legacy keep-list the standalone sol_renew.py used. solx keep
 # still reads it as a last-resort fallback, but the config [keep] block is the
-# supported home now; the implicit fallback and the .solkeep format lose support
-# in this release line.
+# supported home; the implicit fallback and the .solkeep format stay supported
+# through the 0.x line and are removed in the version below.
 SOLKEEP_REMOVED_IN = "1.0.0"
 
 # Files per touch shard. Big enough that per-batch subprocess overhead is
