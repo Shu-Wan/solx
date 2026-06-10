@@ -23,6 +23,10 @@ RELAXED = {
     "job-noargs", "job-badsub",
     "completions-bash", "completions-zsh", "completions-fish",
     "completions-tcsh",
+    # Dispatch edge cases: exit-code parity required; error wording may
+    # differ from Click's.
+    "js-dryrun-eq", "version-junk-arg", "version-junk-pre",
+    "version-junk-post", "keep-j-zero", "help-job-arg",
 }
 # Smoke content every RELAXED stdout must still contain (when exit 0).
 RELAXED_SMOKE = {
@@ -35,6 +39,10 @@ RELAXED_SMOKE = {
 EXPECTED_DIFF = {
     "leaf-json-position",   # v0.4.0 rejects trailing --json; later versions accept
     "keep-fallback",        # deprecation message names the removal version
+    # -h is a documented v0.5.0 superset: v0.4.0 exits 2, v0.5.0 prints
+    # help and exits 0.
+    "dash-h-root",
+    "dash-h-stop",
 }
 # Version output changes across versions by definition: exit code must match
 # and stdout must look like a bare semver, but the value itself may differ.

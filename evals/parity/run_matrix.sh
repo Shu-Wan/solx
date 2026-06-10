@@ -174,6 +174,22 @@ run_case completions-zsh     sample yes -- completions zsh
 run_case completions-fish    sample yes -- completions fish
 run_case completions-tcsh    sample yes -- completions tcsh
 
+# ---- dispatch edge cases -----------------------------------------------------
+# `--` shielding: tokens after `--` pass through to sbatch verbatim.
+run_case js-dd-shield-n       sample yes -- --json job start gpu -- -n
+run_case js-dd-shield-n4      sample yes -- --json job start gpu -- -n 4
+run_case js-dd-shield-timeout sample yes -- --json job start -- --timeout 30s
+run_case js-dd-dd             sample yes -- --json job start gpu -n -- --mem=1G -- -c 2
+run_case js-bundled-shorts    sample yes -- --json job start -nn
+run_case js-dryrun-eq         sample yes -- job start --dry-run=true
+run_case version-junk-arg     sample yes -- version bogus
+run_case version-junk-pre     sample yes -- --bogus --version
+run_case version-junk-post    sample yes -- --version --bogus
+run_case keep-j-zero          sample yes -- keep -n -j 0
+run_case help-job-arg         sample yes -- help job
+run_case dash-h-root          sample yes -- -h
+run_case dash-h-stop          sample yes -- job stop 12345 -h
+
 # ---- known divergence probes (documented, not strict) -----------------------
 run_case leaf-json-position  sample yes -- job list --json
 
