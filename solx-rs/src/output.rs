@@ -190,6 +190,17 @@ fn write_string(s: &str, buf: &mut String) {
     buf.push('"');
 }
 
+/// Strip style-tag lookalikes from a diagnostic, the way the reference
+/// plain (non-TTY) renderer does: a bracket group whose content is an
+/// optional `/` followed only by characters in `[a-zA-Z0-9 #._]` is removed;
+/// a bracket written as `\[` stays a literal `[`. Bracket groups carrying
+/// any other character (e.g. `[jobs.<name>]`, `[jobs.*]`) are left intact.
+pub fn strip_markup(msg: &str) -> String {
+    let protected = msg.replace("\\[", "\u{0}");
+    let tag = regex::Regex::new(r"\[/?[a-zA-Z0-9 #._]*\]").expect("markup tag pattern is valid");
+    tag.replace_all(&protected, "").replace('\u{0}', "[")
+}
+
 /// Render `s` like Python's `repr()` for the common case: single quotes,
 /// switching to double quotes when the string contains a single quote (and
 /// no double quote), with backslash escapes for the usual control characters.

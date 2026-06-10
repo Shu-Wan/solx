@@ -8,9 +8,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
-
-use crate::output::py_repr;
+use crate::gitwild::GitIgnoreSpec;
+use crate::output::{py_repr, strip_markup};
 
 pub const CONFIG_FILENAME: &str = "config.toml";
 pub const DEFAULT_START_TIMEOUT: &str = "10m";
@@ -18,6 +17,16 @@ pub const DEFAULT_START_TIMEOUT: &str = "10m";
 /// Any user-facing config problem (missing file, bad schema).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigError(pub String);
+
+impl ConfigError {
+    /// Build a config error whose message renders the way the plain
+    /// (non-TTY) diagnostic channel does: bracketed style-tag lookalikes
+    /// such as `[jobs.default]` / `[keep]` are stripped from the text (see
+    /// [`strip_markup`]).
+    fn new(msg: String) -> Self {
+        ConfigError(strip_markup(&msg))
+    }
+}
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -38,20 +47,29 @@ pub struct JobTemplate {
     pub extra_args: Vec<String>,
 }
 
-/// Resolved `[keep]` include/exclude as compiled gitignore matchers.
-#[derive(Debug)]
+/// Resolved `[keep]` include/exclude as compiled gitignore matchers
+/// (see [`crate::gitwild`] for the dialect).
 pub struct KeepRules {
-    include: Gitignore,
-    exclude: Gitignore,
+    include: GitIgnoreSpec,
+    exclude: GitIgnoreSpec,
     pub raw_include: Vec<String>,
     pub raw_exclude: Vec<String>,
+}
+
+impl std::fmt::Debug for KeepRules {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("KeepRules")
+            .field("raw_include", &self.raw_include)
+            .field("raw_exclude", &self.raw_exclude)
+            .finish()
+    }
 }
 
 impl KeepRules {
     pub fn new(include: &[String], exclude: &[String]) -> Self {
         KeepRules {
-            include: build_gitignore(include),
-            exclude: build_gitignore(exclude),
+            include: GitIgnoreSpec::from_lines(include),
+            exclude: GitIgnoreSpec::from_lines(exclude),
             raw_include: include.to_vec(),
             raw_exclude: exclude.to_vec(),
         }
@@ -60,31 +78,15 @@ impl KeepRules {
     /// Return `true` if `path` is included and not excluded.
     ///
     /// Matching follows gitignore semantics on absolute paths: a bare path
-    /// pattern matches that directory and everything under it, and a `!`
-    /// negation flips the most specific / latest match.
+    /// pattern matches that directory and everything under it (including a
+    /// path written with a trailing slash), and a `!` negation flips the
+    /// most specific / latest match.
     pub fn matches(&self, path: &str) -> bool {
-        if !gitignore_includes(&self.include, path) {
+        if !self.include.match_file(path) {
             return false;
         }
-        !gitignore_includes(&self.exclude, path)
+        !self.exclude.match_file(path)
     }
-}
-
-/// Build one gitignore matcher rooted at `/` from pattern lines.
-/// Comment and blank lines are skipped; an unparseable pattern is dropped.
-fn build_gitignore(lines: &[String]) -> Gitignore {
-    let mut builder = GitignoreBuilder::new("/");
-    for line in lines {
-        let _ = builder.add_line(None, line);
-    }
-    builder.build().unwrap_or_else(|_| Gitignore::empty())
-}
-
-/// Whether `path` (or a parent directory) is positively matched by `spec`,
-/// with `!` whitelists winning where they apply.
-fn gitignore_includes(spec: &Gitignore, path: &str) -> bool {
-    spec.matched_path_or_any_parents(Path::new(path), false)
-        .is_ignore()
 }
 
 #[derive(Debug)]
@@ -110,7 +112,7 @@ impl Config {
         } else {
             names.join(", ")
         };
-        Err(ConfigError(format!(
+        Err(ConfigError::new(format!(
             "unknown job template {}. defined: {available}",
             py_repr(name)
         )))
@@ -134,17 +136,36 @@ pub fn config_path() -> PathBuf {
 /// Load and validate the config from `path`.
 pub fn load(path: &Path) -> Result<Config, ConfigError> {
     if !path.exists() {
-        return Err(ConfigError(format!(
+        return Err(ConfigError::new(format!(
             "no config at {}. run `solx init` to write a starter file.",
             path.display()
         )));
     }
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| ConfigError(format!("unable to read config at {}: {e}", path.display())))?;
-    let raw: toml::Table = text
-        .parse()
-        .map_err(|e| ConfigError(format!("invalid TOML in {}: {e}", path.display())))?;
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        ConfigError::new(format!("unable to read config at {}: {e}", path.display()))
+    })?;
+    let raw: toml::Table = text.parse().map_err(|e| {
+        ConfigError::new(format!(
+            "invalid TOML in {}: {}",
+            path.display(),
+            toml_error_line(&e)
+        ))
+    })?;
     parse(&raw, &path.display().to_string())
+}
+
+/// Render a TOML parse error as one line: the message text plus its
+/// location, e.g. `invalid array (at line 1, column 18)`. Every solx
+/// diagnostic is a single stderr line, so the multi-line annotated form the
+/// TOML library renders is collapsed.
+pub fn toml_error_line(e: &toml::de::Error) -> String {
+    let msg = e.message().split('\n').collect::<Vec<_>>().join("; ");
+    let first = e.to_string();
+    let first = first.lines().next().unwrap_or_default().to_string();
+    match first.strip_prefix("TOML parse error ") {
+        Some(loc) if !loc.is_empty() => format!("{msg} ({loc})"),
+        _ => msg,
+    }
 }
 
 fn parse(raw: &toml::Table, source: &str) -> Result<Config, ConfigError> {
@@ -154,7 +175,7 @@ fn parse(raw: &toml::Table, source: &str) -> Result<Config, ConfigError> {
         None => DEFAULT_START_TIMEOUT.to_string(),
         Some(toml::Value::String(s)) => s.clone(),
         Some(_) => {
-            return Err(ConfigError(format!(
+            return Err(ConfigError::new(format!(
                 "{source}: `start_timeout` must be a string like \"10m\""
             )))
         }
@@ -164,7 +185,7 @@ fn parse(raw: &toml::Table, source: &str) -> Result<Config, ConfigError> {
     let jobs_raw = match raw.get("jobs") {
         Some(toml::Value::Table(t)) if !t.is_empty() => t,
         _ => {
-            return Err(ConfigError(format!(
+            return Err(ConfigError::new(format!(
                 "{source}: at least one [jobs.<name>] table is required"
             )))
         }
@@ -174,7 +195,7 @@ fn parse(raw: &toml::Table, source: &str) -> Result<Config, ConfigError> {
         templates.push((name.clone(), parse_template(name, body, source)?));
     }
     if !templates.iter().any(|(n, _)| n == &default_template) {
-        return Err(ConfigError(format!(
+        return Err(ConfigError::new(format!(
             "{source}: default_template={} is not defined under [jobs.*]",
             py_repr(&default_template)
         )));
@@ -199,7 +220,7 @@ fn parse_template(
     let body = match body {
         toml::Value::Table(t) => t,
         _ => {
-            return Err(ConfigError(format!(
+            return Err(ConfigError::new(format!(
                 "{source}: [jobs.{name}] must be a table"
             )))
         }
@@ -222,13 +243,17 @@ pub fn parse_keep(
     let body = match body {
         None => return Ok(None),
         Some(toml::Value::Table(t)) => t,
-        Some(_) => return Err(ConfigError(format!("{source}: [keep] must be a table"))),
+        Some(_) => {
+            return Err(ConfigError::new(format!(
+                "{source}: [keep] must be a table"
+            )))
+        }
     };
     let ctx = format!("{source}:[keep]");
     let include = optional_str_list(body, "include", &ctx)?;
     let exclude = optional_str_list(body, "exclude", &ctx)?;
     if include.is_empty() {
-        return Err(ConfigError(format!(
+        return Err(ConfigError::new(format!(
             "{source}: [keep].include must be a non-empty array"
         )));
     }
@@ -263,8 +288,8 @@ pub fn load_solkeep(path: &Path) -> Option<KeepRules> {
         return None;
     }
     Some(KeepRules {
-        include: build_gitignore(&lines),
-        exclude: Gitignore::empty(),
+        include: GitIgnoreSpec::from_lines(&lines),
+        exclude: GitIgnoreSpec::empty(),
         raw_include: effective,
         raw_exclude: Vec::new(),
     })
@@ -272,11 +297,11 @@ pub fn load_solkeep(path: &Path) -> Option<KeepRules> {
 
 fn require_str(body: &toml::Table, key: &str, ctx: &str) -> Result<String, ConfigError> {
     match body.get(key) {
-        None => Err(ConfigError(format!(
+        None => Err(ConfigError::new(format!(
             "{ctx}: required key `{key}` is missing"
         ))),
         Some(toml::Value::String(s)) if !s.is_empty() => Ok(s.clone()),
-        Some(_) => Err(ConfigError(format!(
+        Some(_) => Err(ConfigError::new(format!(
             "{ctx}: `{key}` must be a non-empty string"
         ))),
     }
@@ -286,14 +311,14 @@ fn optional_str(body: &toml::Table, key: &str, ctx: &str) -> Result<Option<Strin
     match body.get(key) {
         None => Ok(None),
         Some(toml::Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
-        Some(_) => Err(ConfigError(format!(
+        Some(_) => Err(ConfigError::new(format!(
             "{ctx}: `{key}` must be a non-empty string"
         ))),
     }
 }
 
 fn optional_str_list(body: &toml::Table, key: &str, ctx: &str) -> Result<Vec<String>, ConfigError> {
-    let err = || ConfigError(format!("{ctx}: `{key}` must be an array of strings"));
+    let err = || ConfigError::new(format!("{ctx}: `{key}` must be an array of strings"));
     match body.get(key) {
         None => Ok(Vec::new()),
         Some(toml::Value::Array(items)) => items
@@ -310,7 +335,7 @@ fn optional_str_list(body: &toml::Table, key: &str, ctx: &str) -> Result<Vec<Str
 /// Parse a string like `"10m"` / `"30s"` / `"1h"` into seconds.
 pub fn parse_duration(text: &str) -> Result<i64, ConfigError> {
     let invalid = || {
-        ConfigError(format!(
+        ConfigError::new(format!(
             "invalid duration {}; use forms like \"30s\", \"10m\", \"1h\"",
             py_repr(text)
         ))

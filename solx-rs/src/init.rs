@@ -226,7 +226,8 @@ pub fn cmd_import_solkeep(solkeep: Option<&Path>, force: bool, out: &Out) -> i32
     if let Err(e) = new_text.parse::<toml::Table>() {
         out.error(&format!(
             "error: importing these patterns would produce invalid TOML \
-             ({e}); config left unchanged. Fix {} or run `solx config edit`.",
+             ({}); config left unchanged. Fix {} or run `solx config edit`.",
+            cfg::toml_error_line(&e),
             src.display()
         ));
         return 1;

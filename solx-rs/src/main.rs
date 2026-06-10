@@ -25,6 +25,7 @@
 
 mod completions;
 mod config;
+mod gitwild;
 mod init;
 mod jobs;
 mod keep;
