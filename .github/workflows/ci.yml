@@ -71,6 +71,23 @@ jobs:
       - name: Build zipapp
         run: bash scripts/build-pyz.sh
 
+      - name: Smoke-test the artifact and installer
+        # The build's only check used to be that zipfile could open the
+        # archive — which tolerates the corruption the 0.5.0 installer
+        # produced. Actually *run* it: in place, and end-to-end through
+        # install.sh. The installer rebinds the interpreter, so point it at a
+        # path whose length differs from the build shebang (a symlink under
+        # $RUNNER_TEMP) — that is the condition under which an in-place shebang
+        # swap corrupts the offsets, so a regression here fails the build
+        # instead of shipping. Same runner, same interpreter, so no fallback.
+        run: |
+          set -eux
+          ./dist/solx.pyz --version
+          ln -sf "$(uv python find 3.11)" "$RUNNER_TEMP/python3.11"
+          SOLX_INSTALL_DIR="$RUNNER_TEMP/bin" SOLX_PYTHON="$RUNNER_TEMP/python3.11" \
+            sh scripts/install.sh ./dist/solx.pyz
+          "$RUNNER_TEMP/bin/solx" --version
+
       - name: Upload zipapp
         uses: actions/upload-artifact@v4
         with:
