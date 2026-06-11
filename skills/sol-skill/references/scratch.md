@@ -57,7 +57,7 @@ ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; solx keep --stage inactive -j 24
 
 The old `sol_renew.py` script (removed) and its `~/.solkeep` keep-list are
 deprecated; `solx keep` still reads `~/.solkeep` (with a notice) until support
-drops in **0.5.0**. Migrate once with `solx config import-solkeep`.
+drops in **1.0.0**. Migrate once with `solx config import-solkeep`.
 
 ## Emergency single-path touch (no `solx`)
 

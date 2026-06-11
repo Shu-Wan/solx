@@ -31,3 +31,16 @@ def test_current_node_returns_short_name() -> None:
     node = side.current_node()
     assert isinstance(node, str)
     assert "." not in node  # short form, no FQDN
+
+
+def test_require_sol_off_sol_exits_2(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(side, "detect", lambda: "not-sol")
+    with pytest.raises(SystemExit) as excinfo:
+        side.require_sol()
+    assert excinfo.value.code == 2
+    assert "Sol-only" in capsys.readouterr().err
+
+
+def test_require_sol_on_sol_passes(monkeypatch) -> None:
+    monkeypatch.setattr(side, "detect", lambda: "sol")
+    assert side.require_sol() is None

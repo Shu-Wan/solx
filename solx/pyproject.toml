@@ -1,6 +1,6 @@
 [project]
 name = "solx"
-version = "0.4.0"
+version = "0.5.0"
 description = "CLI for ASU's Sol supercomputer."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,14 +22,13 @@ classifiers = [
   "Topic :: System :: Distributed Computing",
 ]
 dependencies = [
-  "typer>=0.12",
   "rich>=13",
   "pathspec>=0.12",
   "tomli>=2.0; python_version < '3.11'",  # tomllib backport for 3.10
 ]
 
 [project.scripts]
-solx = "solx.cli:app"
+solx = "solx.main:main"
 
 [project.urls]
 Homepage = "https://github.com/Shu-Wan/solx"

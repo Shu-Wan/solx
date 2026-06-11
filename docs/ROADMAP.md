@@ -1,9 +1,10 @@
 # Roadmap: the `solx` CLI
 
-Forward-looking design doc for **`solx`**, a Python CLI for working
+Forward-looking design doc for **`solx`**, a CLI for working
 on ASU's **Sol** supercomputer. The Sol-side CLI and its skill
-integration shipped in v0.4.0. The next focus is **cutting `solx`'s
-startup latency** (below); the **laptop-side** design stays deferred.
+integration shipped in v0.4.0; v0.5.0 cut startup latency to the same
+order as a raw SLURM call. The next focus is the **native single-binary
+rewrite** (below); the **local-machine-side** design stays deferred.
 
 End-user docs: [`../README.md`](../README.md),
 [`../skills/sol-skill/SKILL.md`](../skills/sol-skill/SKILL.md).
@@ -18,82 +19,80 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
 | 1 — Skill manual-SSH path | The agent skill (manual SSH, `sbatch`, scratch renewal). | ✅ shipped (v0.2.0) |
 | 2 — `solx` CLI (Sol-only) | `solx/` package: jobs, interactive allocation, scratch renewal, config; CLI agent output. | ✅ shipped (v0.3.0) |
 | 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx`; single-file install channel + CI releases; one version line; situational job awareness (#9). | ✅ shipped (v0.4.0) |
-| 4 — Startup latency | Get a `solx job` command close to a raw SLURM call so the skill can prefer `solx` without a UX penalty. | ⚪ planned (v0.5.0) |
-| — Laptop side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
+| 4 — Startup latency | Thin spine: stdlib `argparse` dispatch, `rich` only on human render paths, static completion scripts. A warm `solx job` read costs ~0.13s with the `.pyz` install — same order as raw `squeue`. | ✅ shipped (v0.5.0) |
+| 5 — Native single binary | Rewrite `solx` as one native executable (Rust): cold-start immunity on the NFS home, no Python/`uv` runtime requirement, single-file install. | 🟡 in development (`v1.0-rust` branch, targets v1.0) |
+| — Local-machine side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
 
 Shipped-stage detail lives in [`../CHANGELOG.md`](../CHANGELOG.md).
 
-## Next: cut `solx` startup latency
+## Startup latency — shipped in v0.5.0
 
-`solx` is the user's convenience tool, but on Sol's NFS home it pays a
-Python-startup tax that a raw SLURM binary doesn't. Because the agent
-skill must put **user experience first**, it currently steers an agent to
-raw `squeue`/`scancel` for one-off reads (see SKILL.md, "`solx` vs raw
-SLURM") and reserves `solx` for the multi-step lifecycle and renewal.
-Closing the latency gap is the next goal — a `solx job` command should
-cost on the order of a raw SLURM call, so the skill no longer has to
-choose between ergonomics and speed.
+On Sol's NFS home, `solx` used to pay a Python-startup tax a raw SLURM
+binary doesn't (Typer/Click import ≈ 0.97s on every invocation, plus
+`rich` pulled in even on `--json` runs), so the skill steered agents to
+raw `squeue`/`scancel` for one-off reads. v0.5.0 removed that tax with a
+**thin spine**:
 
-**Measured** (`evals/runner/bench_solx_latency.sh`, Sol compute node,
-median of 7, warm):
+- **stdlib `argparse` dispatch** (`solx/src/solx/main.py`, entry point
+  `solx.main:main`). Importing the entry module costs nothing beyond the
+  interpreter baseline; `--version`/`version` short-circuit before the
+  parser tree is even built; command bodies (and their `rich`/`pathspec`
+  dependency trees) import inside their handlers.
+- **`rich` on human render paths only.** `Out` writes JSON and plain
+  diagnostics straight to `sys.stdout`/`sys.stderr`; `rich.table` /
+  `rich.prompt` import inside the table-render and prompt branches. A
+  `--json` or piped run never loads `rich` at all.
+- **Static completion scripts.** `solx completions <bash|zsh|fish>`
+  renders the command surface into a fully static script
+  (`solx/src/solx/_completions.py`) — completion never execs `solx`, so
+  the first Tab of a session costs no interpreter start.
 
-| Command | Time |
-|---|---|
-| `squeue --me` (raw) | ~0.05s |
-| `solx job list` | ~1.7s |
-| `solx job time` | ~1.0s |
-| `solx --version` (startup floor) | ~0.66s |
+**Measured** (Sol compute node inside an allocation, 4 cores, NFS
+`$HOME`, real Slurm 25.11.6; warm median seconds, n=9 after 1 warmup,
+cold-ish first run in parentheses):
 
-**Why it's slow** (`python -X importtime`):
+| command | raw squeue | v0.4.0 venv | v0.4.0 pyz (`~/.local/bin`) | v0.5.0 venv | v0.5.0 pyz (local `/tmp`) |
+|---|---|---|---|---|---|
+| `--version` | — | 1.137 (1.584) | 1.345 (1.390) | 0.281 (0.234) | **0.018** (0.019) |
+| `job list` | 0.076 (0.741) | 2.500 (2.141) | 2.505 (1.537) | 1.020 (2.160) | **0.126** (0.123) |
+| `job time` | 0.076 (0.071) | 1.251 (1.346) | 2.505 (2.505) | 0.945 (0.153) | **0.127** (0.116) |
 
-- **Typer/Click import ≈ 0.97s** — the dominant cost, paid by *every*
-  invocation because `cli.py` builds the Typer app at import time. This
-  is most of the ~0.66s floor.
-- **`rich` is imported on every *actual* command.** `cli.py` already
-  defers its imports (the 0.3.3 work that made `--version` / `--help` /
-  completions fast), but running a command still pulls `rich` two ways:
-  `output.py`'s `Out.auto` constructs `rich.Console` objects for
-  stdout+stderr *even in `--json` mode*, and `jobs.py` / `keep.py` /
-  `init.py` import `rich.prompt` / `rich.table` at module scope. So
-  `solx job list` pays `rich` even when an agent passes `--json` and
-  never renders a table.
-- **NFS amplification** — each module file is a network round-trip. The
-  `.pyz` collapses the file-open storm into one zip open, but still
-  parses the zip directory and pays the Typer/`rich` import cost, so it
-  helps cold-start more than warm-start.
+raw squeue rows: `job list` = `squeue --me`; `job time` =
+`squeue -h -j $SLURM_JOB_ID -o %L`. Caveats that keep the table honest:
 
-**Possible solutions** (rough order of value vs. effort):
+- The `.pyz` column places the v0.5.0 artifact on node-local `/tmp` and
+  the v0.4.0 one on NFS, so the raw 75× / 19.9× / 19.7× overstates code
+  alone. Installed apples-to-apples on NFS `$HOME` (where `install.sh`
+  writes it), v0.5.0 `.pyz` is ~0.10s / 0.39s / 0.31s — **13× / 6.4× /
+  8.1×** over v0.4.0. Venv-to-venv on NFS: 4.0× / 2.5× / 1.3×. Node-local
+  `/tmp` is the best case (`--version` ~0.02s).
+- The remaining gap vs raw `squeue` is ~50ms: interpreter startup plus
+  the `squeue` subprocess fork are all that's left.
+- "Cold" is the first invocation in the benchmark process only — page
+  cache on a shared node makes true cold unmeasurable, so treat cold
+  numbers as cold-ish. The cluster controller showed sporadic ~2s
+  `squeue` spikes, which the n=9 medians absorb.
 
-1. **Keep `rich` off the agent path.** Have `Out` write JSON and plain
-   diagnostics straight to `sys.stdout`/`sys.stderr` without constructing
-   a `rich.Console`, and lazy-import `rich.table` / `rich.prompt` inside
-   the human-render and prompt branches. Then `--json` and
-   non-interactive runs never import `rich` at all. Moderate (touches the
-   `Out` abstraction and the `init.py` Confirm/Prompt test seams), high
-   value for the agent path.
-2. **Shrink the Typer cost on the hot path** — the biggest lever and the
-   hardest. Either a fast pre-dispatch that handles the common leaf
-   commands (`job list/time`, `--version`) with `argparse` and only
-   imports Typer for help/completions, or migrate the CLI off Typer to
-   `click`/`argparse` outright. Must preserve the command surface,
-   aliases, and completion behavior.
-3. **Keep the `.pyz` the default install.** Already recommended; it
-   removes the per-file NFS round-trips. Keep the precompiled bytecode in
-   sync with the shebang interpreter (it is).
-4. **Rejected for now: a resident daemon.** A long-lived `solx` server
-   the thin client talks to would amortize import cost, but it adds a
-   lifecycle, a socket, and stale-state risk that conflicts with the
-   "Slurm is the source of truth, no persistent state" principle below.
+`evals/runner/bench_solx_latency.sh` reproduces the solx-vs-raw
+comparison on any Sol node; `evals/parity/` is the behavioral matrix
+that verified the dispatch rewrite against captured v0.4.0 output.
 
-**Goal:** a warm `solx job list` in the low hundreds of milliseconds —
-close enough to raw `squeue` that preferring `solx` carries no UX
-penalty. Targeted for **v0.5.0** (alongside dropping `~/.solkeep`).
+**What remains, for v1.0:**
+
+- **Stage 5 — the native single-binary rewrite (Rust).** A compiled
+  `solx` removes the interpreter floor entirely and is immune to NFS
+  cold starts: no Python or `uv` runtime requirement, one static file to
+  install. In development on the `v1.0-rust` branch.
+- **Actually removing the `~/.solkeep` fallback.** Its removal moved
+  from 0.5.0 to **1.0.0** — `solx keep` keeps reading a legacy
+  `~/.solkeep` (with a deprecation notice) through the 0.5.x line, so
+  the migration window spans one more release.
 
 ## Out of scope (still)
 
-- **Laptop-side `solx`** (`up/down/forward/info`, ssh-chain
+- **Local-machine-side `solx`** (`up/down/forward/info`, ssh-chain
   construction) — deferred. The original "one magic command from the
-  laptop" threaded ssh-client behavior, ControlMaster, Duo, and queue
+  local machine" threaded ssh-client behavior, ControlMaster, Duo, and queue
   races, none of which are unit-testable. It returns only when the
   Sol-side primitives are stable, the design is re-thought from scratch,
   and the user greenlights it. `solx` stays a tool you run **on Sol**.
@@ -106,7 +105,7 @@ These are the load-bearing constraints for `solx`. Every decision below
 derives from them.
 
 1. **Runs on Sol.** The CLI is meant to be run *on* Sol after a manual
-   SSH. No laptop side, no ssh-chain construction, no `~/.ssh/*` reads.
+   SSH. No local-machine side, no ssh-chain construction, no `~/.ssh/*` reads.
 2. **Reduce recall and context switching.** The common path should not
    require memorizing Slurm flags or bouncing between a website portal
    and the terminal. Open OnDemand can stay browser-first; `solx` owns
@@ -129,8 +128,9 @@ derives from them.
    placeholders, never with the maintainer's username baked in.
 9. **User experience over the tool.** The skill drives an agent on the
    user's behalf; where a raw SLURM call is faster and just as clear,
-   prefer it. `solx` has to *earn* its place per task — which is why the
-   startup-latency work above matters.
+   prefer it. `solx` has to *earn* its place per task — the v0.5.0
+   startup-latency work exists because of this principle, and the
+   native rewrite (Stage 5) continues it.
 
 ## Command surface, config, and behavior → `solx.md`
 
@@ -158,14 +158,23 @@ on *why* and *what's next*; it deliberately does not restate the API.
   the allocation request (no prompt — starting an allocation isn't
   destructive in the data-loss sense).
 
-When laptop-side work returns (deferred), a fresh security review of that
+When local-machine-side work returns (deferred), a fresh security review of that
 surface comes with it.
 
 ## Decisions confirmed
 
-- **CLI framework**: Typer + Rich today — but Typer's import cost is the
-  main startup-latency lever, so it is **under review** (see
-  [Next](#next-cut-solx-startup-latency)). Textual deferred.
+- **CLI framework**: stdlib `argparse` as of 0.5.0 (see
+  [Startup latency](#startup-latency--shipped-in-v050)). `rich` is
+  retained for human-facing tables and prompts only, imported only on
+  those paths — agent (`--json`/piped) runs never load it. Textual
+  deferred.
+- **Completions**: static scripts generated from one description of the
+  command surface (`solx/src/solx/_completions.py`) for bash, zsh, and
+  fish; completion never execs `solx`. Both zsh install modes
+  (eval/source and fpath autoload) are supported.
+- **`~/.solkeep` removal**: **1.0.0**. Deprecated since 0.4.0; `solx
+  keep` still reads it with a deprecation notice, and `solx config
+  import-solkeep` migrates it.
 - **Config**: single TOML under `$XDG_CONFIG_HOME/solx/config.toml`. No
   multi-file split, no `[shared]` merge.
 - **Glob library for `[keep]`**: `pathspec` (gitignore-style include +

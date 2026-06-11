@@ -30,15 +30,16 @@ OK rather than installing silently.
 
 ## When to use `solx` vs raw SLURM
 
-`solx` is built for a human at a keyboard; for an agent it pays a
-Python/NFS startup cost on Sol (~1s+ per `job` command vs ~0.05s for raw
-`squeue`/`scancel` — `evals/runner/bench_solx_latency.sh`). So **for a
-one-off read, run the SLURM command directly** (`squeue --me`,
-`squeue -h -j "$SLURM_JOB_ID" -o %L`, `scancel <id>`); don't loop `solx`
-for status polling. Use `solx` for `job start` (templated allocation that
+For one-off reads the two are equivalent — use either. A warm `solx job`
+read runs in ~0.13s on Sol with the single-file install, vs ~0.08s for
+raw `squeue` (measured — `evals/runner/bench_solx_latency.sh`); a venv
+install on the NFS home is slower (~1s warm), so prefer the single-file
+channel. The raw equivalents, for when `solx` isn't installed:
+`squeue --me` (= `job list`), `squeue -h -j "$SLURM_JOB_ID" -o %L`
+(= `job time`), `scancel <id>` (= `job stop -y <id>`). `solx` adds the
+most on the multi-step ops: `job start` (templated allocation that
 waits), `job jump` (pty onto the node), and `keep` (CSV-∩-keep-list
-renewal) — the multi-step ops where it removes real friction. (Cutting
-this startup cost is on the roadmap.)
+renewal).
 
 ## Commands at a glance
 
@@ -147,9 +148,11 @@ instead of hanging on a prompt — safe to drive from an agent.
 ## Output for agents
 
 Output **auto-detects**: Rich tables on a terminal, **JSON when stdout
-is not a TTY**. The global `--json` flag (before the subcommand, e.g.
-`solx --json job list`) forces JSON anywhere. Results go to **stdout**,
-all diagnostics/prompts/errors to **stderr**, so values pipe cleanly:
+is not a TTY**. The `--json` flag forces JSON anywhere; it works before
+the subcommand (`solx --json job list`) or after it (`solx job list
+--json`) — except after `job start`, where post-command tokens pass
+through to `salloc`. Results go to **stdout**, all
+diagnostics/prompts/errors to **stderr**, so values pipe cleanly:
 
 ```shell
 solx job time 12345                  # -> 00:54:37  (bare value)
@@ -177,7 +180,7 @@ Keep-list source, in precedence order:
 2. the `[keep]` block in the config (`include` / `exclude`). **Preferred.**
 3. `~/.solkeep` — the **deprecated** legacy keep-list. Still read if
    present (so existing setups keep working), but `solx keep` prints a
-   deprecation notice and **support is removed in solx 0.5.0**.
+   deprecation notice and **support is removed in solx 1.0.0**.
 
 ```shell
 solx keep --dry-run -v        # preview which directories would be renewed
@@ -210,8 +213,9 @@ with `solx config edit` in that case). After migrating, `solx keep` uses
 
 ## Shell completion
 
-`solx completions <shell>` prints a completion script. Add it to the user's
-shell startup file:
+`solx completions <shell>` prints a fully static completion script —
+completing never runs `solx`, so the first Tab is instant. Add it to the
+user's shell startup file:
 
 ```shell
 # bash — ~/.bashrc
@@ -219,6 +223,10 @@ eval "$(solx completions bash)"
 
 # zsh — ~/.zshrc (after compinit)
 eval "$(solx completions zsh)"
+
+# zsh, fpath install (no per-shell eval) — the same script works autoloaded:
+#   mkdir -p ~/.zfunc && solx completions zsh > ~/.zfunc/_solx
+#   then in ~/.zshrc, before compinit:  fpath+=(~/.zfunc)
 
 # fish — ~/.config/fish/config.fish
 solx completions fish | source

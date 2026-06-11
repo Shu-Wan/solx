@@ -1,6 +1,6 @@
 ---
 name: sol-skill
-version: 0.4.0
+version: 0.5.0
 description: Conventions and tooling for ASU's Sol supercomputer, built around the `solx` CLI. Use whenever a task is happening on Sol — the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). It covers renewing /scratch files Sol has flagged for deletion (purge/inactivity warnings) via `solx keep` and where to store datasets and model caches; requesting and managing SLURM jobs (the `solx job` interactive-allocation lifecycle, sbatch for batch, GPU and partition/QOS choice, why a job is pending, fairshare-aware and time-aware job management); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, …), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---
@@ -67,7 +67,7 @@ Cross-cutting conventions enforced throughout:
   `--dry-run` (or the equivalent) before executing.
 - `solx` is CLI-agent native in operational terms: use `--json` when
   parsing, respect stdout/stderr separation, use `--dry-run`, avoid
-  hidden prompts, and know when raw Slurm is faster.
+  hidden prompts; raw Slurm commands remain documented equivalents.
 
 For how this skill is verified, see
 [`docs/coverage.md`](../../docs/coverage.md) in the source repo.
@@ -80,13 +80,12 @@ the user's day-to-day tool for templated interactive allocations
 (`job start` / `job jump`) and scratch renewal (`keep`) — install it when
 the user is doing that kind of work.
 
-**User experience comes first — don't route through `solx` by reflex.**
-`solx` is built for a human at a keyboard; for an agent it pays a
-Python/NFS startup cost on Sol (~1s+ per `job` command vs ~0.05s for a
-raw `squeue`/`scancel`) and adds nothing over the raw command for a
-one-off read. Pick the tool per task: raw SLURM for status / time-left /
-cancel, `solx` for the multi-step lifecycle and renewal (the friction
-rule below).
+**`solx` is fast enough to be the default.** A warm `solx job` read
+costs ~0.13s on Sol with the recommended single-file install, vs ~0.08s
+for a raw `squeue` (measured — `evals/runner/bench_solx_latency.sh`), so
+one-off reads carry no meaningful `solx` penalty. Raw SLURM stays a full
+equivalent (see "`solx` vs raw SLURM" below) — it's the fallback when
+`solx` isn't installed, not a faster path to prefer.
 
 **Detect, then install when the task needs it.** Once you've confirmed
 you're on Sol (see [Detecting the Environment](#detecting-the-environment)):
@@ -130,33 +129,35 @@ version:
 | `solx init` / `solx config edit` | Write / edit `~/.config/solx/config.toml`. |
 | `solx job start [TEMPLATE]` | Request an interactive allocation from a config template. |
 | `solx job jump` | Drop a shell onto the job's compute node (`srun --pty`). |
-| `solx job list` · `time` · `stop` | List · time-left · cancel — handy for a human; an agent should usually use raw `squeue`/`scancel` instead (faster, see below). |
+| `solx job list` · `time` · `stop` | List · time-left · cancel. Raw `squeue`/`scancel` are equivalent (see below). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]`. |
 | `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into `[keep]`. |
 
-`solx --json <cmd>` (flag before the subcommand) forces JSON; data goes
-to stdout, diagnostics to stderr, so output pipes cleanly. Destructive
-commands (`job stop`, `keep`) prompt unless `-y`, refuse in a
-non-interactive session rather than hang, and preview with `-n`.
+`--json` forces JSON — before the subcommand (`solx --json job list`) or
+after it (`solx job list --json`; exception: after `job start`, tokens
+pass through to `salloc`). Data goes to stdout, diagnostics to stderr,
+so output pipes cleanly. Destructive commands (`job stop`, `keep`)
+prompt unless `-y`, refuse in a non-interactive session rather than
+hang, and preview with `-n`.
 
-**`solx` vs raw SLURM — pick by friction, not reflex.** A `solx job`
-command pays ~1s+ of Python/NFS startup on Sol's home filesystem, where a
-raw `squeue`/`scancel` returns in ~0.05s (measured — see
-`evals/runner/bench_solx_latency.sh`). So for a quick one-off — list
-jobs, check time left, cancel — run the SLURM command directly and don't
-loop `solx` for status polling:
+**`solx` vs raw SLURM — equivalent for one-off reads; use either.** A
+warm `solx job` read runs in ~0.13s with the single-file install, vs
+~0.08s for raw `squeue` (measured — see
+`evals/runner/bench_solx_latency.sh`); a venv install on the NFS home is
+slower (~1s warm), which is one more reason to prefer the single-file
+channel. The raw equivalents, for when `solx` isn't installed or the
+user asks for them:
 
 ```shell
-squeue --me                                # not `solx job list`
-squeue -h -j "$SLURM_JOB_ID" -o %L         # time left; not `solx job time`
-scancel <jobid>                            # not `solx job stop`, when you know the id
+squeue --me                                # = solx job list
+squeue -h -j "$SLURM_JOB_ID" -o %L         # = solx job time (inside an allocation)
+scancel <jobid>                            # = solx job stop -y <jobid>
 ```
 
-Reach for `solx` where it removes real friction across several steps:
+`solx` adds the most over raw SLURM on the multi-step operations:
 `solx job start` (allocate from a template and wait), `solx job jump`
 (drop a shell onto the compute node), and `solx keep` (the
-CSV-∩-keep-list renewal). There the startup cost is amortized against
-work that raw SLURM makes tedious.
+CSV-∩-keep-list renewal). When parsing any of its output, pass `--json`.
 
 ## Detecting the Environment
 
@@ -271,7 +272,7 @@ compute node can't feed more than a couple, while the DTN has many. See
 The older standalone `sol_renew.py` script and the `~/.solkeep`
 keep-list it read are **deprecated**. `solx keep` still reads a
 `~/.solkeep` if it finds one (so nothing breaks today), but it prints a
-deprecation notice and **support is removed in solx 0.5.0**. If you see
+deprecation notice and **support is removed in solx 1.0.0**. If you see
 a `~/.solkeep`, migrate it into the config once:
 
 ```shell
@@ -353,9 +354,9 @@ solx job start debug -n      # dry run: print the salloc argv, submit nothing
 solx job jump                # open a shell on the compute node (srun --pty)
 # … work …
 exit                         # back to the login node; the allocation stays alive
-# status + cancel: the raw SLURM call is faster than solx (see "solx vs raw SLURM"):
-squeue --me                  # still RUNNING?   squeue -h -j <id> -o %L  for time left
-scancel <jobid>              # cancel when done
+solx job list                # still RUNNING?            (= squeue --me)
+solx job time                # wall-time left             (= squeue -h -j <id> -o %L)
+solx job stop                # cancel when done; prompts  (= scancel <id>)
 ```
 
 Templates live in `~/.config/solx/config.toml` (`solx config edit`);

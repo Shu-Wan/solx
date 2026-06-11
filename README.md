@@ -82,8 +82,8 @@ same way.
 ## Development
 
 - **Changelog** — [CHANGELOG.md](CHANGELOG.md); current release **v0.4.0**.
-- **Roadmap** — [docs/ROADMAP.md](docs/ROADMAP.md); next up is cutting `solx`'s
-  startup latency.
+- **Roadmap** — [docs/ROADMAP.md](docs/ROADMAP.md); next up is the native
+  single-binary rewrite.
 - **Contributing, tests, and the eval harness** —
   [DEVELOPMENT.md](DEVELOPMENT.md) and
   [solx/DEVELOPMENT.md](solx/DEVELOPMENT.md), with the coverage matrix in

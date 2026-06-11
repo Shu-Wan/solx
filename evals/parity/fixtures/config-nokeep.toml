@@ -1,0 +1,8 @@
+default_shell = "zsh"
+default_template = "default"
+start_timeout = "5m"
+
+[jobs.default]
+partition = "lightwork"
+time = "1-0"
+qos = "public"

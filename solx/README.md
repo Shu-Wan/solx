@@ -39,8 +39,9 @@ solx config show                 # sanity-check
 
 ### Shell completion
 
-`solx completions <shell>` prints a completion script. Add it to your shell's
-startup file, then restart your shell:
+`solx completions <shell>` prints a fully static completion script —
+completing never runs `solx`, so the first Tab is instant. Add it to your
+shell's startup file, then restart your shell:
 
 ```shell
 # bash — add to ~/.bashrc
@@ -52,6 +53,11 @@ eval "$(solx completions zsh)"
 # fish — add to ~/.config/fish/config.fish
 solx completions fish | source
 ```
+
+For zsh the same script also works installed on `fpath`
+(`mkdir -p ~/.zfunc && solx completions zsh > ~/.zfunc/_solx`, then
+`fpath+=(~/.zfunc)` before `compinit` in `~/.zshrc`). Regenerate installed
+scripts after upgrading so new commands and flags complete.
 
 ## Quick start
 
@@ -113,8 +119,9 @@ related operations, top-level shortcuts where they earn it.
 | `solx completions <bash\|zsh\|fish>` | Emit a shell completion script. |
 | `solx --version`, `--help` | — |
 
-The global `--json` flag goes **before** the subcommand
-(`solx --json job list`). See the full manual at
+`--json` is accepted before the subcommand (`solx --json job list`) or
+after it (`solx job list --json`) — except after `job start`, where
+post-command tokens pass through to `salloc`. See the full manual at
 [`docs/solx.md`](../docs/solx.md).
 
 ### Aliases
@@ -152,7 +159,7 @@ rather than hang on a prompt — safe to drive from an agent or cron.
 ### Output: human or CLI agent
 
 Output auto-detects — **JSON when stdout is not a TTY**, Rich tables on a
-terminal; the global `--json` (before the subcommand) forces JSON anywhere. A
+terminal; `--json` (before or after the subcommand) forces JSON anywhere. A
 human at a terminal gets tables with no flag. Results go to stdout, all
 diagnostics to stderr, so `solx --json job list | jq …` and `solx job time`
 (bare duration) both pipe cleanly. Exit codes: `0` success,
@@ -230,7 +237,7 @@ solx job start gpu -- --mem=128G --time=8:00:00
 The headless-allocation model behind `solx job start` / `jump` and the
 CSV-∩-keep-list mechanism behind `solx keep` are documented in the manual:
 [`docs/solx.md`](../docs/solx.md#under-the-hood). A legacy `~/.solkeep` still
-works but is deprecated (support removed in 0.5.0) — migrate with
+works but is deprecated (support removed in 1.0.0) — migrate with
 `solx config import-solkeep`.
 
 ## Contributing / development

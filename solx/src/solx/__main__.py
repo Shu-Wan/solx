@@ -1,6 +1,6 @@
 """Allow `python -m solx` invocation."""
-from solx.cli import app
+from solx.main import main
 
 
 if __name__ == "__main__":
-    app()
+    main()

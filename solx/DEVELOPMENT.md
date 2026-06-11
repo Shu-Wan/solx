@@ -7,13 +7,15 @@ drives `solx` and ships on the same version line; see
 
 ## Architecture
 
-Nine Python modules. Each is small and has one job:
+Small Python modules, each with one job:
 
 ```
 solx/src/solx/
 ├── __init__.py         # version constant
 ├── __main__.py         # `python -m solx` entry
-├── cli.py              # Typer wiring; nothing happens in here, just dispatch
+├── main.py             # entry point (solx.main:main): argparse tree + dispatch
+├── _completions.py     # static bash/zsh/fish completion scripts, rendered
+│                       #   from one description of the command surface
 ├── config.py           # XDG TOML loader + dataclasses + pathspec compilation
 ├── output.py           # Out: JSON-vs-Rich auto-detect + stdout/stderr split
 ├── side.py             # Sol-vs-not-Sol guard (each subcommand asks require_sol)
@@ -23,8 +25,32 @@ solx/src/solx/
 └── init.py             # `solx init` (write starter config.toml)
 ```
 
+Runtime dependencies: `rich` (human tables and prompts only) and
+`pathspec` (keep-list globs), plus the `tomli` backport on Python 3.10.
+The dispatch layer itself is stdlib `argparse`. Both entry points —
+`[project.scripts] solx = "solx.main:main"` and the zipapp's
+`-m "solx.main:main"` — go through `main.py`.
+
 ### Design notes worth knowing about
 
+- **Startup latency is a budget.** `solx`'s home is NFS, where every
+  module import is a network round-trip, so the import graph on the hot
+  path is deliberately tiny: importing `main.py` loads nothing beyond
+  the interpreter baseline, `--version`/`version` return before the
+  argparse tree is built, and each handler imports its own command body
+  (with its `rich`/`pathspec` trees) on demand. `--json` and piped runs
+  never import `rich`. `tests/test_main.py` guards the budget (e.g. a
+  fresh-interpreter check that dispatch loads no third-party CLI
+  framework); `evals/runner/bench_solx_latency.sh` measures the result
+  on a real Sol node.
+- **Completions are static, generated from one table.**
+  `_completions.py::COMMANDS` describes the command surface (commands,
+  flags, choices, help strings) once; `bash_script()` / `zsh_script()` /
+  `fish_script()` render it into scripts that never exec `solx` at
+  completion time. The zsh script's footer keys on `$zsh_eval_context`
+  so the same output works both eval/sourced and autoloaded from
+  `fpath`. When you add or rename a command or flag in `main.py`, update
+  `COMMANDS` to match — `tests/test_completions.py` checks the surface.
 - **No persistent state.** `solx` queries `squeue -u $USER` whenever it
   needs to know what jobs you have. There's no `session.json`, no
   stale-state class of bugs. Cost: one squeue call per command — fine
@@ -63,7 +89,7 @@ solx/src/solx/
   (`--stage`, `--csv-dir`, `-j`, `-n`, `-v`); it only renews what Sol has
   flagged. The keep-list lives in the `[keep]` config block; a legacy
   `~/.solkeep` is read as a **deprecated** fallback (warned, removed in
-  0.5.0 — see `keep.SOLKEEP_REMOVED_IN`; `solx config import-solkeep`
+  1.0.0 — see `keep.SOLKEEP_REMOVED_IN`; `solx config import-solkeep`
   migrates it). Execution is **file-level sharded** (PR #18):
   `_pick_lister` (fd/rg/find) → `enumerate_dir` → `shard` → `touch_files`
   on a bounded streaming window, so `-j` scales the biggest single
@@ -76,14 +102,17 @@ solx/src/solx/
 
 ### Aliases — what's wired
 
-- `solx job *` and `solx jobs *` resolve to the same Typer subgroup
-  (registered twice in `cli.py`).
-- `solx job ls` and `solx job list` are separate commands sharing the
-  same body (`hidden=True` on `ls`).
-- `solx jump` (top-level) and `solx job jump` are separate commands
-  sharing the same body.
-- All exercised by `tests/test_cli.py::test_*alias*` — if you change a
-  command name, those tests fail loudly.
+- `solx jobs *` → `solx job *` and `solx job ls` → `solx job list`:
+  `main()` rewrites the tokens before parsing, so the aliases never
+  appear in `--help`.
+- `solx jump` (top-level) and `solx job jump` are separate subparsers
+  sharing the same handler (`_cmd_jump`).
+- `solx version` / `solx help` are subcommands aliasing `--version` /
+  `--help`; `version` and `--version` short-circuit in `main()` before
+  the parser tree is built.
+- All exercised by `tests/test_main.py` (`test_*alias*`,
+  `test_top_level_jump_*`, `test_version_*`) — if you change a command
+  name, those tests fail loudly.
 
 ## Testing
 
@@ -95,8 +124,14 @@ uv run pytest -v       # verbose
 uv run pytest tests/test_jobs.py::test_start_passthrough_appended -v
 ```
 
-The whole suite runs in well under a second. We aim to keep it that
-way — no real subprocess spawning, no real disk other than `tmp_path`.
+The whole suite runs in a few seconds — the only subprocesses are the
+shell syntax checks and the fresh-interpreter import-budget guards;
+everything else stays in-process with no real disk other than
+`tmp_path`.
+
+For black-box regression of the whole CLI surface (stdout/stderr/exit
+codes against deterministic SLURM mocks), see the parity matrix at
+[`../evals/parity/`](../evals/parity/README.md).
 
 ### Coverage targets
 
@@ -109,7 +144,8 @@ way — no real subprocess spawning, no real disk other than `tmp_path`.
 | `jobs.py` | `cmd_list` (empty / populated / squeue-fail / **JSON**), `cmd_start` (default template, dry-run, passthrough, salloc failure, unknown template, **JSON jobid**), `cmd_stop` (`-y`/`-n` mutex, dry-run, prompt proceed/abort, **non-interactive refuse**, ambiguous-no-autopick + JSON candidates, self-cancel warning, JSON), `cmd_jump` (arg, **inside warn-and-proceed**, `-q` suppress, most-recent, no-running), `cmd_time` (arg, JSON, most-recent). |
 | `keep.py` | CSV parsing, `build_plan` filter + dedup + exclude carve-out, `shard`/`enumerate_dir`/`touch_files` units, `cmd_keep` `-y`/`-n` mutex, no-`[keep]` exit 2, dry-run no-execute, prompt branches, **non-interactive refuse**, single-stage filter, failure propagation, JSON summary + dry-run plan, **end-to-end real-touch** (recursion + carve-out + non-kept). |
 | `init.py` | Fresh write, parent-dir creation, mode 0600, refuse-existing-without-force, `--force` overwrite, prompt-and-confirm. |
-| `cli.py` | Every command + alias path dispatches via `CliRunner`. Body itself is mocked — `cli.py` tests verify wiring, not behavior. |
+| `main.py` | Every command + alias path dispatches (bodies mocked — wiring, not behavior); `--json` in both positions; the `job start` tail parser (passthrough, `--timeout`, template after `--`, trailing `--json` stays passthrough); no option abbreviation; import-budget guards (entry module stays lean, dispatch loads no third-party CLI framework). |
+| `_completions.py` | Every command/flag appears in each shell's script; zsh dual-mode footer; path-valued flags complete files/dirs; each script passes its shell's syntax check (`zsh -n` / `bash -n` / `fish --no-execute`, skipped when the shell is absent). |
 
 ### Test fixtures
 
@@ -119,6 +155,34 @@ way — no real subprocess spawning, no real disk other than `tmp_path`.
   `$SLURM_JOB_ID` set must `monkeypatch.setenv` it explicitly.
 - `config_path` / `write_config` for TOML round-trip tests.
 - `SAMPLE_CONFIG_TOML` exports a known-good full config.
+
+## Building and installing locally
+
+Build the single-file zipapp from the worktree and install it under a
+throwaway prefix, so it never shadows the `solx` you already have on
+`PATH`:
+
+```shell
+cd solx
+bash scripts/build-pyz.sh                                   # -> dist/solx.pyz
+SOLX_INSTALL_DIR="$HOME/.local/bin-test" bash scripts/install.sh dist/solx.pyz
+"$HOME/.local/bin-test/solx" --version
+```
+
+`install.sh` re-stamps the shebang with the destination machine's
+interpreter, so always install the `.pyz` through it — running the raw
+`dist/solx.pyz` relies on whatever interpreter path was baked in at build
+time.
+
+**From a PR, without building.** Every push and pull request runs the
+`build` job in `.github/workflows/ci.yml`, which attaches the zipapp as
+the `solx-pyz` artifact. Download it from the PR's *Checks → Artifacts*,
+then install it the same way (the CI build's shebang points at a runner
+path, so `install.sh` re-stamping it is required, not optional):
+
+```shell
+SOLX_INSTALL_DIR="$HOME/.local/bin-test" bash solx/scripts/install.sh ~/Downloads/solx.pyz
+```
 
 ## Manual smoke on Sol
 
