@@ -21,8 +21,6 @@ evals/
 │   ├── bin/                        # PATH shims
 │   ├── home/                       # fake $HOME (CSVs + solx config [keep])
 │   └── scratch/                    # fake /scratch tree
-├── parity/                         # solx CLI behavioral parity matrix
-│   └── README.md                   # how to capture goldens + compare runs
 ├── runner/
 │   ├── bench_solx_latency.sh       # L3: solx vs raw SLURM latency, on real Sol
 │   └── build_sandbox_home.sh       # hides the skill for fair baselines
@@ -53,15 +51,12 @@ echo "$MOCK_LOG"                     # path to per-session invocation log
 > builds a self-contained tree under `$TMPDIR` with stale mtimes and
 > asserts the filesystem mutations.
 
-## CLI parity matrix
+## Testing the CLI itself
 
-[`parity/`](parity/README.md) regression-tests the **`solx` CLI itself**
-(rather than the skill): 67 cases over the full command surface, each in
-an isolated fake `$HOME` with deterministic SLURM mocks, captured as
-stdout/stderr/exit-code and compared byte-for-byte between two `solx`
-builds. Use it whenever the dispatch layer or runtime changes and the
-command surface must provably not. Goldens are environment-captured and
-not committed — see its README for the capture/compare workflow.
+This harness tests the **skill**. The `solx` CLI is tested in its own
+crate: `cd solx && cargo test` drives the compiled binary end-to-end
+against deterministic SLURM mocks (`solx/tests/cli.rs`) plus the unit
+suites, and runs in CI on every push.
 
 ## Eval entry schema
 

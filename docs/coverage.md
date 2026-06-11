@@ -6,16 +6,11 @@ requires manual orchestration today, so this document is updated by
 hand before each release.
 
 **Version:** v1.0.0 (see [`../CHANGELOG.md`](../CHANGELOG.md))
-**Last verified:** v1.0 rewrote `solx` as a native Rust binary and
-retired the Python implementation. The CLI is covered by the crate's
-Rust suite (`cargo test` in `solx/`: unit tests per module plus the
-end-to-end `tests/cli.rs`, including a real-touch renewal test) and its
-behavior is checked against the v0.5.0 behavioral-parity golden matrix
-(`evals/parity/`). The skill-level L1/L2/L3 evals for the `solx`-driven
-flows are **pending re-run on Sol** and are marked 🟡 below; the skill's
-operational guidance is unchanged from v0.5.0 apart from the install
-steps. Rows for unchanged behaviors carry over from earlier
-verification.
+**Last verified:** the `solx` CLI is covered by its own crate suite
+(`cargo test` in `solx/`: unit tests per module plus the end-to-end
+`tests/cli.rs`, including a real-touch renewal test), which runs in CI.
+The skill-level L1/L2/L3 evals for the `solx`-driven flows are **pending
+re-run on Sol** and are marked 🟡 below.
 
 ## Status legend
 
@@ -49,15 +44,15 @@ to the skill should mean adding a row here in the same group.
 
 | Behavior | Status | Notes |
 |---|---|---|
-| Detects `solx` (`command -v solx`) and prompts to install when missing | 🟡 documented | New in v0.4.0; skill eval pending |
-| Uses `solx` for the job lifecycle and keep; raw Slurm as the no-`solx` fallback | 🟡 documented | Guidance updated for v0.5.0; skill eval pending |
+| Detects `solx` (`command -v solx`) and prompts to install when missing | 🟡 documented | skill eval pending |
+| Uses `solx` for the job lifecycle and keep; raw Slurm as the no-`solx` fallback | 🟡 documented | skill eval pending |
 | `solx` exits 2 off-Sol (wrong-side guard) | 🟢 tested | `solx/src/side.rs`, `solx/tests/cli.rs` |
 | Drives the `solx job` lifecycle (start/list/time/jump/stop) | 🟢 tested (CLI) | `solx/src/jobs.rs`, `solx/tests/cli.rs`; skill-teaching eval pending |
 | Verb-aware job-id resolution (most-recent for time/jump; stop refuses to guess) | 🟢 tested | `solx/src/slurm.rs`, `solx/tests/cli.rs` |
 | Destructive-confirm contract (`-y`/`-n`, non-interactive refuse, exit 2) | 🟢 tested | `solx/tests/cli.rs` (job stop / keep) |
 | CLI agent output: JSON off a TTY, results on stdout / diagnostics on stderr | 🟢 tested | `solx/src/output.rs`, `solx/tests/cli.rs` |
-| Per-command latency vs raw SLURM quantified (one-off reads at parity since v0.5.0) | 🟢 tested | `evals/runner/bench_solx_latency.sh` (L3, real Sol): raw `squeue` ~0.08s vs warm `solx job` ~0.12s (native binary). Full measured table in `docs/ROADMAP.md`. |
-| Skill treats `solx` and raw `squeue`/`scancel` as equivalent for one-off reads; raw forms documented as fallback | 🟡 documented | Updated for v0.5.0; skill eval pending |
+| Per-command latency vs raw SLURM quantified (one-off reads at parity) | 🟢 tested | `evals/runner/bench_solx_latency.sh` (L3, real Sol): raw `squeue` ~0.08s vs warm `solx job` ~0.12s (native binary) |
+| Skill treats `solx` and raw `squeue`/`scancel` as equivalent for one-off reads; raw forms documented as fallback | 🟡 documented | skill eval pending |
 
 ### Detecting the Environment
 
@@ -109,8 +104,8 @@ to the skill should mean adding a row here in the same group.
 
 | Behavior | Status | Notes |
 |---|---|---|
-| Checks `myfairshare` before submitting; backs off below ~0.05 (no scheduler spam) | 🟡 documented | New in v0.4.0 (issue #9); skill eval pending. `myfairshare` lookup itself 🟢 (iter-5 P3) |
-| Tracks remaining wall-time (`solx job time` / `squeue -O TimeLeft`) and wraps up / hands off before expiry | 🟡 documented | New in v0.4.0 (issue #9); skill eval pending |
+| Checks `myfairshare` before submitting; backs off below ~0.05 (no scheduler spam) | 🟡 documented | skill eval pending; `myfairshare` lookup itself 🟢 (iter-5 P3) |
+| Tracks remaining wall-time (`solx job time` / `squeue -O TimeLeft`) and wraps up / hands off before expiry | 🟡 documented | skill eval pending |
 | Uses Sol wrappers directly (`myfairshare`/`myjobs`/`seff`/`showgpus`/…) rather than wrapping them | 🟢 tested | Status-query rows below verified iter-5 P2–P4 |
 
 ### Asking the Cluster About Yourself and Your Jobs

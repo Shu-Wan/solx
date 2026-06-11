@@ -1,29 +1,22 @@
 # Developing solx
 
-solx is a single native binary (Rust). It reproduces the behavior the
-Python implementation shipped through v0.5.0, captured as the
-behavioral-parity golden matrix; the Python tree itself was retired in
-v1.0.
+solx is a single native binary (Rust): the CLI for interactive Slurm jobs
+and scratch renewal on Sol.
 
-## Parity is the spec
+## Behavior contract
 
-The v0.5.0 behavioral-parity golden matrix (`../evals/parity/`) is the
-spec for the command surface. The goldens were captured from the v0.5.0
-Python build and the binary must still reproduce them; when in doubt, the
-goldens win:
+These invariants are load-bearing — preserve them when you touch any
+user-visible output. The crate's own suite ([Tests](#tests)) is what
+locks them.
 
-* The matrix runs ~73 cases (every command, every error path) in isolated
-  fake HOMEs with deterministic SLURM mocks and captures stdout/stderr/exit
-  code per case.
-* Strict cases must match byte-for-byte: JSON documents render like
-  `json.dumps(obj, indent=2)` (two-space indent, `\uXXXX` escapes for
-  non-ASCII, insertion-ordered keys), and stderr diagnostics reproduce the
-  v0.5.0 strings with markup stripped.
-* Help/usage text and completion scripts are relaxed (exit code + content
-  smoke), so clap renders its own help.
-
-When changing any user-visible string, check it against the golden
-`.err`/`.out` files before changing the goldens themselves.
+* JSON renders like `json.dumps(obj, indent=2)`: two-space indent,
+  `\uXXXX` escapes for non-ASCII, insertion-ordered keys.
+* Results go to stdout, diagnostics to stderr as single plain lines (no
+  markup, no color).
+* Exit codes: 0 success, 1 runtime failure, 2 usage error / missing
+  config / refused action.
+* Help/usage and completion scripts are clap-rendered — assert on content,
+  not exact wording.
 
 ## Module map
 
@@ -36,7 +29,7 @@ When changing any user-visible string, check it against the golden
 | `src/jobs.rs`     | job list/start/stop/jump/time bodies                  |
 | `src/keep.rs`     | CSV plan, enumeration, touch pipeline                 |
 | `src/init.rs`     | `solx init` starter config + walkthrough              |
-| `src/output.rs`   | TTY detection, JSON writer matching the v0.5.0 format |
+| `src/output.rs`   | TTY detection, JSON writer, plain-text diagnostics    |
 | `src/completions.rs` | embedded static completion scripts                 |
 
 Notable design decisions:
@@ -49,8 +42,8 @@ Notable design decisions:
 * **`[keep]` matching.** `ignore::gitignore::Gitignore` rooted at `/` with
   `matched_path_or_any_parents`, so a bare path pattern matches the
   directory and everything under it and `!` negations win last-match style.
-  The keep-matching vectors carried over from the v0.5.0 suite live as unit
-  tests in `config.rs` and `keep.rs`; run them before touching matcher code.
+  The keep-matching vectors live as unit tests in `config.rs` and
+  `keep.rs`; run them before touching matcher code.
 * **Enumeration.** `ignore::WalkBuilder` with every ignore facility off
   (`hidden(false)`, `ignore(false)`, `git_*(false)`, `parents(false)`,
   `follow_links(false)`), files only — semantics equal `find DIR -type f`,
@@ -58,9 +51,9 @@ Notable design decisions:
 * **Touch.** `filetime::set_file_times` to now; a missing path is a silent
   skip and nothing is ever created (`touch -c` semantics).
 * **Completion scripts.** `assets/` holds the static bash/zsh/fish scripts,
-  embedded via `include_str!`. They match the v0.5.0 completion output and
-  are checked by the parity matrix; edit them as a set so the three shells
-  stay in sync.
+  embedded via `include_str!`. Edit them as a set so the three shells stay
+  in sync with the command surface; `tests/cli.rs` smoke-checks that each
+  emits without error.
 
 ## Tests
 
@@ -75,9 +68,8 @@ $ cargo clippy --all-targets -- -D warnings
 $ cargo test
 ```
 
-* Unit tests live next to each module and carry the v0.5.0 suite's vectors
-  (slurm parsing, config, the keep matching/planning vectors, JSON
-  formatting).
+* Unit tests live next to each module (slurm parsing, config, keep
+  matching/planning, JSON formatting).
 * `tests/cli.rs` drives the compiled binary end-to-end with the SLURM mocks
   in `tests/mocks/bin` and a tempdir HOME/XDG, asserting stdout, stderr,
   and exit codes for the core flows.

@@ -5,12 +5,10 @@ management (`solx job start/stop/jump/time/list`), scratch renewal
 (`solx keep`), and a single TOML config (`solx config`, `solx init`).
 
 A single native binary (Rust). The command surface, JSON output,
-diagnostics, and exit codes reproduce the behavior solx shipped through
-v0.5.0 — verified against the captured parity matrix in
-[`../evals/parity/`](../evals/parity/); see
-[`../docs/solx.md`](../docs/solx.md) for the full command reference. One
-binary, no interpreter or virtualenv on the critical path — a cold start
-from NFS home is a single exec.
+diagnostics, and exit codes are locked by the crate's end-to-end and unit
+tests; see [`../docs/solx.md`](../docs/solx.md) for the full command
+reference. One binary, no interpreter or virtualenv on the critical path —
+a cold start from NFS home is a single exec.
 
 ## Install
 
@@ -107,5 +105,4 @@ $ cargo test
 
 `cargo test` runs the unit suites plus end-to-end tests that drive the real
 binary against deterministic SLURM mocks in `tests/mocks/bin`. See
-`DEVELOPMENT.md` for the module map and the parity workflow against the
-Python implementation.
+`DEVELOPMENT.md` for the module map and the behavior contract.

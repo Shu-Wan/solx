@@ -38,9 +38,10 @@ dependencies (no Python, `uv`, or `rustc` on the target).
 
 - **The CLI is rewritten in Rust** (the `solx/` crate), preserving the
   v0.5.0 command surface, output contract, and exit codes; behavioral
-  parity is verified against the v0.5.0 golden matrix (`evals/parity/`).
-  The agent skill's operational guidance is unchanged apart from the
-  install steps and the dropped `~/.solkeep` fallback (below).
+  parity was verified during the port and is locked going forward by the
+  crate's test suite (`solx/tests/cli.rs` + unit vectors). The agent
+  skill's operational guidance is unchanged apart from the install steps
+  and the dropped `~/.solkeep` fallback (below).
 - **Install is a prebuilt static binary.** Download
   `solx-x86_64-unknown-linux-musl` from the release, `chmod +x`, and drop
   it on `PATH`. The `curl install.sh | sh` and `uv tool install` channels
@@ -101,7 +102,7 @@ A `solx job` read now costs the same order as a raw SLURM call. Absolute
 startup over NFS scales with node load — Python pays a per-module open
 storm, so v0.4.0 can reach ~2.5s under contention — and the win is
 removing that import tree. On node-local disk the floor is lower still
-(`--version` ~0.02s). Full table in `docs/ROADMAP.md`.
+(`--version` ~0.02s).
 
 ### Upgrading
 
@@ -135,7 +136,7 @@ removing that import tree. On node-local disk the floor is lower still
   output contract are unchanged apart from the two documented supersets
   below (`--json` placement and `-h`); verified with `evals/parity/`.
 - **Startup latency** drops to the order of a raw SLURM call (see
-  Highlights above; full table in `docs/ROADMAP.md`): removing the
+  Highlights above): removing the
   Typer/`click`/`rich` import tree cuts a `solx job` read from seconds to
   ~0.1–0.4s warm on the NFS `$HOME` install, ~13× / 6.4× / 8.1× over
   v0.4.0 on `--version` / `job list` / `job time`. On node-local disk the

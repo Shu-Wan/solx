@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# Mock srun: prints the argv it received (solx exec-replaces itself with srun,
-# so this output is what the parity harness captures for jump cases).
-echo "MOCK_SRUN $*"
-exit 0

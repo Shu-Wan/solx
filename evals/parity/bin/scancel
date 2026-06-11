@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Mock scancel: always succeeds, silently (like the real one on success).
-exit 0
