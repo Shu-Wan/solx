@@ -73,12 +73,11 @@ to the skill should mean adding a row here in the same group.
 |---|---|---|
 | Recommends `/scratch/$USER` for datasets, caches, model weights | 🟢 tested | Verified iter-1: agent recommends `/scratch/$USER` for HF cache |
 | Steers away from `/home` for large data | 🟢 tested | Verified iter-1 |
-| `.solkeep` syntax (gitignore-style, `!` negation, `**` glob) | 🟢 tested | Verified iter-2 eval A: agent produces correct file with explanation |
+| `[keep]` block syntax (gitignore-style, `!` negation, `**` glob) | 🟢 tested | Verified iter-2 eval A: agent produces correct config block with explanation |
 | Refuses to bulk-touch `/scratch` (`find -exec touch`) | 🟡 documented | Negative assertion; not yet probed |
 | `solx keep --dry-run` plan correctness | 🟢 tested | `solx/src/keep.rs`, `solx/tests/cli.rs::keep_dry_run_plan_filters_by_keep_block`: dry-run plans without touching; JSON plan bounded |
 | `solx keep` refreshes kept files (recursively) | 🟢 tested | `solx/tests/cli.rs::keep_renews_real_files`: mtimes refresh across the tree |
 | keep-list carve-outs honored at run time (`.venv`/`__pycache__` skipped, non-kept dirs skipped) | 🟢 tested | `solx/src/keep.rs` (matcher vectors) + `solx/tests/cli.rs` (end-to-end) |
-| `solx config import-solkeep` migrates `~/.solkeep` → `[keep]` | 🟢 tested | `solx/src/init.rs`, `solx/tests/cli.rs::import_solkeep_*` |
 | File sharing procedure (`chmod` / `install` / `cp` between users) | 🟡 documented | |
 | Scratch-quota-exceeded behavior | 🔴 gap | Would need a fault-injection mock |
 | Concurrent `solx keep` runs | 🔴 gap | No locking; documented behavior is "don't" |

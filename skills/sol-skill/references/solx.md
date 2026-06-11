@@ -55,7 +55,6 @@ renewal).
 | `solx job time [JOBID]` | Print remaining wall-time (`D-HH:MM:SS`). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]` (prompts unless `-y`). |
 | `solx config show` / `edit` | Show / edit the config. |
-| `solx config import-solkeep` | Import an existing `~/.solkeep` into the `[keep]` block. |
 | `solx completions <bash\|zsh\|fish>` | Print a shell-completion script. |
 | `solx version` / `--version`, `solx help` / `--help` | Version / help. |
 
@@ -176,14 +175,8 @@ keep-list, and `touch`es them. It only ever touches directories that are
 **both** flagged by Sol **and** in your keep-list — nothing to do until
 Sol flags something, and it never walks `/scratch` wholesale.
 
-Keep-list source, in precedence order:
-
-1. `--solkeep <file>` — a specific gitignore-style keep-list, if passed.
-2. the `[keep]` block in the config (`include` / `exclude`). **Preferred.**
-
-The config `[keep]` block is the only automatic source. To use a
-`~/.solkeep` file, import it with `solx config import-solkeep`, or pass it
-explicitly for one run via `--solkeep ~/.solkeep`.
+The keep-list is the `[keep]` block in the config (`include` / `exclude`),
+matched gitignore-style. It's the only keep-list source.
 
 ```shell
 solx keep --dry-run -v        # preview which directories would be renewed
@@ -191,28 +184,13 @@ solx keep                     # renew them (prompts; -y to skip)
 solx keep --stage pending     # only the most-urgent CSV
 ```
 
-Flags: `--solkeep FILE`, `--stage {pending,over90,inactive,all}`,
-`--csv-dir DIR` (default `$HOME`), `-j N` (parallel workers — default
-small on purpose; `/scratch` is networked storage), `-y` / `-n` / `-v`.
+Flags: `--stage {pending,over90,inactive,all}`, `--csv-dir DIR` (default
+`$HOME`), `-j N` (parallel workers — default small on purpose; `/scratch`
+is networked storage), `-y` / `-n` / `-v`.
 
 This is metadata-heavy NFS I/O, which login nodes throttle — run a big
 pass on a compute node or the DTN (`ssh soldtn`). See
 [scratch.md](scratch.md) for the CSV schema and performance notes.
-
-## Importing an existing `~/.solkeep`
-
-If the user has a `~/.solkeep` keep-list file, fold it into the config
-once:
-
-```shell
-solx config import-solkeep    # folds ~/.solkeep into the [keep] block
-solx config show              # review the result
-```
-
-It appends a `[keep]` block to `config.toml` (refusing if one already
-exists, since a second `[keep]` table is invalid TOML — merge by hand
-with `solx config edit` in that case). After importing, the keep-list
-lives in `[keep]`.
 
 ## Shell completion
 

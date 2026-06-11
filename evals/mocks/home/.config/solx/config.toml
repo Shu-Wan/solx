@@ -1,0 +1,22 @@
+# Sanitized solx config used by the mock environment.
+# Replace `sparky` with your real ASURITE in your private evals/evals.json.
+
+default_shell = "bash"
+default_template = "default"
+
+[jobs.default]
+partition = "htc"
+time = "0-04:00:00"
+
+# Directories `solx keep` renews when Sol flags them. Patterns are
+# gitignore-style (bare path = that directory and everything under it,
+# `**` recurses); `exclude` carves stale build artifacts back out.
+[keep]
+include = [
+  "/scratch/sparky/my-project",
+  "/scratch/sparky/experiments",
+]
+exclude = [
+  "**/__pycache__",
+  "**/.venv",
+]

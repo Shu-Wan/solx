@@ -1,4 +1,4 @@
-//! Gitignore-style pattern matching for `[keep]` / `~/.solkeep`.
+//! Gitignore-style pattern matching for the config `[keep]` block.
 //!
 //! This is a port of Python `pathspec`'s `GitIgnoreSpec` (the matcher the
 //! Python solx compiles keep rules with), so include/exclude decisions are
@@ -59,13 +59,6 @@ impl GitIgnoreSpec {
             }
         }
         GitIgnoreSpec { patterns }
-    }
-
-    /// An empty spec (matches nothing).
-    pub fn empty() -> Self {
-        GitIgnoreSpec {
-            patterns: Vec::new(),
-        }
     }
 
     /// Whether `path` is matched (included) by this spec.
@@ -461,10 +454,5 @@ mod tests {
         // The discarded `!`-pattern carves nothing out.
         let s = spec(&["/scratch/sparky", "!/scratch/sparky/skip[1"]);
         assert!(s.match_file("/scratch/sparky/skip[1"));
-    }
-
-    #[test]
-    fn empty_spec_matches_nothing() {
-        assert!(!GitIgnoreSpec::empty().match_file("/anything"));
     }
 }

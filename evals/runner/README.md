@@ -36,8 +36,8 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   `layer` and `check` extensions).
 - For each eval:
   - Apply the `setup` block: write requested mock state
-    (`MOCK_HOSTNAME`, `solx`-shim presence, fake CSVs, fake
-    `.solkeep`).
+    (`MOCK_HOSTNAME`, `solx`-shim presence, fake CSVs, a `[keep]`
+    config).
   - Spawn the with-skill subagent (`--plugin-dir
     skills/sol-skill`) and the baseline subagent (no plugin-dir),
     both inheriting `CLAUDE_CONFIG_DIR` from the parent so neither

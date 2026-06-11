@@ -19,7 +19,7 @@ evals/
 ├── mocks/                          # userland Sol mock environment
 │   ├── activate.sh                 # source to put mocks on PATH
 │   ├── bin/                        # PATH shims
-│   ├── home/                       # fake $HOME (CSVs + .solkeep)
+│   ├── home/                       # fake $HOME (CSVs + solx config [keep])
 │   └── scratch/                    # fake /scratch tree
 ├── parity/                         # solx CLI behavioral parity matrix
 │   └── README.md                   # how to capture goldens + compare runs

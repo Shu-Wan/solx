@@ -76,7 +76,6 @@ _solx_config() {
             subcommands=(
                 'show:Print the resolved config.'
                 'edit:Open the config in $EDITOR.'
-                'import-solkeep:Migrate a legacy ~/.solkeep keep-list into the config'\''s keep block.'
             )
             _describe -t commands 'solx config command' subcommands
             ;;
@@ -89,13 +88,6 @@ _solx_config() {
                     ;;
                 (edit)
                     _arguments \
-                        '(-h --help)'{-h,--help}'[Show this help message and exit.]'
-                    ;;
-                (import-solkeep)
-                    _arguments \
-                        '--solkeep[Keep-list to import (default: ~/.solkeep).]:file:_files' \
-                        '(-f --force)'{-f,--force}'[Accept a lossy import.]' \
-                        '--json[Force JSON output (machine-readable).]' \
                         '(-h --help)'{-h,--help}'[Show this help message and exit.]'
                     ;;
             esac
@@ -141,7 +133,6 @@ _solx() {
                     _arguments \
                         '--stage[Which warning CSVs to read.]:value:(all pending over90 inactive)' \
                         '--csv-dir[Directory holding Sol'\''s warning CSVs.]:directory:_files -/' \
-                        '--solkeep[Path to a gitignore-style keep-list.]:file:_files' \
                         '(-j --jobs)'{-j,--jobs}'[Parallel touch workers.]:value:' \
                         '(-y --yes -f --force)'{-y,--yes,-f,--force}'[Skip confirmation prompt.]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Print plan without executing.]' \

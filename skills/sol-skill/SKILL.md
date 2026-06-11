@@ -129,7 +129,6 @@ version:
 | `solx job jump` | Drop a shell onto the job's compute node (`srun --pty`). |
 | `solx job list` · `time` · `stop` | List · time-left · cancel. Raw `squeue`/`scancel` are equivalent (see below). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]`. |
-| `solx config import-solkeep` | Import an existing `~/.solkeep` into `[keep]`. |
 
 `--json` forces JSON — before the subcommand (`solx --json job list`) or
 after it (`solx job list --json`; exception: after `job start`, tokens
@@ -263,16 +262,6 @@ Match `-j` (parallel workers) to where it actually runs: a 4-core
 compute node can't feed more than a couple, while the DTN has many. See
 [references/scratch.md](references/scratch.md) for the non-interactive
 `PATH` gotcha when invoking over `ssh soldtn`.
-
-#### Importing an existing `~/.solkeep`
-
-`solx keep` reads its keep-list from the `[keep]` block in the config. If
-the user has a `~/.solkeep` keep-list file, fold it into the config once:
-
-```shell
-solx config import-solkeep    # folds ~/.solkeep into the [keep] block
-solx config show              # sanity-check the result
-```
 
 ### Sharing Files
 

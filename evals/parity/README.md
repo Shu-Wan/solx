@@ -1,7 +1,7 @@
 # evals/parity/ — `solx` behavioral parity matrix
 
 A black-box regression harness for the `solx` CLI. It runs one `solx`
-binary through **80 cases** covering the whole command surface — meta
+binary through **73 cases** covering the whole command surface — meta
 (`--version`, help, unknown commands), `job list/start/stop/jump/time`,
 `jump`, `keep`, `config`, `init`, `completions`, aliases, `--json` in
 both positions, dispatch edge cases (`--` shielding, bundled shorts,
@@ -22,8 +22,8 @@ evals/parity/
 ├── bin/                # mock squeue / salloc / srun / scancel / hostname
 │                       #   env toggles: MOCK_SQUEUE_EMPTY=1, MOCK_SQUEUE_FAIL=1,
 │                       #   MOCK_SQUEUE_TWORUNNING=1 select canned squeue variants
-├── fixtures/           # config.toml variants, ~/.solkeep variants, warning CSVs
-├── run_matrix.sh       # run the 80 cases against one solx binary
+├── fixtures/           # config.toml variants + warning CSVs
+├── run_matrix.sh       # run the cases against one solx binary
 └── compare_runs.py     # compare two captured runs (stdlib python3 only)
 ```
 
@@ -63,9 +63,8 @@ verified against the v0.5.0 golden (the last Python release).
 - **VERSION_CASES** (`--version`, `version`): exit code must match and
   stdout must be a bare semver; the value itself may differ.
 - **EXPECTED_DIFF**: known deliberate divergences (e.g. the trailing
-  `--json` acceptance case, or the dropped implicit `~/.solkeep`
-  fallback — v0.5.0 read it and warned, v1.0 errors). Reported, but never
-  fail the run.
+  `--json` acceptance case, accepted in a later version than the golden).
+  Reported, but never fail the run.
 
 The class membership lives at the top of `compare_runs.py`; when a
 behavior change is intentional, move its case into `EXPECTED_DIFF` in

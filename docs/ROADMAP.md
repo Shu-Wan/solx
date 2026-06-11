@@ -150,10 +150,9 @@ surface comes with it.
   the binary (`solx/assets/`) and emitted by `solx completions`;
   completion never execs `solx`. Both zsh install modes (eval/source and
   fpath autoload) are supported.
-- **`~/.solkeep` fallback**: removed in v1.0. Deprecated since 0.4.0 with
-  the removal deferred to 1.0.0; `solx keep` now reads the keep-list only
-  from the config `[keep]` block. `solx config import-solkeep` migrates a
-  legacy file, and `--solkeep <file>` is an explicit per-run override.
+- **`~/.solkeep`**: removed in v1.0. The config `[keep]` block is the only
+  keep-list source; `solx keep` never reads a `~/.solkeep`, and the
+  `import-solkeep` command and `--solkeep` flag are gone with it.
 - **Config**: single TOML under `$XDG_CONFIG_HOME/solx/config.toml`. No
   multi-file split, no `[shared]` merge.
 - **Glob library for `[keep]`**: `pathspec` (gitignore-style include +

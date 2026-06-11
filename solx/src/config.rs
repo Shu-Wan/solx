@@ -260,41 +260,6 @@ pub fn parse_keep(
     Ok(Some(KeepRules::new(&include, &exclude)))
 }
 
-/// Load a gitignore-style `~/.solkeep` keep-list into [`KeepRules`].
-///
-/// The legacy `~/.solkeep` format: each line is a keep pattern, `!` negates
-/// (carves a subtree out), `#`/blank lines are ignored, a bare path matches
-/// that directory *and everything under it*, and the last matching rule wins.
-/// The whole file becomes a single keep matcher (with an empty exclude).
-/// Returns `None` if the file is missing or has no effective rules. Used by
-/// the explicit `--solkeep <file>` override and by `config import-solkeep`;
-/// `solx keep` no longer reads `~/.solkeep` implicitly — the config `[keep]`
-/// block is the only automatic source.
-pub fn load_solkeep(path: &Path) -> Option<KeepRules> {
-    if !path.exists() {
-        return None;
-    }
-    let text = std::fs::read_to_string(path).ok()?;
-    let lines: Vec<String> = text.lines().map(|l| l.to_string()).collect();
-    let effective: Vec<String> = lines
-        .iter()
-        .filter(|ln| {
-            let s = ln.trim();
-            !s.is_empty() && !s.starts_with('#')
-        })
-        .cloned()
-        .collect();
-    if effective.is_empty() {
-        return None;
-    }
-    Some(KeepRules {
-        include: GitIgnoreSpec::from_lines(&lines),
-        exclude: GitIgnoreSpec::empty(),
-        raw_include: effective,
-        raw_exclude: Vec::new(),
-    })
-}
-
 fn require_str(body: &toml::Table, key: &str, ctx: &str) -> Result<String, ConfigError> {
     match body.get(key) {
         None => Err(ConfigError::new(format!(
@@ -362,93 +327,17 @@ pub fn parse_duration(text: &str) -> Result<i64, ConfigError> {
     Ok(n * mult)
 }
 
-/// Split a `~/.solkeep` file into `([keep].include, [keep].exclude)`.
-///
-/// `.solkeep` is one gitignore-style list; the import folds it into a config
-/// `[keep]` block so an existing keep-list carries over without rewriting.
-/// Plain lines become `include`, `!`-prefixed lines become `exclude` (the
-/// `!` dropped); `#`/blank lines are skipped. Returns `None` if the file is
-/// missing or has no `include` patterns. This is a best-effort import of the
-/// common "broad includes + `!` carve-outs" shape — review the result with
-/// `solx config show`.
-pub fn import_solkeep(path: &Path) -> Option<(Vec<String>, Vec<String>)> {
-    if !path.exists() {
-        return None;
-    }
-    let text = std::fs::read_to_string(path).ok()?;
-    let mut include = Vec::new();
-    let mut exclude = Vec::new();
-    for raw in text.lines() {
-        let s = raw.trim();
-        if s.is_empty() || s.starts_with('#') {
-            continue;
-        }
-        if let Some(carved) = s.strip_prefix('!') {
-            let carve = carved.trim();
-            if !carve.is_empty() {
-                // A bare `!` carves nothing — drop it rather than emit "".
-                exclude.push(carve.to_string());
-            }
-        } else {
-            include.push(s.to_string());
-        }
-    }
-    if include.is_empty() {
-        // A keep-list with no keep patterns is nothing to import.
-        return None;
-    }
-    Some((include, exclude))
-}
-
-/// `true` if `path`'s rules can't be split into include/exclude faithfully.
-///
-/// `~/.solkeep` is gitignore *last-match-wins*; the config `[keep]` block is
-/// `include AND NOT exclude` (see [`KeepRules::matches`]). The two agree only
-/// when every `!` carve-out comes *after* the positive rules it carves. A
-/// positive rule appearing *after* a `!` line is an order-dependent
-/// re-include that the split into separate include/exclude lists silently
-/// drops — so `solx config import-solkeep` warns when it detects one rather
-/// than quietly keeping fewer directories.
-pub fn solkeep_is_order_sensitive(path: &Path) -> bool {
-    let text = match std::fs::read_to_string(path) {
-        Ok(t) => t,
-        Err(_) => return false,
-    };
-    let mut seen_carve = false;
-    for raw in text.lines() {
-        let s = raw.trim();
-        if s.is_empty() || s.starts_with('#') {
-            continue;
-        }
-        if s.starts_with('!') {
-            seen_carve = true;
-        } else if seen_carve {
-            return true;
-        }
-    }
-    false
-}
-
 /// The text that `solx init` writes to a fresh config.toml.
 ///
-/// With no `keep`, the `[keep]` block is a commented placeholder using the
-/// `sparky` placeholder. When `keep` is given (imported from `~/.solkeep`
-/// via [`import_solkeep`]), an active `[keep]` block is written instead.
-/// `default_shell` sets the `default_shell` value (the `solx init`
-/// walkthrough can pick it).
-pub fn starter_config_text(
-    keep: Option<&(Vec<String>, Vec<String>)>,
-    default_shell: &str,
-) -> String {
+/// The `[keep]` block is a commented placeholder using the `sparky`
+/// placeholder. `default_shell` sets the `default_shell` value (the
+/// `solx init` walkthrough can pick it).
+pub fn starter_config_text(default_shell: &str) -> String {
     let base = STARTER_CONFIG_BASE.replace(
         "default_shell = \"bash\"",
         &format!("default_shell = {}", toml_str(default_shell)),
     );
-    let block = match keep {
-        Some((include, exclude)) => render_keep_block(include, exclude, "~/.solkeep"),
-        None => KEEP_PLACEHOLDER.to_string(),
-    };
-    base + &block
+    base + KEEP_PLACEHOLDER
 }
 
 /// Render `s` as a TOML basic string, escaping every char TOML forbids.
@@ -473,28 +362,6 @@ pub fn toml_str(s: &str) -> String {
     }
     out.push('"');
     out
-}
-
-/// Render a `[keep]` TOML block from include/exclude pattern lists.
-///
-/// Used by `solx config import-solkeep` to append a migrated keep-list to an
-/// existing config.toml. `source` names where the patterns came from, for
-/// the provenance comment (the command passes the actual keep-list path).
-pub fn render_keep_block(include: &[String], exclude: &[String], source: &str) -> String {
-    let mut lines = vec![
-        format!("# [keep] imported from {source} — directories `solx keep` renews"),
-        "# when Sol flags them. Patterns are gitignore-style (** for recursion).".to_string(),
-        "[keep]".to_string(),
-        "include = [".to_string(),
-    ];
-    lines.extend(include.iter().map(|p| format!("  {},", toml_str(p))));
-    lines.push("]".to_string());
-    if !exclude.is_empty() {
-        lines.push("exclude = [".to_string());
-        lines.extend(exclude.iter().map(|p| format!("  {},", toml_str(p))));
-        lines.push("]".to_string());
-    }
-    lines.join("\n") + "\n"
 }
 
 const STARTER_CONFIG_BASE: &str = r#"# solx config — see https://github.com/Shu-Wan/solx/blob/main/solx/README.md
@@ -771,7 +638,7 @@ exclude = ["**/__pycache__", "**/.venv"]
     #[test]
     fn starter_config_loads_clean() {
         let dir = tempfile::tempdir().unwrap();
-        let p = write_config(dir.path(), &starter_config_text(None, "bash"));
+        let p = write_config(dir.path(), &starter_config_text("bash"));
         let c = load(&p).unwrap();
         assert_eq!(c.default_shell, "bash");
         assert_eq!(c.default_template, "default");
@@ -782,7 +649,7 @@ exclude = ["**/__pycache__", "**/.venv"]
 
     #[test]
     fn starter_config_no_maintainer_name() {
-        let text = starter_config_text(None, "bash");
+        let text = starter_config_text("bash");
         assert!(!text.contains("swan16"));
         assert!(!text.contains("<asurite>"));
         assert!(text.contains("sparky")); // in the commented [keep] example
@@ -795,108 +662,6 @@ exclude = ["**/__pycache__", "**/.venv"]
         fs::create_dir(&p).unwrap(); // exists, but reading a directory fails
         let err = load(&p).unwrap_err();
         assert!(err.0.contains("unable to read"));
-    }
-
-    #[test]
-    fn load_solkeep_rules() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join(".solkeep");
-        fs::write(
-            &p,
-            "# comment\n/scratch/sparky/proj\n!/scratch/sparky/proj/**/__pycache__\n",
-        )
-        .unwrap();
-        let rules = load_solkeep(&p).unwrap();
-        assert!(rules.matches("/scratch/sparky/proj/src")); // kept (prefix)
-        assert!(!rules.matches("/scratch/sparky/proj/a/__pycache__")); // negated
-        assert!(!rules.matches("/scratch/sparky/other")); // not listed
-    }
-
-    #[test]
-    fn load_solkeep_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(load_solkeep(&dir.path().join("nope")).is_none());
-    }
-
-    #[test]
-    fn load_solkeep_comments_only() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join(".solkeep");
-        fs::write(&p, "# just a comment\n\n").unwrap();
-        assert!(load_solkeep(&p).is_none());
-    }
-
-    #[test]
-    fn import_solkeep_splits_include_exclude() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join(".solkeep");
-        fs::write(
-            &p,
-            "# comment\n/scratch/sparky/proj\n/scratch/sparky/exp/**\n!**/__pycache__\n",
-        )
-        .unwrap();
-        let (include, exclude) = import_solkeep(&p).unwrap();
-        assert_eq!(include, ["/scratch/sparky/proj", "/scratch/sparky/exp/**"]);
-        assert_eq!(exclude, ["**/__pycache__"]);
-    }
-
-    #[test]
-    fn import_solkeep_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(import_solkeep(&dir.path().join("nope")).is_none());
-    }
-
-    #[test]
-    fn import_solkeep_no_includes() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join(".solkeep");
-        fs::write(&p, "# only comments\n!**/__pycache__\n").unwrap();
-        assert!(import_solkeep(&p).is_none());
-    }
-
-    #[test]
-    fn solkeep_order_sensitivity() {
-        let dir = tempfile::tempdir().unwrap();
-        let lossy = dir.path().join("lossy");
-        fs::write(&lossy, "/a\n!/a/tmp\n/a/tmp/keepme\n").unwrap();
-        assert!(solkeep_is_order_sensitive(&lossy));
-
-        let clean = dir.path().join("clean");
-        fs::write(&clean, "/a\n/b/**\n!**/__pycache__\n").unwrap();
-        assert!(!solkeep_is_order_sensitive(&clean));
-
-        assert!(!solkeep_is_order_sensitive(&dir.path().join("absent")));
-    }
-
-    #[test]
-    fn starter_config_with_imported_keep_round_trips() {
-        let dir = tempfile::tempdir().unwrap();
-        let keep = (
-            vec!["/scratch/sparky/proj".to_string()],
-            vec!["**/__pycache__".to_string()],
-        );
-        let p = write_config(dir.path(), &starter_config_text(Some(&keep), "bash"));
-        let c = load(&p).unwrap();
-        let rules = c.keep.unwrap();
-        assert!(rules.matches("/scratch/sparky/proj/src"));
-        assert!(!rules.matches("/scratch/sparky/proj/a/__pycache__"));
-    }
-
-    #[test]
-    fn render_keep_block_shape() {
-        let block = render_keep_block(
-            &["/scratch/sparky/proj-a".to_string()],
-            &["**/__pycache__".to_string()],
-            "/home/sparky/.solkeep",
-        );
-        assert_eq!(
-            block,
-            "# [keep] imported from /home/sparky/.solkeep — directories `solx keep` renews\n\
-             # when Sol flags them. Patterns are gitignore-style (** for recursion).\n\
-             [keep]\n\
-             include = [\n  \"/scratch/sparky/proj-a\",\n]\n\
-             exclude = [\n  \"**/__pycache__\",\n]\n"
-        );
     }
 
     #[test]

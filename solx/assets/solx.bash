@@ -35,11 +35,6 @@ _solx() {
             mapfile -t COMPREPLY < <(compgen -d -- "$cur")
             return
             ;;
-        --solkeep)
-            type compopt &> /dev/null && compopt -o filenames 2> /dev/null
-            mapfile -t COMPREPLY < <(compgen -f -- "$cur")
-            return
-            ;;
         --stage)
             mapfile -t COMPREPLY < <(compgen -W "all pending over90 inactive" -- "$cur")
             return
@@ -65,7 +60,7 @@ _solx() {
             words=""
             ;;
         keep)
-            flags="--stage --csv-dir --solkeep -j --jobs -y --yes -f --force -n --dry-run -v --verbose --json -h --help"
+            flags="--stage --csv-dir -j --jobs -y --yes -f --force -n --dry-run -v --verbose --json -h --help"
             words=""
             ;;
         jump)
@@ -103,7 +98,7 @@ _solx() {
         config)
             if [[ -z "$sub" ]]; then
                 if [[ "$cur" != -* ]]; then
-                    mapfile -t COMPREPLY < <(compgen -W "show edit import-solkeep" -- "$cur")
+                    mapfile -t COMPREPLY < <(compgen -W "show edit" -- "$cur")
                     return
                 fi
                 flags="-h --help"
@@ -111,7 +106,6 @@ _solx() {
             case "$sub" in
                 show) flags="--json -h --help" ;;
                 edit) flags="-h --help" ;;
-                import-solkeep) flags="--solkeep -f --force --json -h --help" ;;
             esac
             ;;
     esac

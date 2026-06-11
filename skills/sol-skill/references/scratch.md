@@ -53,13 +53,6 @@ not have on `PATH`, so prepend it:
 ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; solx keep --stage inactive -j 24 -y'
 ```
 
-## Importing an existing `~/.solkeep`
-
-`solx keep` reads the keep-list from the config `[keep]` block. If the user
-has a `~/.solkeep` keep-list file, fold it in once with `solx config
-import-solkeep` (or point at it for a single run with `--solkeep
-~/.solkeep`).
-
 ## Emergency single-path touch (no `solx`)
 
 To refresh one path outside the CSV workflow — the same primitive `solx keep`

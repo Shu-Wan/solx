@@ -245,7 +245,6 @@ pub struct KeepOptions<'a> {
     pub yes: bool,
     pub dry_run: bool,
     pub verbose: bool,
-    pub solkeep: Option<PathBuf>,
     pub config_keep: Option<&'a KeepRules>,
 }
 
@@ -255,29 +254,14 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
         return 2;
     }
 
-    // Keep-list source, in precedence order: explicit --solkeep > config
-    // [keep]. The config is the source of truth; a legacy ~/.solkeep is
-    // never read implicitly — migrate it with `solx config import-solkeep`.
-    let solkeep_rules;
-    let keep_rules: &KeepRules = if let Some(path) = &opts.solkeep {
-        match crate::config::load_solkeep(path) {
-            Some(rules) => {
-                solkeep_rules = rules;
-                &solkeep_rules
-            }
-            None => {
-                out.error(&format!("error: no keep rules found in {}", path.display()));
-                return 2;
-            }
+    // The keep-list comes from the config `[keep]` block — the single source
+    // of truth.
+    let keep_rules: &KeepRules = match opts.config_keep {
+        Some(rules) => rules,
+        None => {
+            out.error("error: no [keep] block in config. add one with `solx config edit`.");
+            return 2;
         }
-    } else if let Some(rules) = opts.config_keep {
-        rules
-    } else {
-        out.error(
-            "error: no [keep] block in config. run `solx config edit` to add one \
-             (migrate a legacy ~/.solkeep with `solx config import-solkeep`).",
-        );
-        return 2;
     };
 
     let csv_dir = opts.csv_dir.clone().unwrap_or_else(crate::config::home_dir);
@@ -770,12 +754,10 @@ mod tests {
     }
 
     #[test]
-    fn build_plan_solkeep_negation_last_match_wins() {
-        // The single-list .solkeep form: `!` carve-outs inside one matcher.
+    fn build_plan_negation_last_match_wins() {
+        // `!` carve-outs within the include list (gitignore last-match-wins).
         let dir = tempfile::tempdir().unwrap();
-        let solkeep = dir.path().join(".solkeep");
-        fs::write(&solkeep, "/scratch/sparky/proj\n!**/__pycache__\n").unwrap();
-        let rules = crate::config::load_solkeep(&solkeep).unwrap();
+        let rules = keep(&["/scratch/sparky/proj", "!**/__pycache__"], &[]);
         write_csv(
             &dir.path().join("scratch-dirs-pending-removal.csv"),
             &[

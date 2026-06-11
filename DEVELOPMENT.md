@@ -27,7 +27,7 @@ solx/                               # the repo
     ├── mocks/                      # userland Sol mock environment
     │   ├── activate.sh
     │   ├── bin/                    # PATH shims (hostname, module, srun, …)
-    │   └── home/                   # fake $HOME with .solkeep + CSV warnings
+    │   └── home/                   # fake $HOME with solx config ([keep]) + CSV warnings
     ├── runner/                     # thin wrapper over skill-creator
     └── results/                    # gitignored — per-iteration benchmarks
 ```
@@ -136,7 +136,7 @@ evals/mocks/
 │   ├── srun, sbatch, scancel, squeue   # log args, return canned exit
 │   └── ssh                        # log args, never connect
 ├── home/                          # fake $HOME during eval
-│   ├── .solkeep                   # example keep-list
+│   ├── .config/solx/config.toml   # example config with a [keep] block
 │   └── scratch-dirs-*.csv         # synthetic Sol warning files
 └── scratch/swan16/                # fake scratch tree under fake $HOME
 ```
@@ -251,7 +251,7 @@ python <skill-creator-path>/eval-viewer/generate_review.py \
      - `"mock_log_contains": "..."` (L2 only — greps `$MOCK_LOG`)
      - `"manual"` (L3 only — surfaces in the manual checklist)
 3. If the eval needs a specific mock state (e.g., `solx` present, or a
-   different `.solkeep`), add a `setup` block that the runner sources
+   different `[keep]` config), add a `setup` block that the runner sources
    before spawning the subagent.
 
 Keep prompts concrete and realistic — see the skill-creator

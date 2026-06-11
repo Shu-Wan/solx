@@ -12,7 +12,7 @@ spec for the command surface. The goldens were captured from the v0.5.0
 Python build and the binary must still reproduce them; when in doubt, the
 goldens win:
 
-* The matrix runs ~67 cases (every command, every error path) in isolated
+* The matrix runs ~73 cases (every command, every error path) in isolated
   fake HOMEs with deterministic SLURM mocks and captures stdout/stderr/exit
   code per case.
 * Strict cases must match byte-for-byte: JSON documents render like
@@ -32,10 +32,10 @@ When changing any user-visible string, check it against the golden
 | `src/main.rs`     | clap command tree, dispatch, `config show`/`edit`     |
 | `src/side.rs`     | Sol host detection (`hostname -a` + kernel hostname)  |
 | `src/slurm.rs`    | squeue/scancel/salloc/srun wrappers, jobid resolution |
-| `src/config.rs`   | TOML config, `[keep]` rules, `.solkeep` parsing       |
+| `src/config.rs`   | TOML config parsing, `[keep]` rules                   |
 | `src/jobs.rs`     | job list/start/stop/jump/time bodies                  |
 | `src/keep.rs`     | CSV plan, enumeration, touch pipeline                 |
-| `src/init.rs`     | starter config, `.solkeep` migration                  |
+| `src/init.rs`     | `solx init` starter config + walkthrough              |
 | `src/output.rs`   | TTY detection, JSON writer matching the v0.5.0 format |
 | `src/completions.rs` | embedded static completion scripts                 |
 
@@ -76,8 +76,8 @@ $ cargo test
 ```
 
 * Unit tests live next to each module and carry the v0.5.0 suite's vectors
-  (slurm parsing, config/`.solkeep`, the keep matching/planning vectors,
-  JSON formatting).
+  (slurm parsing, config, the keep matching/planning vectors, JSON
+  formatting).
 * `tests/cli.rs` drives the compiled binary end-to-end with the SLURM mocks
   in `tests/mocks/bin` and a tempdir HOME/XDG, asserting stdout, stderr,
   and exit codes for the core flows.

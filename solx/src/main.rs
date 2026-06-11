@@ -12,7 +12,6 @@
 //! solx keep      [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]
 //! solx config show [--json]
 //! solx config edit
-//! solx config import-solkeep   (migrate ~/.solkeep into [keep])
 //! solx completions <bash|zsh|fish>
 //! solx version   (alias of --version)
 //! solx help      (alias of --help)
@@ -118,9 +117,6 @@ struct KeepArgs {
     /// Directory holding Sol's warning CSVs.
     #[arg(long = "csv-dir")]
     csv_dir: Option<PathBuf>,
-    /// Path to a gitignore-style keep-list (overrides the [keep] config block).
-    #[arg(long)]
-    solkeep: Option<PathBuf>,
     /// Parallel touch workers.
     #[arg(
         short = 'j',
@@ -192,16 +188,6 @@ enum ConfigCmd {
     Show,
     /// Open the config in $EDITOR.
     Edit,
-    /// Migrate a legacy ~/.solkeep keep-list into the config's [keep] block.
-    ImportSolkeep {
-        /// Keep-list to import (default: ~/.solkeep).
-        #[arg(long)]
-        solkeep: Option<PathBuf>,
-        /// Accept a lossy import (an order-dependent re-include that the
-        /// [keep] block can't preserve).
-        #[arg(short = 'f', long)]
-        force: bool,
-    },
 }
 
 fn main() {
@@ -277,9 +263,7 @@ fn run() -> i32 {
         Some(Cmd::Init { force }) => {
             require_sol();
             let out = Out::auto(json);
-            // Auto-import an existing ~/.solkeep into the new config's
-            // [keep] block (interactive walkthrough only).
-            init::cmd_init(force, &config::home_dir().join(".solkeep"), &out)
+            init::cmd_init(force, &out)
         }
         Some(Cmd::Keep(args)) => {
             require_sol();
@@ -327,11 +311,6 @@ fn run() -> i32 {
             Some(ConfigCmd::Edit) => {
                 require_sol();
                 run_config_edit()
-            }
-            Some(ConfigCmd::ImportSolkeep { solkeep, force }) => {
-                require_sol();
-                let out = Out::auto(json);
-                init::cmd_import_solkeep(solkeep.as_deref(), force, &out)
             }
         },
     }
@@ -452,9 +431,9 @@ fn run_keep(args: &KeepArgs, json: bool) -> i32 {
         ));
         return 2;
     }
-    // `keep` can run off a `~/.solkeep` alone, so a missing config.toml is
-    // fine (config stays None). A config that exists but is malformed still
-    // errors.
+    // The keep-list lives in the config `[keep]` block. A missing config.toml
+    // is fine (config stays None → `keep` reports no [keep] block); a config
+    // that exists but is malformed still errors.
     let config = if config::config_path().exists() {
         match load_or_exit(&out) {
             Ok(c) => Some(c),
@@ -470,7 +449,6 @@ fn run_keep(args: &KeepArgs, json: bool) -> i32 {
         yes: args.yes,
         dry_run: args.dry_run,
         verbose: args.verbose,
-        solkeep: args.solkeep.clone(),
         config_keep: config.as_ref().and_then(|c| c.keep.as_ref()),
     };
     keep::cmd_keep(&opts, &out)

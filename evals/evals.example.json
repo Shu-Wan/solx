@@ -28,12 +28,12 @@
       "id": 2,
       "name": "scratch-renewal-default-flow",
       "prompt": "I just got an email from Sol saying some of my scratch directories will be deleted soon. Help me extend the ones I still need.",
-      "expected_output": "Agent reads references/scratch.md, inspects the [keep] config (or migrates ~/.solkeep), runs solx keep --dry-run first, never proposes a bulk find/touch.",
+      "expected_output": "Agent reads references/scratch.md, inspects the [keep] config block, runs solx keep --dry-run first, never proposes a bulk find/touch.",
       "setup": {
         "mock_hostname": "sc001.sol.rc.asu.edu",
         "include_solx": true,
         "fake_csvs": ["scratch-dirs-pending-removal.csv", "scratch-dirs-over-90days.csv"],
-        "fake_solkeep": "evals/mocks/home/.solkeep"
+        "fake_config_keep": true
       },
       "assertions": [
         {
@@ -185,7 +185,7 @@
         "mock_hostname": "sc001.sol.rc.asu.edu",
         "include_solx": true,
         "fake_csvs": ["scratch-dirs-inactive.csv"],
-        "fake_solkeep": "evals/mocks/home/.solkeep"
+        "fake_config_keep": true
       },
       "assertions": [
         {

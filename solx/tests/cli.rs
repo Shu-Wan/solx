@@ -298,18 +298,19 @@ fn keep_invalid_stage_exits_2() {
 
 #[test]
 fn keep_without_rules_exits_2() {
-    let sb = Sandbox::new(); // no config, no ~/.solkeep
-    sb.cmd().args(["keep", "-n"]).assert().code(2).stderr(
-        "error: no [keep] block in config. run `solx config edit` to add one \
-         (migrate a legacy ~/.solkeep with `solx config import-solkeep`).\n",
-    );
+    let sb = Sandbox::new(); // no config
+    sb.cmd()
+        .args(["keep", "-n"])
+        .assert()
+        .code(2)
+        .stderr("error: no [keep] block in config. add one with `solx config edit`.\n");
 }
 
 #[test]
-fn keep_ignores_legacy_solkeep_without_config() {
-    // A bare ~/.solkeep is no longer read implicitly: with no [keep] block,
-    // `keep` errors and points at `config import-solkeep` instead of touching
-    // anything based on the legacy file.
+fn keep_ignores_a_solkeep_file() {
+    // A ~/.solkeep on disk is never read: the keep-list comes only from the
+    // config `[keep]` block, so with no config `keep` errors rather than
+    // touching anything based on the legacy file.
     let sb = Sandbox::new(); // no config.toml
     sb.write_home(".solkeep", "/scratch/sparky/proj-a\n");
     sb.write_home(
@@ -321,7 +322,7 @@ fn keep_ignores_legacy_solkeep_without_config() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains("no [keep] block in config"))
-        .stderr(predicate::str::contains("config import-solkeep"));
+        .stderr(predicate::str::contains("solkeep").not());
 }
 
 #[test]
@@ -378,51 +379,6 @@ fn init_existing_without_force_exits_2() {
         .code(2)
         .stderr(predicate::str::contains(
             "already exists. pass -f to overwrite.",
-        ));
-}
-
-#[test]
-fn import_solkeep_appends_keep_block() {
-    let sb = Sandbox::new();
-    fs::write(
-        sb.home.path().join(".config/solx/config.toml"),
-        "default_shell = \"zsh\"\ndefault_template = \"default\"\n\n\
-         [jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n",
-    )
-    .unwrap();
-    sb.write_home(".solkeep", "/scratch/sparky/proj\n!**/__pycache__\n");
-    sb.cmd()
-        .args(["--json", "config", "import-solkeep"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"include\""))
-        .stderr(predicate::str::contains(
-            "imported 1 include / 1 exclude pattern(s) into [keep]",
-        ));
-    let text = fs::read_to_string(sb.home.path().join(".config/solx/config.toml")).unwrap();
-    assert!(text.contains("[keep]"));
-    assert!(text.contains("\"/scratch/sparky/proj\","));
-}
-
-#[test]
-fn import_solkeep_refuses_lossy_order() {
-    let sb = Sandbox::new();
-    fs::write(
-        sb.home.path().join(".config/solx/config.toml"),
-        "default_shell = \"zsh\"\ndefault_template = \"default\"\n\n\
-         [jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n",
-    )
-    .unwrap();
-    sb.write_home(
-        ".solkeep",
-        "/scratch/sparky/proj-a\n!/scratch/sparky/proj-a/tmp\n/scratch/sparky/proj-a/tmp/keepme\n",
-    );
-    sb.cmd()
-        .args(["config", "import-solkeep"])
-        .assert()
-        .code(2)
-        .stderr(predicate::str::contains(
-            "re-includes a path under an earlier",
         ));
 }
 

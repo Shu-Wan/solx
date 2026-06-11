@@ -54,12 +54,12 @@ dependencies (no Python, `uv`, or `rustc` on the target).
   `install.sh`, and the `uv tool` install channel — is deleted. `solx/`
   now holds the Rust crate, the only solx; the `.pyz` and `uv` install
   channels no longer exist.
-- **The implicit `~/.solkeep` fallback.** `solx keep` no longer reads a
-  legacy `~/.solkeep` automatically — the config `[keep]` block is the
-  only automatic keep-list source. Deprecated since 0.4.0; removal was
-  deferred to 1.0.0. With no `[keep]` block, `keep` now errors and points
-  at the migration. `solx config import-solkeep` (one-shot migration) and
-  the explicit `--solkeep <file>` override are unaffected.
+- **`~/.solkeep` support, end to end.** The config `[keep]` block is now
+  the only keep-list source: `solx keep` never reads a `~/.solkeep` (the
+  implicit fallback, deprecated since 0.4.0, was slated for 1.0.0), and the
+  `solx config import-solkeep` command and the `--solkeep <file>` flag are
+  removed with it. With no `[keep]` block, `keep` errors and points at
+  `solx config edit`.
 
 ## [0.5.1] — 2026-06-10
 
