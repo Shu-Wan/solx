@@ -19,10 +19,9 @@ Install instructions are in [`solx/README.md`](../solx/README.md). The short
 version, on Sol:
 
 ```shell
-# Recommended on Sol — single-file install (re-run to upgrade):
-curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
-# Or as a uv tool:
-uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+# solx is one static binary — download it, make it executable, put it on PATH:
+curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
+chmod +x ~/.local/bin/solx
 
 solx --version
 solx init        # writes ~/.config/solx/config.toml
@@ -64,9 +63,11 @@ exit                       # back to the login node; the allocation stays alive
 
 For a quick **status**, **time-left**, or **cancel**, `solx` and the
 underlying Slurm command are interchangeable: a warm `solx job` read runs in
-≈0.13 s on Sol with the single-file install, vs ≈0.08 s for raw `squeue`
-(measured — `evals/runner/bench_solx_latency.sh`; a venv install on the NFS
-home is slower, ≈1 s warm). The raw forms, for shells without `solx`:
+≈0.12 s on Sol, vs ≈0.08 s for raw `squeue` (measured —
+`evals/runner/bench_solx_latency.sh`; the residual is just the `squeue`
+subprocess `solx` spawns, and the native binary's startup doesn't degrade
+under node load or a cold NFS cache). The raw forms, for shells without
+`solx`:
 
 ```shell
 squeue --me                              # = solx job list          (also: myjobs, sq)
@@ -259,11 +260,13 @@ to do until Sol actually flags something.
 
 1. `--solkeep <file>` — a specific gitignore-style keep-list, if you pass one.
 2. the `[keep]` block in your `solx` config (`include` / `exclude`).
-3. `~/.solkeep` — a **deprecated** legacy keep-list. `solx keep` still reads it
-   if present (so existing setups keep working) but prints a deprecation notice;
-   **support is removed in solx 1.0.0**. Migrate it once with `solx config
-   import-solkeep`. (Format: one pattern per line, `!` carves a subtree out, a
-   bare path means that directory and everything under it — last match wins.)
+
+A legacy `~/.solkeep` is **no longer read implicitly** (that fallback was
+removed in solx 1.0.0); the config `[keep]` block is the only automatic
+source. If you still have a `~/.solkeep`, migrate it once with `solx config
+import-solkeep`, or point at it explicitly with `--solkeep ~/.solkeep`.
+(Format: one pattern per line, `!` carves a subtree out, a bare path means
+that directory and everything under it — last match wins.)
 
 ```shell
 solx keep --dry-run         # preview exactly which directories would be renewed

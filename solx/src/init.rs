@@ -132,9 +132,9 @@ pub fn cmd_init(force: bool, solkeep: &Path, out: &Out) -> i32 {
 
 /// Migrate a legacy `~/.solkeep` keep-list into the config's `[keep]` block.
 ///
-/// The implicit `~/.solkeep` fallback (and the `.solkeep` format) is
-/// deprecated and loses support in a future release (see
-/// `keep::SOLKEEP_REMOVED_IN`); this is the one-shot migration. Reads
+/// `solx keep` no longer reads `~/.solkeep` implicitly (the config `[keep]`
+/// block is the only automatic source); this is the one-shot migration for
+/// users coming from the legacy format. Reads
 /// `solkeep` (default `~/.solkeep`), splits it into include/exclude via
 /// [`cfg::import_solkeep`], and appends a rendered `[keep]` block to an
 /// existing `config.toml`. The merged document is validated before anything

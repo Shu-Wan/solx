@@ -11,11 +11,12 @@ Sol and reported on stdout (results) / stderr (diagnostics).
 
 ## Install + first run
 
+`solx` is one static binary — no Python, no `uv`, no toolchain. Install
+is a download and a `chmod`:
+
 ```shell
-# Recommended on Sol — single-file install (fast cold start on the NFS home):
-curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
-# Alternative — as a uv tool (isolated venv on $PATH):
-uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
+chmod +x ~/.local/bin/solx
 
 solx --version
 solx init            # writes ~/.config/solx/config.toml (mode 0600)
@@ -23,18 +24,19 @@ solx config edit     # fill in templates + [keep] paths
 solx config show     # sanity-check the resolved config
 ```
 
-Both paths use [`uv`](https://docs.astral.sh/uv/) to provision a Python
-≥ 3.11 (Sol's system `python3` is too old). Installing reaches the
-network and writes `~/.local/bin/solx` — propose it and get the user's
-OK rather than installing silently.
+The binary is fully static (musl), so it runs on Sol's RHEL 8 as-is.
+Installing reaches the network and writes `~/.local/bin/solx` (make sure
+that's on `$PATH`) — propose it and get the user's OK rather than
+installing silently.
 
 ## When to use `solx` vs raw SLURM
 
 For one-off reads the two are equivalent — use either. A warm `solx job`
-read runs in ~0.13s on Sol with the single-file install, vs ~0.08s for
-raw `squeue` (measured — `evals/runner/bench_solx_latency.sh`); a venv
-install on the NFS home is slower (~1s warm), so prefer the single-file
-channel. The raw equivalents, for when `solx` isn't installed:
+read runs in ~0.12s on Sol, vs ~0.08s for raw `squeue` (measured —
+`evals/runner/bench_solx_latency.sh`); the residual over `squeue` is just
+the `squeue` subprocess `solx` spawns, and the native binary's startup
+doesn't degrade under node load or a cold NFS cache. The raw equivalents,
+for when `solx` isn't installed:
 `squeue --me` (= `job list`), `squeue -h -j "$SLURM_JOB_ID" -o %L`
 (= `job time`), `scancel <id>` (= `job stop -y <id>`). `solx` adds the
 most on the multi-step ops: `job start` (templated allocation that
@@ -53,7 +55,7 @@ renewal).
 | `solx job time [JOBID]` | Print remaining wall-time (`D-HH:MM:SS`). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]` (prompts unless `-y`). |
 | `solx config show` / `edit` | Show / edit the config. |
-| `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into the `[keep]` block. |
+| `solx config import-solkeep` | Import an existing `~/.solkeep` into the `[keep]` block. |
 | `solx completions <bash\|zsh\|fish>` | Print a shell-completion script. |
 | `solx version` / `--version`, `solx help` / `--help` | Version / help. |
 
@@ -178,9 +180,10 @@ Keep-list source, in precedence order:
 
 1. `--solkeep <file>` — a specific gitignore-style keep-list, if passed.
 2. the `[keep]` block in the config (`include` / `exclude`). **Preferred.**
-3. `~/.solkeep` — the **deprecated** legacy keep-list. Still read if
-   present (so existing setups keep working), but `solx keep` prints a
-   deprecation notice and **support is removed in solx 1.0.0**.
+
+The config `[keep]` block is the only automatic source. To use a
+`~/.solkeep` file, import it with `solx config import-solkeep`, or pass it
+explicitly for one run via `--solkeep ~/.solkeep`.
 
 ```shell
 solx keep --dry-run -v        # preview which directories would be renewed
@@ -196,10 +199,10 @@ This is metadata-heavy NFS I/O, which login nodes throttle — run a big
 pass on a compute node or the DTN (`ssh soldtn`). See
 [scratch.md](scratch.md) for the CSV schema and performance notes.
 
-## Migrating off `~/.solkeep`
+## Importing an existing `~/.solkeep`
 
-The old standalone `sol_renew.py` and the `~/.solkeep` keep-list are
-deprecated. Migrate an existing `~/.solkeep` into the config once:
+If the user has a `~/.solkeep` keep-list file, fold it into the config
+once:
 
 ```shell
 solx config import-solkeep    # folds ~/.solkeep into the [keep] block
@@ -208,8 +211,8 @@ solx config show              # review the result
 
 It appends a `[keep]` block to `config.toml` (refusing if one already
 exists, since a second `[keep]` table is invalid TOML — merge by hand
-with `solx config edit` in that case). After migrating, `solx keep` uses
-`[keep]` and the deprecation notice goes away.
+with `solx config edit` in that case). After importing, the keep-list
+lives in `[keep]`.
 
 ## Shell completion
 

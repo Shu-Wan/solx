@@ -8,8 +8,8 @@ Classes of cases:
 * RELAXED: only the exit code must match (help/usage text is allowed to
   differ across CLI frameworks); stdout is smoke-checked for key content.
 * EXPECTED_DIFF: recorded and reported, but never fails the run (known,
-  deliberate divergences — e.g. the solkeep deprecation message's version
-  string, or `job list --json` becoming accepted).
+  deliberate divergences — e.g. the dropped implicit ~/.solkeep fallback,
+  or `job list --json` becoming accepted).
 
 Exit 0 if no strict failures, 1 otherwise. Prints a human summary, or a
 JSON document with --json.
@@ -38,7 +38,7 @@ RELAXED_SMOKE = {
 }
 EXPECTED_DIFF = {
     "leaf-json-position",   # v0.4.0 rejects trailing --json; later versions accept
-    "keep-fallback",        # deprecation message names the removal version
+    "keep-fallback",        # v0.5.0 read ~/.solkeep + warned; v1.0 dropped the fallback (errors)
     # -h is a documented v0.5.0 superset: v0.4.0 exits 2, v0.5.0 prints
     # help and exits 0.
     "dash-h-root",

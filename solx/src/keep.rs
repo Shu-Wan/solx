@@ -39,12 +39,6 @@ pub fn stage_file(stage: &str) -> &'static str {
     }
 }
 
-/// `~/.solkeep` is the legacy keep-list. `solx keep` still reads it as a
-/// last-resort fallback, but the config `[keep]` block is the supported
-/// home; the implicit fallback and the `.solkeep` format lose support in
-/// this release line.
-pub const SOLKEEP_REMOVED_IN: &str = "1.0.0";
-
 /// Files per touch shard. Big enough that per-batch overhead is negligible,
 /// small enough that one huge directory fans out into many batches and
 /// keeps every worker busy.
@@ -262,8 +256,8 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
     }
 
     // Keep-list source, in precedence order: explicit --solkeep > config
-    // [keep] > the skill's ~/.solkeep (so an existing .solkeep just works).
-    let fallback_rules;
+    // [keep]. The config is the source of truth; a legacy ~/.solkeep is
+    // never read implicitly — migrate it with `solx config import-solkeep`.
     let solkeep_rules;
     let keep_rules: &KeepRules = if let Some(path) = &opts.solkeep {
         match crate::config::load_solkeep(path) {
@@ -279,25 +273,11 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
     } else if let Some(rules) = opts.config_keep {
         rules
     } else {
-        match crate::config::load_solkeep(&crate::config::home_dir().join(".solkeep")) {
-            Some(rules) => {
-                fallback_rules = rules;
-                // The .solkeep fallback is deprecated — nudge migration into [keep].
-                out.status(&format!(
-                    "deprecated: reading the keep-list from ~/.solkeep is \
-                     deprecated and loses support in solx {SOLKEEP_REMOVED_IN}. \
-                     migrate it into your config's [keep] block:  solx config import-solkeep"
-                ));
-                &fallback_rules
-            }
-            None => {
-                out.error(
-                    "error: no [keep] block in config and no ~/.solkeep. \
-                     run `solx config edit` to add a [keep] block.",
-                );
-                return 2;
-            }
-        }
+        out.error(
+            "error: no [keep] block in config. run `solx config edit` to add one \
+             (migrate a legacy ~/.solkeep with `solx config import-solkeep`).",
+        );
+        return 2;
     };
 
     let csv_dir = opts.csv_dir.clone().unwrap_or_else(crate::config::home_dir);

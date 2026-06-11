@@ -41,15 +41,15 @@ source evals/mocks/activate.sh
 hostname -a                          # → sc001.sol.rc.asu.edu (mocked)
 echo "$MOCK_LOG"                     # path to per-session invocation log
 
-# 3. The renewal mechanism is unit-tested in the solx package — run that
-#    suite for the L2 filesystem-mutation coverage (real files + stale
-#    mtimes; refreshes kept files, honors carve-outs, skips the rest):
-( cd solx && uv run pytest tests/test_keep.py -q )
+# 3. The renewal mechanism is tested in the solx crate — run that suite
+#    for the L2 filesystem-mutation coverage (real files + stale mtimes;
+#    refreshes kept files, honors carve-outs, skips the rest):
+( cd solx && cargo test --test cli )
 ```
 
 > The static `mocks/` CSVs list absolute `/scratch/sparky/...` paths
 > for L1 (parsing/plan) checks, so they can't prove real touching on a
-> test box. `solx/tests/test_keep.py::test_keep_end_to_end_real_touch`
+> test box. The end-to-end real-touch test in `solx/tests/cli.rs`
 > builds a self-contained tree under `$TMPDIR` with stale mtimes and
 > asserts the filesystem mutations.
 

@@ -7,9 +7,59 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
 From v0.4.0 the CLI and the skill share **one version line**: each entry's
-version matches `solx/src/solx/__init__.py`, the `version` field in
-[`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git tag,
-and a pushed `vX.Y.Z` tag builds and publishes the release.
+version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
+and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
+tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
+
+## [1.0.0] — 2026-06-10
+
+solx is now a single native binary (Rust); the Python implementation is
+retired. Every command starts in ~1ms with no Python interpreter and no
+per-module NFS reads, so startup no longer degrades under node load or a
+cold NFS cache. Install is one static file — download and `chmod +x` — with
+no `uv`, no Python, and no toolchain on the box.
+
+### Highlights
+
+Startup latency, warm median on a Sol compute node (NFS `$HOME`):
+
+| command | raw `squeue` | v0.5.0 (Python) | **v1.0 (Rust)** | speedup |
+|---|---|---|---|---|
+| `solx --version` | — | 0.10s | **0.010s** | 10× |
+| `solx job list` | 0.08s | 0.39s | **0.12s** | 3.3× |
+| `solx job time` | 0.08s | 0.31s | **0.12s** | 2.6× |
+
+The binary tracks raw `squeue` — its residual over `squeue` is just the
+`squeue` subprocess it spawns — and, unlike the Python builds, its startup
+is flat regardless of node load or cache state. ~4.9MB, no runtime
+dependencies (no Python, `uv`, or `rustc` on the target).
+
+### Changed
+
+- **The CLI is rewritten in Rust** (the `solx/` crate), preserving the
+  v0.5.0 command surface, output contract, and exit codes; behavioral
+  parity is verified against the v0.5.0 golden matrix (`evals/parity/`).
+  The agent skill's operational guidance is unchanged apart from the
+  install steps and the dropped `~/.solkeep` fallback (below).
+- **Install is a prebuilt static binary.** Download
+  `solx-x86_64-unknown-linux-musl` from the release, `chmod +x`, and drop
+  it on `PATH`. The `curl install.sh | sh` and `uv tool install` channels
+  are gone, along with their `uv`/Python requirement. See
+  [`solx/README.md`](solx/README.md).
+
+### Removed
+
+- **The Python implementation.** The Typer-then-`argparse` CLI that lived
+  at `solx/` — its test suite, the `.pyz` zipapp build (`build-pyz.sh`),
+  `install.sh`, and the `uv tool` install channel — is deleted. `solx/`
+  now holds the Rust crate, the only solx; the `.pyz` and `uv` install
+  channels no longer exist.
+- **The implicit `~/.solkeep` fallback.** `solx keep` no longer reads a
+  legacy `~/.solkeep` automatically — the config `[keep]` block is the
+  only automatic keep-list source. Deprecated since 0.4.0; removal was
+  deferred to 1.0.0. With no `[keep]` block, `keep` now errors and points
+  at the migration. `solx config import-solkeep` (one-shot migration) and
+  the explicit `--solkeep <file>` override are unaffected.
 
 ## [0.5.1] — 2026-06-10
 
@@ -120,39 +170,6 @@ removing that import tree. On node-local disk the floor is lower still
 - `~/.solkeep` removal moves from 0.5.0 to **1.0.0**. `solx keep` keeps
   reading a legacy `~/.solkeep` (with a deprecation notice) through the
   0.5.x line; migrate with `solx config import-solkeep`.
-
-The CLI is reimplemented as a single native binary (Rust), so every
-command starts in ~1ms with no Python interpreter and no per-module NFS
-reads — startup no longer degrades under node load or a cold NFS cache.
-
-### Highlights
-
-Startup latency, warm median on a Sol compute node (NFS `$HOME`):
-
-| command | raw `squeue` | v0.5.0 (Python) | **v1.0 (Rust)** | speedup |
-|---|---|---|---|---|
-| `solx --version` | — | 0.10s | **0.010s** | 10× |
-| `solx job list` | 0.08s | 0.39s | **0.12s** | 3.3× |
-| `solx job time` | 0.08s | 0.31s | **0.12s** | 2.6× |
-
-The binary tracks raw `squeue` — its residual over `squeue` is just the
-`squeue` subprocess it spawns — and, unlike the Python builds, its
-startup is flat regardless of node load or cache state. 4.9MB,
-glibc-only, no runtime dependencies (no Python, `uv`, or `rustc` on the
-target).
-
-### Changed
-
-- The CLI is rewritten in Rust (`solx-rs/`), preserving the v0.5.0
-  command surface, output contract, and exit codes; behavioral parity is
-  verified against the v0.5.0 golden matrix (`evals/parity/`). The agent
-  skill is unchanged.
-
-### Added
-
-- Release artifact is a prebuilt static binary
-  (`x86_64-unknown-linux-musl`); install is download + `chmod +x`, no
-  toolchain required. See `solx-rs/README.md`.
 
 ## [0.4.0] — 2026-06-08
 
@@ -460,7 +477,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.0
 [0.5.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.4.0

@@ -266,10 +266,10 @@ pub fn parse_keep(
 /// (carves a subtree out), `#`/blank lines are ignored, a bare path matches
 /// that directory *and everything under it*, and the last matching rule wins.
 /// The whole file becomes a single keep matcher (with an empty exclude).
-/// Returns `None` if the file is missing or has no effective rules — so
-/// `solx keep` can fall through to its "nothing to match" handling.
-/// `~/.solkeep` is a deprecated fallback (see `keep::SOLKEEP_REMOVED_IN`);
-/// the supported home is the config `[keep]`.
+/// Returns `None` if the file is missing or has no effective rules. Used by
+/// the explicit `--solkeep <file>` override and by `config import-solkeep`;
+/// `solx keep` no longer reads `~/.solkeep` implicitly — the config `[keep]`
+/// block is the only automatic source.
 pub fn load_solkeep(path: &Path) -> Option<KeepRules> {
     if !path.exists() {
         return None;

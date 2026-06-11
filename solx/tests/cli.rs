@@ -300,13 +300,16 @@ fn keep_invalid_stage_exits_2() {
 fn keep_without_rules_exits_2() {
     let sb = Sandbox::new(); // no config, no ~/.solkeep
     sb.cmd().args(["keep", "-n"]).assert().code(2).stderr(
-        "error: no [keep] block in config and no ~/.solkeep. \
-         run `solx config edit` to add a [keep] block.\n",
+        "error: no [keep] block in config. run `solx config edit` to add one \
+         (migrate a legacy ~/.solkeep with `solx config import-solkeep`).\n",
     );
 }
 
 #[test]
-fn keep_solkeep_fallback_names_removal_version() {
+fn keep_ignores_legacy_solkeep_without_config() {
+    // A bare ~/.solkeep is no longer read implicitly: with no [keep] block,
+    // `keep` errors and points at `config import-solkeep` instead of touching
+    // anything based on the legacy file.
     let sb = Sandbox::new(); // no config.toml
     sb.write_home(".solkeep", "/scratch/sparky/proj-a\n");
     sb.write_home(
@@ -316,8 +319,9 @@ fn keep_solkeep_fallback_names_removal_version() {
     sb.cmd()
         .args(["--json", "keep", "-n"])
         .assert()
-        .success()
-        .stderr(predicate::str::contains("loses support in solx 1.0.0"));
+        .code(2)
+        .stderr(predicate::str::contains("no [keep] block in config"))
+        .stderr(predicate::str::contains("config import-solkeep"));
 }
 
 #[test]

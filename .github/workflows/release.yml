@@ -1,8 +1,8 @@
 name: release
 
-# CLI-first release. A pushed `vX.Y.Z` tag builds the single-file zipapp
-# (solx.pyz) and publishes a GitHub Release with it + install.sh attached, so
-#   curl -fsSL .../releases/latest/download/install.sh | sh
+# A pushed `vX.Y.Z` tag builds the static `solx` binary and publishes a
+# GitHub Release with it attached, so
+#   curl -fLo solx .../releases/latest/download/solx-x86_64-unknown-linux-musl
 # always fetches the build matching the tag. The skill rides the same tag
 # (one version line — see CHANGELOG.md), installed from the repo tree.
 
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build a release for, e.g. v0.4.0"
+        description: "Existing tag to (re)build a release for, e.g. v1.0.0"
         required: true
 
 permissions:
@@ -20,23 +20,22 @@ permissions:
 
 jobs:
   release:
-    name: build .pyz + publish release
+    name: build binary + publish release
     runs-on: ubuntu-latest
-    env:
-      # Must match build-pyz.sh / install.sh: the embedded bytecode is
-      # interpreter-specific, so the build and the install shebang agree.
-      SOLX_PYTHON: "3.11"
+    defaults:
+      run:
+        working-directory: solx
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - name: Install uv (Python 3.11)
-        uses: astral-sh/setup-uv@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.11"
-          enable-cache: true
-          working-directory: solx   # the uv project + lockfile live here
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solx
 
       - name: Resolve tag
         id: tag
@@ -47,28 +46,27 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: echo "tag=${INPUT_TAG:-$REF_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify the tag matches the one version line (CLI, package, skill)
-        working-directory: solx
+      - name: Verify the tag matches the one version line (crate + skill)
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          uv sync --frozen
           want="${TAG#v}"
-          cli="$(uv run --frozen solx --version)"
-          pkg="$(sed -nE 's/^version = "([^"]+)".*/\1/p' pyproject.toml | head -1)"
+          crate="$(sed -nE 's/^version = "([^"]+)".*/\1/p' Cargo.toml | head -1)"
           skill="$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' ../skills/sol-skill/SKILL.md | head -1)"
-          echo "tag=$want  solx=$cli  pyproject=$pkg  SKILL.md=$skill"
-          if [ "$cli" != "$want" ] || [ "$pkg" != "$want" ] || [ "$skill" != "$want" ]; then
-            echo "::error::version mismatch — tag=$want solx=$cli pyproject=$pkg SKILL.md=$skill. Bump all three (and uv lock) or retag." >&2
+          echo "tag=$want  Cargo.toml=$crate  SKILL.md=$skill"
+          if [ "$crate" != "$want" ] || [ "$skill" != "$want" ]; then
+            echo "::error::version mismatch — tag=$want Cargo.toml=$crate SKILL.md=$skill. Bump both (and the lockfile) or retag." >&2
             exit 1
           fi
 
-      - name: Run tests
-        working-directory: solx
-        run: uv run --frozen pytest -q
+      - name: Build (musl static)
+        run: cargo build --release --target x86_64-unknown-linux-musl
 
-      - name: Build single-file zipapp
-        run: bash solx/scripts/build-pyz.sh
+      - name: Stage the release asset
+        run: |
+          install -m 755 \
+            target/x86_64-unknown-linux-musl/release/solx \
+            solx-x86_64-unknown-linux-musl
 
       - name: Publish GitHub Release
         env:
@@ -77,11 +75,10 @@ jobs:
         run: |
           # Create on first run; on a re-run (workflow_dispatch) refresh assets.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" solx/dist/solx.pyz solx/scripts/install.sh --clobber
+            gh release upload "$TAG" solx-x86_64-unknown-linux-musl --clobber
           else
             gh release create "$TAG" \
               --title "$TAG" \
               --generate-notes \
-              solx/dist/solx.pyz \
-              solx/scripts/install.sh
+              solx-x86_64-unknown-linux-musl
           fi

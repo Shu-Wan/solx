@@ -42,8 +42,9 @@ cd evals/parity
 Each case lands as `golden-v0.4.0/<case>.{out,err,code}` with per-case
 tempdir paths normalized to `__HOME__`. Goldens are
 **environment-captured, not committed**: capture the reference version's
-golden on the same machine (and Python) you'll run the candidate on, so
-the diff isolates the code change rather than the environment.
+golden on the same machine you'll run the candidate on, so the diff
+isolates the code change rather than the environment. The v1.0 binary is
+verified against the v0.5.0 golden (the last Python release).
 
 ## Comparing a candidate
 
@@ -62,8 +63,9 @@ the diff isolates the code change rather than the environment.
 - **VERSION_CASES** (`--version`, `version`): exit code must match and
   stdout must be a bare semver; the value itself may differ.
 - **EXPECTED_DIFF**: known deliberate divergences (e.g. the trailing
-  `--json` acceptance case, the `~/.solkeep` deprecation message's
-  version string). Reported, but never fail the run.
+  `--json` acceptance case, or the dropped implicit `~/.solkeep`
+  fallback — v0.5.0 read it and warned, v1.0 errors). Reported, but never
+  fail the run.
 
 The class membership lives at the top of `compare_runs.py`; when a
 behavior change is intentional, move its case into `EXPECTED_DIFF` in

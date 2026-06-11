@@ -3,8 +3,9 @@
 Forward-looking design doc for **`solx`**, a CLI for working
 on ASU's **Sol** supercomputer. The Sol-side CLI and its skill
 integration shipped in v0.4.0; v0.5.0 cut startup latency to the same
-order as a raw SLURM call. The next focus is the **native single-binary
-rewrite** (below); the **local-machine-side** design stays deferred.
+order as a raw SLURM call; v1.0 made `solx` a native single binary
+(Rust). With the Sol-side CLI stable, the next focus is the
+**local-machine (laptop) side** (below).
 
 End-user docs: [`../README.md`](../README.md),
 [`../skills/sol-skill/SKILL.md`](../skills/sol-skill/SKILL.md).
@@ -17,87 +18,64 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
 | Stage | Outcome | Status |
 |---|---|---|
 | 1 — Skill manual-SSH path | The agent skill (manual SSH, `sbatch`, scratch renewal). | ✅ shipped (v0.2.0) |
-| 2 — `solx` CLI (Sol-only) | `solx/` package: jobs, interactive allocation, scratch renewal, config; CLI agent output. | ✅ shipped (v0.3.0) |
+| 2 — `solx` CLI (Sol-only) | The `solx` CLI: jobs, interactive allocation, scratch renewal, config; CLI agent output. | ✅ shipped (v0.3.0) |
 | 3 — Skill ↔ `solx` integration + distribution | Skill installs and drives `solx`; single-file install channel + CI releases; one version line; situational job awareness (#9). | ✅ shipped (v0.4.0) |
 | 4 — Startup latency | Thin spine: stdlib `argparse` dispatch, `rich` only on human render paths, static completion scripts. A warm `solx job` read costs ~0.13s with the `.pyz` install — same order as raw `squeue`. | ✅ shipped (v0.5.0) |
-| 5 — Native single binary | Rewrite `solx` as one native executable (Rust): cold-start immunity on the NFS home, no Python/`uv` runtime requirement, single-file install. | 🟡 in development (`v1.0-rust` branch, targets v1.0) |
-| — Local-machine side | `solx up/down/forward`, ssh-chain construction. | ⏸ deferred |
+| 5 — Native single binary | Rewrite `solx` as one native executable (Rust): cold-start immunity on the NFS home, no Python/`uv` runtime requirement, prebuilt static binary. Retires the Python implementation. | ✅ shipped (v1.0.0) |
+| 6 — Local-machine side | `solx up/down/forward/info`, ssh-chain construction from the laptop. | 🔜 next (design) |
 
 Shipped-stage detail lives in [`../CHANGELOG.md`](../CHANGELOG.md).
 
 ## Startup latency — shipped in v0.5.0
 
-On Sol's NFS home, `solx` used to pay a Python-startup tax a raw SLURM
-binary doesn't (Typer/Click import ≈ 0.97s on every invocation, plus
-`rich` pulled in even on `--json` runs), so the skill steered agents to
-raw `squeue`/`scancel` for one-off reads. v0.5.0 removed that tax with a
-**thin spine**:
+v0.5.0 removed the Python-startup tax `solx` used to pay on Sol's NFS home
+(a Typer/Click import on every call, plus `rich` even on `--json` runs):
+a stdlib `argparse` thin spine that short-circuits `--version`, imports
+command bodies lazily, and emits fully static completion scripts. That
+brought a warm `solx job` read to the same order as raw `squeue`; the v1.0
+native binary then removed the interpreter floor underneath it entirely.
 
-- **stdlib `argparse` dispatch** (`solx/src/solx/main.py`, entry point
-  `solx.main:main`). Importing the entry module costs nothing beyond the
-  interpreter baseline; `--version`/`version` short-circuit before the
-  parser tree is even built; command bodies (and their `rich`/`pathspec`
-  dependency trees) import inside their handlers.
-- **`rich` on human render paths only.** `Out` writes JSON and plain
-  diagnostics straight to `sys.stdout`/`sys.stderr`; `rich.table` /
-  `rich.prompt` import inside the table-render and prompt branches. A
-  `--json` or piped run never loads `rich` at all.
-- **Static completion scripts.** `solx completions <bash|zsh|fish>`
-  renders the command surface into a fully static script
-  (`solx/src/solx/_completions.py`) — completion never execs `solx`, so
-  the first Tab of a session costs no interpreter start.
+**Measured** (Sol compute node, 4 cores, NFS `$HOME`, real Slurm 25.11.6;
+warm median seconds, n=9, cold-ish first run in parentheses):
 
-**Measured** (Sol compute node inside an allocation, 4 cores, NFS
-`$HOME`, real Slurm 25.11.6; warm median seconds, n=9 after 1 warmup,
-cold-ish first run in parentheses):
+| command | raw squeue | v0.4.0 pyz (NFS) | v0.5.0 pyz (`/tmp`) |
+|---|---|---|---|
+| `--version` | — | 1.345 (1.390) | **0.018** (0.019) |
+| `job list` | 0.076 (0.741) | 2.505 (1.537) | **0.126** (0.123) |
+| `job time` | 0.076 (0.071) | 2.505 (2.505) | **0.127** (0.116) |
 
-| command | raw squeue | v0.4.0 venv | v0.4.0 pyz (`~/.local/bin`) | v0.5.0 venv | v0.5.0 pyz (local `/tmp`) |
-|---|---|---|---|---|---|
-| `--version` | — | 1.137 (1.584) | 1.345 (1.390) | 0.281 (0.234) | **0.018** (0.019) |
-| `job list` | 0.076 (0.741) | 2.500 (2.141) | 2.505 (1.537) | 1.020 (2.160) | **0.126** (0.123) |
-| `job time` | 0.076 (0.071) | 1.251 (1.346) | 2.505 (2.505) | 0.945 (0.153) | **0.127** (0.116) |
+Installed apples-to-apples on NFS `$HOME`, v0.5.0 `.pyz` was ~0.10s /
+0.39s / 0.31s — **13× / 6.4× / 8.1×** over v0.4.0; the residual over raw
+`squeue` was ~50ms (interpreter start + the `squeue` fork).
+`evals/runner/bench_solx_latency.sh` reproduces the comparison on any Sol
+node.
 
-raw squeue rows: `job list` = `squeue --me`; `job time` =
-`squeue -h -j $SLURM_JOB_ID -o %L`. Caveats that keep the table honest:
+## Native single binary — shipped in v1.0
 
-- The `.pyz` column places the v0.5.0 artifact on node-local `/tmp` and
-  the v0.4.0 one on NFS, so the raw 75× / 19.9× / 19.7× overstates code
-  alone. Installed apples-to-apples on NFS `$HOME` (where `install.sh`
-  writes it), v0.5.0 `.pyz` is ~0.10s / 0.39s / 0.31s — **13× / 6.4× /
-  8.1×** over v0.4.0. Venv-to-venv on NFS: 4.0× / 2.5× / 1.3×. Node-local
-  `/tmp` is the best case (`--version` ~0.02s).
-- The remaining gap vs raw `squeue` is ~50ms: interpreter startup plus
-  the `squeue` subprocess fork are all that's left.
-- "Cold" is the first invocation in the benchmark process only — page
-  cache on a shared node makes true cold unmeasurable, so treat cold
-  numbers as cold-ish. The cluster controller showed sporadic ~2s
-  `squeue` spikes, which the n=9 medians absorb.
+v1.0 made `solx` a single native binary (Rust), so a command is one exec
+with flat startup regardless of node load — no interpreter, no `uv`/Python
+on the box. The command surface and output are unchanged, verified against
+`evals/parity/`. Detail and the measured table are in the
+[v1.0.0 changelog entry](../CHANGELOG.md).
 
-`evals/runner/bench_solx_latency.sh` reproduces the solx-vs-raw
-comparison on any Sol node; `evals/parity/` is the behavioral matrix
-that verified the dispatch rewrite against captured v0.4.0 output.
+## Next: the local-machine (laptop) side
 
-**What remains, for v1.0:**
+The Sol-side loop is stable, so the next step is bringing it to where you
+start — your laptop. The sketch is `solx up` / `down` / `forward` / `info`:
+construct the SSH chain (ProxyJump through the login node), start or attach
+an allocation, and forward a port to a compute-node service, all from the
+local machine.
 
-- **Stage 5 — the native single-binary rewrite (Rust).** A compiled
-  `solx` removes the interpreter floor entirely and is immune to NFS
-  cold starts: no Python or `uv` runtime requirement, one static file to
-  install. In development on the `v1.0-rust` branch.
-- **Actually removing the `~/.solkeep` fallback.** Its removal moved
-  from 0.5.0 to **1.0.0** — `solx keep` keeps reading a legacy
-  `~/.solkeep` (with a deprecation notice) through the 0.5.x line, so
-  the migration window spans one more release.
+It's the next focus, not started: the design threads ssh-client behavior,
+ControlMaster, Duo, and scheduler queue races — none of it unit-testable —
+so it needs a from-scratch design and a maintainer greenlight before work
+begins. Until then `solx` stays a tool you run **on Sol**, and the manual
+`ssh -L … -J …` chain (see the skill) covers the laptop side.
 
 ## Out of scope (still)
 
-- **Local-machine-side `solx`** (`up/down/forward/info`, ssh-chain
-  construction) — deferred. The original "one magic command from the
-  local machine" threaded ssh-client behavior, ControlMaster, Duo, and queue
-  races, none of which are unit-testable. It returns only when the
-  Sol-side primitives are stable, the design is re-thought from scratch,
-  and the user greenlights it. `solx` stays a tool you run **on Sol**.
-- **PyPI publication.** Install is via the `.pyz` channel or
-  `uv tool install` from Git.
+- **Package-manager publication** (crates.io, PyPI, Homebrew). Install is
+  the prebuilt binary from the GitHub Release.
 
 ## Design principles
 
@@ -129,8 +107,8 @@ derives from them.
 9. **User experience over the tool.** The skill drives an agent on the
    user's behalf; where a raw SLURM call is faster and just as clear,
    prefer it. `solx` has to *earn* its place per task — the v0.5.0
-   startup-latency work exists because of this principle, and the
-   native rewrite (Stage 5) continues it.
+   startup-latency work existed because of this principle, and the v1.0
+   native binary continued it.
 
 ## Command surface, config, and behavior → `solx.md`
 
@@ -163,18 +141,19 @@ surface comes with it.
 
 ## Decisions confirmed
 
-- **CLI framework**: stdlib `argparse` as of 0.5.0 (see
-  [Startup latency](#startup-latency--shipped-in-v050)). `rich` is
-  retained for human-facing tables and prompts only, imported only on
-  those paths — agent (`--json`/piped) runs never load it. Textual
-  deferred.
-- **Completions**: static scripts generated from one description of the
-  command surface (`solx/src/solx/_completions.py`) for bash, zsh, and
-  fish; completion never execs `solx`. Both zsh install modes
-  (eval/source and fpath autoload) are supported.
-- **`~/.solkeep` removal**: **1.0.0**. Deprecated since 0.4.0; `solx
-  keep` still reads it with a deprecation notice, and `solx config
-  import-solkeep` migrates it.
+- **Implementation**: native binary in Rust as of v1.0 (`clap` command
+  tree), replacing the v0.5.0 stdlib-`argparse` Python build. Plain
+  aligned tables for human output; nothing emits color. The v0.5.0
+  thin-spine work (see [Startup latency](#startup-latency--shipped-in-v050))
+  is what the binary builds on.
+- **Completions**: static scripts for bash, zsh, and fish, embedded in
+  the binary (`solx/assets/`) and emitted by `solx completions`;
+  completion never execs `solx`. Both zsh install modes (eval/source and
+  fpath autoload) are supported.
+- **`~/.solkeep` fallback**: removed in v1.0. Deprecated since 0.4.0 with
+  the removal deferred to 1.0.0; `solx keep` now reads the keep-list only
+  from the config `[keep]` block. `solx config import-solkeep` migrates a
+  legacy file, and `--solkeep <file>` is an explicit per-run override.
 - **Config**: single TOML under `$XDG_CONFIG_HOME/solx/config.toml`. No
   multi-file split, no `[shared]` merge.
 - **Glob library for `[keep]`**: `pathspec` (gitignore-style include +

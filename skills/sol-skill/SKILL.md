@@ -1,6 +1,6 @@
 ---
 name: sol-skill
-version: 0.5.1
+version: 1.0.0
 description: Conventions and tooling for ASU's Sol supercomputer, built around the `solx` CLI. Use whenever a task is happening on Sol — the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). It covers renewing /scratch files Sol has flagged for deletion (purge/inactivity warnings) via `solx keep` and where to store datasets and model caches; requesting and managing SLURM jobs (the `solx job` interactive-allocation lifecycle, sbatch for batch, GPU and partition/QOS choice, why a job is pending, fairshare-aware and time-aware job management); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, …), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---
@@ -80,12 +80,13 @@ the user's day-to-day tool for templated interactive allocations
 (`job start` / `job jump`) and scratch renewal (`keep`) — install it when
 the user is doing that kind of work.
 
-**`solx` is fast enough to be the default.** A warm `solx job` read
-costs ~0.13s on Sol with the recommended single-file install, vs ~0.08s
-for a raw `squeue` (measured — `evals/runner/bench_solx_latency.sh`), so
-one-off reads carry no meaningful `solx` penalty. Raw SLURM stays a full
-equivalent (see "`solx` vs raw SLURM" below) — it's the fallback when
-`solx` isn't installed, not a faster path to prefer.
+**`solx` is fast enough to be the default.** It's a single native binary
+(Rust), so a warm `solx job` read costs ~0.12s on Sol vs ~0.08s for a raw
+`squeue` (measured — `evals/runner/bench_solx_latency.sh`), and startup is
+flat regardless of node load or NFS cache state. One-off reads carry no
+meaningful `solx` penalty. Raw SLURM stays a full equivalent (see "`solx`
+vs raw SLURM" below) — it's the fallback when `solx` isn't installed, not a
+faster path to prefer.
 
 **Detect, then install when the task needs it.** Once you've confirmed
 you're on Sol (see [Detecting the Environment](#detecting-the-environment)):
@@ -95,24 +96,21 @@ command -v solx        # missing? install it when the user needs job start/jump 
 ```
 
 If it's absent and the task calls for it, **prompt the user to install
-it** (then run `solx init`):
+it** (then run `solx init`). `solx` is one static binary — no Python, no
+`uv`, no toolchain — so installing is a download and a `chmod`:
 
 ```shell
-# Recommended on Sol: single-file install, fast cold start on the NFS home.
-curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
-
-# Alternative: as a uv tool (isolated venv on $PATH).
-uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
+chmod +x ~/.local/bin/solx
 
 solx --version
 solx init              # writes ~/.config/solx/config.toml (offers a quick walkthrough)
 ```
 
-Both paths use [`uv`](https://docs.astral.sh/uv/) to provision a modern
-Python (Sol's system `python3` is too old); if `uv` isn't on `PATH`,
-install it first. Installing reaches the network and writes to
-`~/.local/bin` — propose the command and get the user's go-ahead (or run
-it with their OK) rather than installing silently.
+The binary is fully static (musl), so it runs on Sol's RHEL 8 as-is.
+Installing reaches the network and writes to `~/.local/bin` — propose the
+command and get the user's go-ahead (or run it with their OK) rather than
+installing silently. Make sure `~/.local/bin` is on `$PATH`.
 
 **If the user declines or can't install `solx`,** nothing is lost for the
 common cases — raw Slurm covers them: `squeue`/`scancel` for status and
@@ -131,7 +129,7 @@ version:
 | `solx job jump` | Drop a shell onto the job's compute node (`srun --pty`). |
 | `solx job list` · `time` · `stop` | List · time-left · cancel. Raw `squeue`/`scancel` are equivalent (see below). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]`. |
-| `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into `[keep]`. |
+| `solx config import-solkeep` | Import an existing `~/.solkeep` into `[keep]`. |
 
 `--json` forces JSON — before the subcommand (`solx --json job list`) or
 after it (`solx job list --json`; exception: after `job start`, tokens
@@ -141,12 +139,11 @@ prompt unless `-y`, refuse in a non-interactive session rather than
 hang, and preview with `-n`.
 
 **`solx` vs raw SLURM — equivalent for one-off reads; use either.** A
-warm `solx job` read runs in ~0.13s with the single-file install, vs
-~0.08s for raw `squeue` (measured — see
-`evals/runner/bench_solx_latency.sh`); a venv install on the NFS home is
-slower (~1s warm), which is one more reason to prefer the single-file
-channel. The raw equivalents, for when `solx` isn't installed or the
-user asks for them:
+warm `solx job` read runs in ~0.12s, vs ~0.08s for raw `squeue` (measured
+— see `evals/runner/bench_solx_latency.sh`); the residual over `squeue` is
+just the `squeue` subprocess `solx` spawns, and the native binary's
+startup doesn't degrade under node load or a cold NFS cache. The raw
+equivalents, for when `solx` isn't installed or the user asks for them:
 
 ```shell
 squeue --me                                # = solx job list
@@ -267,20 +264,15 @@ compute node can't feed more than a couple, while the DTN has many. See
 [references/scratch.md](references/scratch.md) for the non-interactive
 `PATH` gotcha when invoking over `ssh soldtn`.
 
-#### Migrating a legacy `~/.solkeep`
+#### Importing an existing `~/.solkeep`
 
-The older standalone `sol_renew.py` script and the `~/.solkeep`
-keep-list it read are **deprecated**. `solx keep` still reads a
-`~/.solkeep` if it finds one (so nothing breaks today), but it prints a
-deprecation notice and **support is removed in solx 1.0.0**. If you see
-a `~/.solkeep`, migrate it into the config once:
+`solx keep` reads its keep-list from the `[keep]` block in the config. If
+the user has a `~/.solkeep` keep-list file, fold it into the config once:
 
 ```shell
 solx config import-solkeep    # folds ~/.solkeep into the [keep] block
 solx config show              # sanity-check the result
 ```
-
-After migrating, `solx keep` uses `[keep]` and the warning goes away.
 
 ### Sharing Files
 
@@ -306,7 +298,7 @@ kind of software:
 2. **Python — use `uv`.** The system `python3` on Sol is older than
    modern code expects. Don't fight it; use
    [`uv`](https://docs.astral.sh/uv/) to manage interpreters and
-   environments instead. (It's also what installs `solx`.)
+   environments instead.
 
    - Point `uv`'s cache at `/scratch` so it doesn't fill `/home`:
 
