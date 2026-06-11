@@ -59,8 +59,11 @@ jobs:
             exit 1
           fi
 
+      - name: Test (locked)
+        run: cargo test --locked
+
       - name: Build (musl static)
-        run: cargo build --release --target x86_64-unknown-linux-musl
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
 
       - name: Stage the release asset
         run: |

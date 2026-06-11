@@ -19,6 +19,7 @@ Rust toolchain, no Python, no `uv` on the box. Download it, make it
 executable, and put it anywhere on `PATH`:
 
 ```console
+$ mkdir -p ~/.local/bin
 $ curl -fLo solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
 $ chmod +x solx
 $ mv solx ~/.local/bin/

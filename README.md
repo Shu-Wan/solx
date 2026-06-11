@@ -20,6 +20,7 @@ SSH to Sol, run `solx`, and keep the whole loop in your terminal.
 box. On Sol, download it, make it executable, and put it on your `$PATH`:
 
 ```shell
+mkdir -p ~/.local/bin
 curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
 chmod +x ~/.local/bin/solx
 ```

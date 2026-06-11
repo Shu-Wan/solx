@@ -20,6 +20,7 @@ version, on Sol:
 
 ```shell
 # solx is one static binary — download it, make it executable, put it on PATH:
+mkdir -p ~/.local/bin
 curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
 chmod +x ~/.local/bin/solx
 
