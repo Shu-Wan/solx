@@ -11,7 +11,26 @@ version matches `solx/src/solx/__init__.py`, the `version` field in
 [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git tag,
 and a pushed `vX.Y.Z` tag builds and publishes the release.
 
-## [Unreleased]
+## [0.5.1] — 2026-06-10
+
+### Fixed
+
+- **`install.sh` produced an unrunnable `solx`.** The installer rebound the
+  zipapp's interpreter by swapping the shebang bytes in place, but a zipapp
+  records its central-directory offsets as absolute file positions that
+  include the shebang line — replacing it with a different-length path
+  shifted every offset, so `zipimport` (which executes the archive) rejected
+  it with "bad central directory size or offset" and `solx` died on startup
+  with `SyntaxError: source code cannot contain null bytes`. Since the build
+  stamps the CI runner's long interpreter path, no local path matched its
+  length and essentially every `.pyz` install was broken. The installer now
+  extracts the payload and rebuilds the archive around the local interpreter
+  (which regenerates the offsets) and smoke-tests the result before
+  reporting success, falling back to a uv-managed interpreter if the
+  resolved one can't run a zipapp. `zipfile` tolerated the corrupted archive
+  on read, which is why the build's own check never caught it.
+
+## [0.5.0] — 2026-06-10
 
 The CLI's dispatch layer is rewritten on the Python standard library and
 startup latency drops to the same order as a raw SLURM call, so the
@@ -408,7 +427,9 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.1
+[0.5.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.3.0
 [0.2.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.2.1

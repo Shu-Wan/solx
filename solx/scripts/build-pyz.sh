@@ -38,7 +38,8 @@ rm -rf "$STAGE/bin"  # entry-point scripts; the zipapp __main__ replaces them
 "$PY" -m compileall -b -q "$STAGE"
 # -p stamps the build interpreter's absolute path as the shebang, so the
 # artifact is directly executable on the build machine (./dist/solx.pyz).
-# install.sh replaces the shebang with the destination machine's interpreter.
+# install.sh rebuilds the archive around the destination machine's interpreter
+# (the shebang can't be swapped in place — the offsets are absolute).
 "$PY" -m zipapp "$STAGE" -o "$ROOT/dist/solx.pyz" -m "solx.main:main" -c -p "$PY"
 
 echo "built $ROOT/dist/solx.pyz ($(du -h "$ROOT/dist/solx.pyz" | cut -f1), python $PYVER)"
