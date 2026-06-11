@@ -5,6 +5,14 @@
 [![Rust](https://img.shields.io/badge/rust-single%20binary-CE412B?logo=rust&logoColor=white)](#installation)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+<div align="center">
+
+### [📋 Cheat sheet](skills/sol-skill/references/cheatsheet.md) &nbsp;·&nbsp; [📖 solx docs](docs/solx.md) &nbsp;·&nbsp; [🌵 Sol skill](skills/sol-skill/SKILL.md)
+
+<sub>cheat sheet also as a [PDF](docs/cheatsheet.pdf) or from the CLI: `solx cheatsheet`</sub>
+
+</div>
+
 Solx is a CLI for ASU's **Sol** supercomputer, designed for agent-assisted
 work so you can stop babysitting Slurm.
 
@@ -53,6 +61,7 @@ What it's good at:
 **Learn more:** the full command manual is [docs/solx.md](docs/solx.md). Cached
 reference notes on Sol conventions —
 [the `solx` CLI](skills/sol-skill/references/solx.md),
+[the Sol cheat sheet](skills/sol-skill/references/cheatsheet.md) ([PDF](docs/cheatsheet.pdf)),
 [modules](skills/sol-skill/references/module.md),
 [scratch policy](skills/sol-skill/references/scratch.md),
 [Slurm jobs](skills/sol-skill/references/slurm.md),

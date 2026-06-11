@@ -98,7 +98,7 @@ partition = "htc"              # the fast queue — good for quick tests
 time = "0-1"
 
 [jobs.gpu]
-partition = "public"
+partition = "htc"              # htc carries A100s; a 4h GPU run fits its wall
 gres = "gpu:a100:1"
 time = "0-4"
 extra_args = ["--mem=64G", "--cpus-per-task=8"]
@@ -113,7 +113,8 @@ exclude = ["**/.venv", "**/.git", "**/__pycache__", "**/node_modules"]
 `default_shell`, `default_template`, and ≥1 `[jobs.<name>]` are
 required; `qos`/`gres`/`extra_args`/`[keep]` are optional. Anything
 after `--` on `solx job start` is appended to `salloc` (last flag wins):
-`solx job start gpu -- --mem=128G --time=8:00:00`.
+`solx job start gpu -- -p public --time=8:00:00` jumps to `public` when a
+run needs more than htc's 4-hour wall.
 
 ## Leaving out the job id (verb-aware resolution)
 

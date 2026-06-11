@@ -94,7 +94,9 @@ to the skill should mean adding a row here in the same group.
 |---|---|---|
 | Picks `interactive` wrapper for interactive shells over raw `salloc` | 🟢 tested | Verified iter-4 eval B |
 | Knows `interactive` defaults to `-p htc -q public -c 1 -t 0-4` (bare invocation works) | 🟡 documented | Added after reading `/usr/local/bin/interactive` source |
-| Routes "lightweight / debug / quick" workloads to `htc` partition | 🟢 tested | Verified iter-4 eval B (rule promoted to SKILL.md from references) |
+| Routes work by wall-time, not CPU-vs-GPU: ≤4h (incl. GPU) → `htc`; resists the "GPU → public" reflex | 🟢 tested | Partition eval: fixed skill 14/14 vs pre-fix 10/14 (evals #4/#8/#9/#10) |
+| Knows the QOS layer: `debug` (≤15m, high-pri, public/general only — rejected on `htc`), `private` (preemptible, >4h) | 🟢 tested | Eval #10; `-p htc -q debug` rejected by live `sbatch --test-only` |
+| L3 grader: agent's recommended `#SBATCH` header is validated against the live scheduler (`sbatch --test-only`) | 🟢 tested | `l3_sbatch_test_only` check on evals #4/#8/#9/#10 |
 | Recommends `/packages/public/sol-sbatch-templates/` over writing SBATCH from scratch | 🟡 documented | Iter-5 P5: agent acknowledged templates exist but didn't name the specific subdir; skill gap to sharpen |
 | SBATCH header generation (partition, QOS, time, GPU) | 🟢 tested | Verified iter-5 P5: complete OpenMPI script with correct partition/QOS, `srun --mpi=pmix`, `--export=NONE`, `/scratch` logs |
 | Job lifecycle: `sbatch`, `squeue`, `scancel`, `scontrol update` | 🟡 documented | |
