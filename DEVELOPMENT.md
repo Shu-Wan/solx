@@ -11,12 +11,12 @@ content). Public-facing test methodology lives in
 solx/                               # the repo
 ├── README.md                       # end-user entry point (CLI + skill)
 ├── DEVELOPMENT.md                  # you are here (skill + eval harness)
-├── .github/workflows/              # ci.yml (lint+test) · release.yml (.pyz + GH release on tag)
+├── .github/workflows/              # ci.yml (lint+test+build) · release.yml (musl binary + GH release on tag)
 ├── docs/
 │   ├── ROADMAP.md                  # roadmap
 │   ├── solx.md                     # solx user manual
 │   └── coverage.md                 # public methodology + coverage matrix
-├── solx/                           # the solx CLI package (see solx/DEVELOPMENT.md)
+├── solx/                           # the solx CLI crate (Rust; see solx/DEVELOPMENT.md)
 ├── skills/sol-skill/               # the shipped skill (what users install)
 │   ├── SKILL.md
 │   └── references/                 # solx, module, scratch, slurm, sessions, sharing
@@ -27,7 +27,7 @@ solx/                               # the repo
     ├── mocks/                      # userland Sol mock environment
     │   ├── activate.sh
     │   ├── bin/                    # PATH shims (hostname, module, srun, …)
-    │   └── home/                   # fake $HOME with .solkeep + CSV warnings
+    │   └── home/                   # fake $HOME with solx config ([keep]) + CSV warnings
     ├── runner/                     # thin wrapper over skill-creator
     └── results/                    # gitignored — per-iteration benchmarks
 ```
@@ -113,8 +113,8 @@ environment, each graded differently.
 |---|---|---|---|
 | **L0 — Triggering** | Does the skill's frontmatter description make Claude invoke the skill on Sol-related prompts and *not* on near-misses (generic SLURM, generic Python venv)? | Anywhere with `claude -p` | `skill-creator/scripts/run_loop.py` |
 | **L1 — Static / transcript-only** | Agent's *proposed* commands and reference-file reads. No execution. Catches: wrong placeholder, wrong storage location, missing reference load, suggesting `sudo`, suggesting a bulk-touch, snooping `~/.ssh/config`, forgetting the `command -v solx` branch. | Laptop, Sol login, anywhere | Subagent runs the prompt in a "describe what you'd do" mode; grader greps the transcript for required/forbidden patterns. |
-| **L2 — Mocked Sol** | `solx` run against a fake Sol environment, plus its own unit suite. Catches: parsing the warning CSVs, keep-list matching (incl. carve-outs), side-detection logic, the destructive-confirm contract. | Laptop or Sol login (no privileges needed — pure userland mocks) | Run → assert on exit code + stdout/stderr + filesystem mutations. The renewal mechanism is covered by `solx/tests/test_keep.py` (incl. an end-to-end real-touch test over a real tree with stale mtimes); the static `mocks/` CSVs (absolute `/scratch` paths) back L1 parsing checks. |
-| **L3 — Real Sol smoke** | Things only meaningful on actual Sol: real `module avail`, real `srun`, real ssh tunnel through compute node, the `vscode` wrapper, and `solx`'s startup latency vs raw SLURM. | Sol, manually, by maintainer | Short checklist the maintainer runs before release, plus `evals/runner/bench_solx_latency.sh` (read-only timing of `solx job` vs raw `squeue`). |
+| **L2 — Mocked Sol** | `solx` run against a fake Sol environment, plus its own unit suite. Catches: parsing the warning CSVs, keep-list matching (incl. carve-outs), side-detection logic, the destructive-confirm contract. | Laptop or Sol login (no privileges needed — pure userland mocks) | Run → assert on exit code + stdout/stderr + filesystem mutations. The renewal mechanism is covered by the crate's keep tests (`solx/src/keep.rs` vectors + the end-to-end `solx/tests/cli.rs` real-touch test over a real tree with stale mtimes); the static `mocks/` CSVs (absolute `/scratch` paths) back L1 parsing checks. |
+| **L3 — Real Sol smoke** | Things only meaningful on actual Sol: real `module avail`, real `srun`, real ssh tunnel through compute node, the `vscode` wrapper, `solx`'s startup latency vs raw SLURM, and whether a recommended partition/QOS/gres/time combo is actually schedulable. | Sol, manually, by maintainer | Short checklist the maintainer runs before release, `evals/runner/bench_solx_latency.sh` (read-only timing of `solx job` vs raw `squeue`), and `l3_sbatch_test_only` assertions that run an agent's recommended `#SBATCH` header through `sbatch --test-only`. |
 
 The classification lives **in the eval file** — each assertion is
 tagged `layer: L1 | L2 | L3` so the runner picks the right execution
@@ -136,7 +136,7 @@ evals/mocks/
 │   ├── srun, sbatch, scancel, squeue   # log args, return canned exit
 │   └── ssh                        # log args, never connect
 ├── home/                          # fake $HOME during eval
-│   ├── .solkeep                   # example keep-list
+│   ├── .config/solx/config.toml   # example config with a [keep] block
 │   └── scratch-dirs-*.csv         # synthetic Sol warning files
 └── scratch/swan16/                # fake scratch tree under fake $HOME
 ```
@@ -251,7 +251,7 @@ python <skill-creator-path>/eval-viewer/generate_review.py \
      - `"mock_log_contains": "..."` (L2 only — greps `$MOCK_LOG`)
      - `"manual"` (L3 only — surfaces in the manual checklist)
 3. If the eval needs a specific mock state (e.g., `solx` present, or a
-   different `.solkeep`), add a `setup` block that the runner sources
+   different `[keep]` config), add a `setup` block that the runner sources
    before spawning the subagent.
 
 Keep prompts concrete and realistic — see the skill-creator
@@ -260,14 +260,15 @@ description-optimization guide for what makes a good prompt.
 ## Release process tie-in
 
 The CLI and the skill share one version line; a pushed `vX.Y.Z` tag
-triggers `.github/workflows/release.yml` (build `solx.pyz`, publish the
-GitHub Release). Before tagging:
+triggers `.github/workflows/release.yml` (build the static musl binary,
+publish the GitHub Release with it attached). Before tagging:
 
-1. Bump the version in `solx/src/solx/__init__.py`,
-   `solx/pyproject.toml`, and `skills/sol-skill/SKILL.md` (`version:`);
-   refresh `solx/uv.lock` (`uv lock`).
-2. Run the full eval suite locally (L1 + L2) and `solx`'s unit suite
-   (`cd solx && uv run pytest`).
+1. Bump the version in `solx/Cargo.toml` and `skills/sol-skill/SKILL.md`
+   (`version:`); refresh `solx/Cargo.lock` (`cargo update -p solx`). The
+   release workflow refuses to publish if the tag, `Cargo.toml`, and
+   `SKILL.md` disagree.
+2. Run the full eval suite locally (L1 + L2) and `solx`'s test suite
+   (`cd solx && cargo test`).
 3. Walk the L3 manual checklist on real Sol (login + compute node).
 4. Hand-edit `docs/coverage.md`: bump the "Last verified" date, flip
    any cells in the matrix, refresh "Known gaps". Move the
@@ -282,7 +283,7 @@ GitHub Release). Before tagging:
 | Thing | Location | In git? | Why |
 |---|---|---|---|
 | Skill contents (SKILL.md, references) | `skills/sol-skill/` | yes | shipped to users |
-| solx CLI package | `solx/` | yes | the CLI; built to `solx.pyz` by CI on tag |
+| solx CLI crate | `solx/` | yes | the Rust CLI; built to a static binary by CI on tag |
 | CI workflows | `.github/workflows/` | yes | lint + test, and tag-driven release |
 | Mocks + runner code | `evals/mocks/`, `evals/runner/` | yes | no PII, useful for contributors |
 | Sanitized eval template | `evals/evals.example.json` | yes | shows the schema |
@@ -298,7 +299,10 @@ specific than that stays out of git on purpose.
 ## Dependencies
 
 - [`uv`](https://docs.astral.sh/uv/) — script runner and Python env
-  manager. The mock harness assumes `uv` on `$PATH`, same as `solx`.
+  manager for the eval harness (the runner and its helpers). `solx`
+  itself no longer needs it — the shipped CLI is a static binary.
+- [Rust](https://rustup.rs/) (stable) — to build and test the `solx`
+  crate; `cargo test` runs the unit + end-to-end suites.
 - [`claude` CLI](https://docs.claude.com/en/docs/claude-code) — the
   runner shells out to spawn subagents.
 - The

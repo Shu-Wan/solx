@@ -1,8 +1,9 @@
 name: ci
 
-# Lint + test the solx CLI on every push to main and every PR. The agent
-# skill itself is prose + references (no build step); its evals run out of
-# band (see DEVELOPMENT.md), so CI guards the code that ships as an artifact.
+# Lint, test, and build the solx binary on every push to main and every PR.
+# The agent skill itself is prose + references (no build step); its evals run
+# out of band (see DEVELOPMENT.md), so CI guards the code that ships as the
+# release artifact.
 
 on:
   push:
@@ -17,80 +18,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: test + lint (py${{ matrix.python }})
+  check:
+    name: test + lint
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
     defaults:
       run:
         working-directory: solx
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install uv (Python ${{ matrix.python }})
-        uses: astral-sh/setup-uv@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ matrix.python }}
-          enable-cache: true
-          working-directory: solx   # the uv project + lockfile live here
-
-      - name: Sync dependencies (frozen)
-        run: uv sync --frozen
-
-      - name: Lint
-        run: uv run --frozen ruff check src tests   # pinned via uv.lock (dev group)
-
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solx
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Test
-        run: uv run --frozen pytest -q
+        run: cargo test --locked
 
   build:
-    # Build the single-file zipapp and attach it to the run, so a reviewer
-    # can install and test the PR's solx on Sol without building it: download
-    # solx.pyz from Checks -> Artifacts, then run it through install.sh (which
-    # re-stamps the shebang for the local interpreter — see DEVELOPMENT.md).
-    name: build solx.pyz
+    # Build the portable release binary and attach it to the run, so a
+    # reviewer can download it from Checks -> Artifacts and test the PR's
+    # solx on Sol without a Rust toolchain. The musl target links libc
+    # statically, so the artifact runs on any x86-64 Linux — Sol's RHEL 8
+    # included — regardless of the host glibc.
     runs-on: ubuntu-latest
-    env:
-      SOLX_PYTHON: "3.11"   # the zipapp's embedded bytecode is 3.11-specific
     defaults:
       run:
         working-directory: solx
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install uv (Python 3.11)
-        uses: astral-sh/setup-uv@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.11"
-          enable-cache: true
-          working-directory: solx
-
-      - name: Build zipapp
-        run: bash scripts/build-pyz.sh
-
-      - name: Smoke-test the artifact and installer
-        # The build's only check used to be that zipfile could open the
-        # archive — which tolerates the corruption the 0.5.0 installer
-        # produced. Actually *run* it: in place, and end-to-end through
-        # install.sh. The installer rebinds the interpreter, so point it at a
-        # path whose length differs from the build shebang (a symlink under
-        # $RUNNER_TEMP) — that is the condition under which an in-place shebang
-        # swap corrupts the offsets, so a regression here fails the build
-        # instead of shipping. Same runner, same interpreter, so no fallback.
-        run: |
-          set -eux
-          ./dist/solx.pyz --version
-          ln -sf "$(uv python find 3.11)" "$RUNNER_TEMP/python3.11"
-          SOLX_INSTALL_DIR="$RUNNER_TEMP/bin" SOLX_PYTHON="$RUNNER_TEMP/python3.11" \
-            sh scripts/install.sh ./dist/solx.pyz
-          "$RUNNER_TEMP/bin/solx" --version
-
-      - name: Upload zipapp
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solx
+      - name: Build (musl static)
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: solx-pyz
-          path: solx/dist/solx.pyz
+          name: solx-x86_64-linux-musl
+          path: solx/target/x86_64-unknown-linux-musl/release/solx
           if-no-files-found: error

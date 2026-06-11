@@ -7,7 +7,7 @@
 # After sourcing:
 #   - hostname, module, srun, sbatch, scancel, squeue, ssh resolve to mocks
 #   - $MOCK_LOG points at a per-session invocation log (every shim appends)
-#   - $HOME points at evals/mocks/home (fake .solkeep + Sol warning CSVs)
+#   - $HOME points at evals/mocks/home (solx config [keep] + Sol warning CSVs)
 #   - $MOCK_HOSTNAME controls what `hostname` returns (default: Sol login)
 #
 # Toggle the side under test (export first; inline assignment with

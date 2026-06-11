@@ -1,0 +1,675 @@
+//! Single-file config under `$XDG_CONFIG_HOME/solx/config.toml`.
+//!
+//! The user runs `solx init` to write a starter file; everything else just
+//! reads it. No `[shared]` merge — each `[jobs.<name>]` table is
+//! self-contained, which keeps the schema obvious at the cost of repeating
+//! a flag across templates if someone really wants that.
+
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+use crate::gitwild::GitIgnoreSpec;
+use crate::output::{py_repr, strip_markup};
+
+pub const CONFIG_FILENAME: &str = "config.toml";
+pub const DEFAULT_START_TIMEOUT: &str = "10m";
+
+/// Any user-facing config problem (missing file, bad schema).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigError(pub String);
+
+impl ConfigError {
+    /// Build a config error whose message renders the way the plain
+    /// (non-TTY) diagnostic channel does: bracketed style-tag lookalikes
+    /// such as `[jobs.default]` / `[keep]` are stripped from the text (see
+    /// [`strip_markup`]).
+    fn new(msg: String) -> Self {
+        ConfigError(strip_markup(&msg))
+    }
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+/// One `[jobs.<name>]` table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobTemplate {
+    pub name: String,
+    pub partition: String,
+    pub time: String,
+    pub qos: Option<String>,
+    pub gres: Option<String>,
+    pub extra_args: Vec<String>,
+}
+
+/// Resolved `[keep]` include/exclude as compiled gitignore matchers
+/// (see [`crate::gitwild`] for the dialect).
+pub struct KeepRules {
+    include: GitIgnoreSpec,
+    exclude: GitIgnoreSpec,
+    pub raw_include: Vec<String>,
+    pub raw_exclude: Vec<String>,
+}
+
+impl std::fmt::Debug for KeepRules {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("KeepRules")
+            .field("raw_include", &self.raw_include)
+            .field("raw_exclude", &self.raw_exclude)
+            .finish()
+    }
+}
+
+impl KeepRules {
+    pub fn new(include: &[String], exclude: &[String]) -> Self {
+        KeepRules {
+            include: GitIgnoreSpec::from_lines(include),
+            exclude: GitIgnoreSpec::from_lines(exclude),
+            raw_include: include.to_vec(),
+            raw_exclude: exclude.to_vec(),
+        }
+    }
+
+    /// Return `true` if `path` is included and not excluded.
+    ///
+    /// Matching follows gitignore semantics on absolute paths: a bare path
+    /// pattern matches that directory and everything under it (including a
+    /// path written with a trailing slash), and a `!` negation flips the
+    /// most specific / latest match.
+    pub fn matches(&self, path: &str) -> bool {
+        if !self.include.match_file(path) {
+            return false;
+        }
+        !self.exclude.match_file(path)
+    }
+}
+
+#[derive(Debug)]
+pub struct Config {
+    pub default_shell: String,
+    pub default_template: String,
+    pub start_timeout_seconds: i64,
+    /// `[jobs.<name>]` tables in file order.
+    pub templates: Vec<(String, JobTemplate)>,
+    pub keep: Option<KeepRules>,
+}
+
+impl Config {
+    /// Look up a template by name; `ConfigError` if missing.
+    pub fn template(&self, name: &str) -> Result<&JobTemplate, ConfigError> {
+        if let Some((_, t)) = self.templates.iter().find(|(n, _)| n == name) {
+            return Ok(t);
+        }
+        let mut names: Vec<&str> = self.templates.iter().map(|(n, _)| n.as_str()).collect();
+        names.sort_unstable();
+        let available = if names.is_empty() {
+            "(none)".to_string()
+        } else {
+            names.join(", ")
+        };
+        Err(ConfigError::new(format!(
+            "unknown job template {}. defined: {available}",
+            py_repr(name)
+        )))
+    }
+}
+
+/// The user's home directory (`$HOME`).
+pub fn home_dir() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))
+}
+
+/// Resolve the config path honoring `XDG_CONFIG_HOME` with the usual fallback.
+pub fn config_path() -> PathBuf {
+    let base = match std::env::var("XDG_CONFIG_HOME") {
+        Ok(v) if !v.is_empty() => PathBuf::from(v),
+        _ => home_dir().join(".config"),
+    };
+    base.join("solx").join(CONFIG_FILENAME)
+}
+
+/// Load and validate the config from `path`.
+pub fn load(path: &Path) -> Result<Config, ConfigError> {
+    if !path.exists() {
+        return Err(ConfigError::new(format!(
+            "no config at {}. run `solx init` to write a starter file.",
+            path.display()
+        )));
+    }
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        ConfigError::new(format!("unable to read config at {}: {e}", path.display()))
+    })?;
+    let raw: toml::Table = text.parse().map_err(|e| {
+        ConfigError::new(format!(
+            "invalid TOML in {}: {}",
+            path.display(),
+            toml_error_line(&e)
+        ))
+    })?;
+    parse(&raw, &path.display().to_string())
+}
+
+/// Render a TOML parse error as one line: the message text plus its
+/// location, e.g. `invalid array (at line 1, column 18)`. Every solx
+/// diagnostic is a single stderr line, so the multi-line annotated form the
+/// TOML library renders is collapsed.
+pub fn toml_error_line(e: &toml::de::Error) -> String {
+    let msg = e.message().split('\n').collect::<Vec<_>>().join("; ");
+    let first = e.to_string();
+    let first = first.lines().next().unwrap_or_default().to_string();
+    match first.strip_prefix("TOML parse error ") {
+        Some(loc) if !loc.is_empty() => format!("{msg} ({loc})"),
+        _ => msg,
+    }
+}
+
+fn parse(raw: &toml::Table, source: &str) -> Result<Config, ConfigError> {
+    let default_shell = require_str(raw, "default_shell", source)?;
+    let default_template = require_str(raw, "default_template", source)?;
+    let timeout_str = match raw.get("start_timeout") {
+        None => DEFAULT_START_TIMEOUT.to_string(),
+        Some(toml::Value::String(s)) => s.clone(),
+        Some(_) => {
+            return Err(ConfigError::new(format!(
+                "{source}: `start_timeout` must be a string like \"10m\""
+            )))
+        }
+    };
+    let start_timeout_seconds = parse_duration(&timeout_str)?;
+
+    let jobs_raw = match raw.get("jobs") {
+        Some(toml::Value::Table(t)) if !t.is_empty() => t,
+        _ => {
+            return Err(ConfigError::new(format!(
+                "{source}: at least one [jobs.<name>] table is required"
+            )))
+        }
+    };
+    let mut templates = Vec::new();
+    for (name, body) in jobs_raw {
+        templates.push((name.clone(), parse_template(name, body, source)?));
+    }
+    if !templates.iter().any(|(n, _)| n == &default_template) {
+        return Err(ConfigError::new(format!(
+            "{source}: default_template={} is not defined under [jobs.*]",
+            py_repr(&default_template)
+        )));
+    }
+
+    let keep = parse_keep(raw.get("keep"), source)?;
+
+    Ok(Config {
+        default_shell,
+        default_template,
+        start_timeout_seconds,
+        templates,
+        keep,
+    })
+}
+
+fn parse_template(
+    name: &str,
+    body: &toml::Value,
+    source: &str,
+) -> Result<JobTemplate, ConfigError> {
+    let body = match body {
+        toml::Value::Table(t) => t,
+        _ => {
+            return Err(ConfigError::new(format!(
+                "{source}: [jobs.{name}] must be a table"
+            )))
+        }
+    };
+    let ctx = format!("{source}:[jobs.{name}]");
+    Ok(JobTemplate {
+        name: name.to_string(),
+        partition: require_str(body, "partition", &ctx)?,
+        time: require_str(body, "time", &ctx)?,
+        qos: optional_str(body, "qos", &ctx)?,
+        gres: optional_str(body, "gres", &ctx)?,
+        extra_args: optional_str_list(body, "extra_args", &ctx)?,
+    })
+}
+
+pub fn parse_keep(
+    body: Option<&toml::Value>,
+    source: &str,
+) -> Result<Option<KeepRules>, ConfigError> {
+    let body = match body {
+        None => return Ok(None),
+        Some(toml::Value::Table(t)) => t,
+        Some(_) => {
+            return Err(ConfigError::new(format!(
+                "{source}: [keep] must be a table"
+            )))
+        }
+    };
+    let ctx = format!("{source}:[keep]");
+    let include = optional_str_list(body, "include", &ctx)?;
+    let exclude = optional_str_list(body, "exclude", &ctx)?;
+    if include.is_empty() {
+        return Err(ConfigError::new(format!(
+            "{source}: [keep].include must be a non-empty array"
+        )));
+    }
+    Ok(Some(KeepRules::new(&include, &exclude)))
+}
+
+fn require_str(body: &toml::Table, key: &str, ctx: &str) -> Result<String, ConfigError> {
+    match body.get(key) {
+        None => Err(ConfigError::new(format!(
+            "{ctx}: required key `{key}` is missing"
+        ))),
+        Some(toml::Value::String(s)) if !s.is_empty() => Ok(s.clone()),
+        Some(_) => Err(ConfigError::new(format!(
+            "{ctx}: `{key}` must be a non-empty string"
+        ))),
+    }
+}
+
+fn optional_str(body: &toml::Table, key: &str, ctx: &str) -> Result<Option<String>, ConfigError> {
+    match body.get(key) {
+        None => Ok(None),
+        Some(toml::Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
+        Some(_) => Err(ConfigError::new(format!(
+            "{ctx}: `{key}` must be a non-empty string"
+        ))),
+    }
+}
+
+fn optional_str_list(body: &toml::Table, key: &str, ctx: &str) -> Result<Vec<String>, ConfigError> {
+    let err = || ConfigError::new(format!("{ctx}: `{key}` must be an array of strings"));
+    match body.get(key) {
+        None => Ok(Vec::new()),
+        Some(toml::Value::Array(items)) => items
+            .iter()
+            .map(|v| match v {
+                toml::Value::String(s) => Ok(s.clone()),
+                _ => Err(err()),
+            })
+            .collect(),
+        Some(_) => Err(err()),
+    }
+}
+
+/// Parse a string like `"10m"` / `"30s"` / `"1h"` into seconds.
+pub fn parse_duration(text: &str) -> Result<i64, ConfigError> {
+    let invalid = || {
+        ConfigError::new(format!(
+            "invalid duration {}; use forms like \"30s\", \"10m\", \"1h\"",
+            py_repr(text)
+        ))
+    };
+    let t = text.trim();
+    let digits_end = t.find(|c: char| !c.is_ascii_digit()).ok_or_else(invalid)?;
+    if digits_end == 0 {
+        return Err(invalid());
+    }
+    let (digits, rest) = t.split_at(digits_end);
+    let rest = rest.trim_start();
+    let mut chars = rest.chars();
+    let unit = chars.next().ok_or_else(invalid)?;
+    if !chars.as_str().trim().is_empty() {
+        return Err(invalid());
+    }
+    let n: i64 = digits.parse().map_err(|_| invalid())?;
+    let mult = match unit.to_ascii_lowercase() {
+        's' => 1,
+        'm' => 60,
+        'h' => 3600,
+        _ => return Err(invalid()),
+    };
+    Ok(n * mult)
+}
+
+/// The text that `solx init` writes to a fresh config.toml.
+///
+/// The `[keep]` block is a commented placeholder using the `sparky`
+/// placeholder. `default_shell` sets the `default_shell` value (the
+/// `solx init` walkthrough can pick it).
+pub fn starter_config_text(default_shell: &str) -> String {
+    let base = STARTER_CONFIG_BASE.replace(
+        "default_shell = \"bash\"",
+        &format!("default_shell = {}", toml_str(default_shell)),
+    );
+    base + KEEP_PLACEHOLDER
+}
+
+/// Render `s` as a TOML basic string, escaping every char TOML forbids.
+///
+/// Besides backslash and double-quote, control characters (other than tab)
+/// are illegal in a TOML basic string and must be `\uXXXX`-escaped —
+/// otherwise a keep pattern carrying a stray control byte would render an
+/// unparseable config. Tab is emitted as `\t`.
+pub fn toml_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+const STARTER_CONFIG_BASE: &str = r#"# solx config — see https://github.com/Shu-Wan/solx/blob/main/solx/README.md
+#
+# Used by `solx job jump` when dropping into a shell on a compute node.
+default_shell = "bash"
+
+# Default template for `solx job start` when invoked without an argument.
+default_template = "default"
+
+# Cap on how long `solx job start` waits for the queue. CLI flag --timeout
+# overrides per-run.
+start_timeout = "10m"
+
+
+# Job templates. Run `solx job start <name>` to allocate one.
+# Each table is self-contained; repeat flags across templates if needed.
+
+[jobs.default]
+partition = "lightwork"
+time = "1-0"
+qos = "public"
+
+[jobs.debug]
+partition = "htc"
+time = "0-1"
+
+
+"#;
+
+const KEEP_PLACEHOLDER: &str = r#"# Scratch paths to keep alive when Sol flags them in a warning CSV
+# *and* `solx keep` runs. Replace `sparky` with your ASURITE.
+# Patterns use gitignore-style globs (** for recursion).
+# Uncomment + edit to enable:
+#
+# [keep]
+# include = ["/scratch/sparky/your-project", "/scratch/sparky/experiments/**"]
+# exclude = ["**/__pycache__", "**/.venv"]
+"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    pub const SAMPLE_CONFIG_TOML: &str = r#"default_shell = "zsh"
+default_template = "default"
+start_timeout = "5m"
+
+[jobs.default]
+partition = "lightwork"
+time = "1-0"
+qos = "public"
+
+[jobs.debug]
+partition = "htc"
+time = "0-1"
+
+[jobs.gpu]
+partition = "public"
+gres = "gpu:a100:1"
+time = "0-4"
+extra_args = ["--mem=64G", "--cpus-per-task=8"]
+
+[keep]
+include = ["/scratch/sparky/proj-a", "/scratch/sparky/proj-b/**"]
+exclude = ["**/__pycache__", "**/.venv"]
+"#;
+
+    fn write_config(dir: &Path, text: &str) -> PathBuf {
+        let p = dir.join("config.toml");
+        fs::write(&p, text).unwrap();
+        p
+    }
+
+    #[test]
+    fn load_full_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let c = load(&write_config(dir.path(), SAMPLE_CONFIG_TOML)).unwrap();
+        assert_eq!(c.default_shell, "zsh");
+        assert_eq!(c.default_template, "default");
+        assert_eq!(c.start_timeout_seconds, 300);
+        let names: Vec<&str> = c.templates.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["default", "debug", "gpu"]); // file order preserved
+
+        let gpu = c.template("gpu").unwrap();
+        assert_eq!(gpu.partition, "public");
+        assert_eq!(gpu.gres.as_deref(), Some("gpu:a100:1"));
+        assert_eq!(gpu.time, "0-4");
+        assert_eq!(gpu.qos, None);
+        assert_eq!(gpu.extra_args, ["--mem=64G", "--cpus-per-task=8"]);
+    }
+
+    #[test]
+    fn template_lookup_missing_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let c = load(&write_config(dir.path(), SAMPLE_CONFIG_TOML)).unwrap();
+        let err = c.template("nonexistent").unwrap_err();
+        assert_eq!(
+            err.0,
+            "unknown job template 'nonexistent'. defined: debug, default, gpu"
+        );
+    }
+
+    #[test]
+    fn load_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = load(&dir.path().join("absent.toml")).unwrap_err();
+        assert!(err.0.contains("run `solx init`"));
+    }
+
+    #[test]
+    fn invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), "default_shell = [unclosed array");
+        let err = load(&p).unwrap_err();
+        assert!(err.0.contains("invalid TOML"));
+    }
+
+    #[test]
+    fn required_default_shell() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            "default_template = \"default\"\n[jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n",
+        );
+        let err = load(&p).unwrap_err();
+        assert!(err.0.contains("default_shell"));
+        assert!(err.0.contains("required key"));
+    }
+
+    #[test]
+    fn required_default_template() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            "default_shell = \"bash\"\n[jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n",
+        );
+        let err = load(&p).unwrap_err();
+        assert!(err.0.contains("default_template"));
+    }
+
+    #[test]
+    fn at_least_one_jobs_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            "default_shell = \"bash\"\ndefault_template = \"x\"\n",
+        );
+        let err = load(&p).unwrap_err();
+        assert!(err
+            .0
+            .contains("at least one [jobs.<name>] table is required"));
+    }
+
+    #[test]
+    fn default_template_must_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            "default_shell = \"bash\"\ndefault_template = \"missing\"\n\n[jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n",
+        );
+        let err = load(&p).unwrap_err();
+        assert!(err
+            .0
+            .contains("default_template='missing' is not defined under [jobs.*]"));
+    }
+
+    #[test]
+    fn template_required_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            "default_shell = \"bash\"\ndefault_template = \"default\"\n\n[jobs.default]\npartition = \"x\"\n",
+        );
+        let err = load(&p).unwrap_err();
+        assert!(err.0.contains("`time`"));
+    }
+
+    #[test]
+    fn extra_args_must_be_string_array() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            "default_shell = \"bash\"\ndefault_template = \"default\"\n\n[jobs.default]\npartition = \"x\"\ntime = \"1-0\"\nextra_args = [1, 2]\n",
+        );
+        let err = load(&p).unwrap_err();
+        assert!(err.0.contains("extra_args"));
+    }
+
+    #[test]
+    fn keep_match_include_only() {
+        let keep = KeepRules::new(&["/scratch/sparky/proj-a/**".to_string()], &[]);
+        assert!(keep.matches("/scratch/sparky/proj-a/data.csv"));
+        assert!(!keep.matches("/scratch/sparky/proj-b/data.csv"));
+    }
+
+    #[test]
+    fn keep_exclude_carve_out() {
+        let keep = KeepRules::new(
+            &["/scratch/sparky/proj-a/**".to_string()],
+            &["**/__pycache__/**".to_string(), "**/.venv/**".to_string()],
+        );
+        assert!(keep.matches("/scratch/sparky/proj-a/run/data.csv"));
+        assert!(!keep.matches("/scratch/sparky/proj-a/run/__pycache__/x.pyc"));
+        assert!(!keep.matches("/scratch/sparky/proj-a/.venv/lib/x.py"));
+    }
+
+    #[test]
+    fn keep_bare_path_matches_dir_and_descendants() {
+        let keep = KeepRules::new(&["/scratch/sparky/proj-a".to_string()], &[]);
+        assert!(keep.matches("/scratch/sparky/proj-a"));
+        assert!(keep.matches("/scratch/sparky/proj-a/deep/file.bin"));
+        assert!(!keep.matches("/scratch/sparky/proj-ab"));
+    }
+
+    #[test]
+    fn keep_exclude_dir_pattern_matches_descendant_dirs() {
+        // The config-sample shape: exclude ["**/__pycache__", "**/.venv"]
+        // must filter a flagged __pycache__ leaf directory.
+        let keep = KeepRules::new(
+            &["/scratch/sparky/proj/**".to_string()],
+            &["**/__pycache__".to_string(), "**/.venv".to_string()],
+        );
+        assert!(keep.matches("/scratch/sparky/proj/run-1"));
+        assert!(!keep.matches("/scratch/sparky/proj/__pycache__"));
+        assert!(!keep.matches("/scratch/sparky/proj/sub/.venv"));
+    }
+
+    #[test]
+    fn keep_requires_include() {
+        let mut table = toml::Table::new();
+        table.insert(
+            "exclude".to_string(),
+            toml::Value::Array(vec![toml::Value::String("x".to_string())]),
+        );
+        let err = parse_keep(Some(&toml::Value::Table(table)), "t").unwrap_err();
+        assert!(err.0.contains("non-empty array"));
+    }
+
+    #[test]
+    fn keep_absent_is_none() {
+        assert!(parse_keep(None, "t").unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_duration_forms() {
+        assert_eq!(parse_duration("30s").unwrap(), 30);
+        assert_eq!(parse_duration("10m").unwrap(), 600);
+        assert_eq!(parse_duration("1h").unwrap(), 3600);
+        assert_eq!(parse_duration(" 5M ").unwrap(), 300);
+    }
+
+    #[test]
+    fn parse_duration_invalid() {
+        let err = parse_duration("never").unwrap_err();
+        assert_eq!(
+            err.0,
+            "invalid duration 'never'; use forms like \"30s\", \"10m\", \"1h\""
+        );
+        assert!(parse_duration("10x").is_err());
+        assert!(parse_duration("m").is_err());
+        assert!(parse_duration("10m extra").is_err());
+    }
+
+    #[test]
+    fn config_path_honors_xdg() {
+        // Avoid mutating process env in-test; exercise via integration tests.
+        // Here just confirm the suffix shape.
+        let p = config_path();
+        assert!(p.ends_with("solx/config.toml"));
+    }
+
+    #[test]
+    fn starter_config_loads_clean() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), &starter_config_text("bash"));
+        let c = load(&p).unwrap();
+        assert_eq!(c.default_shell, "bash");
+        assert_eq!(c.default_template, "default");
+        assert!(c.template("default").is_ok());
+        assert!(c.template("debug").is_ok());
+        assert!(c.keep.is_none()); // commented out in starter; user uncomments
+    }
+
+    #[test]
+    fn starter_config_no_maintainer_name() {
+        let text = starter_config_text("bash");
+        assert!(!text.contains("swan16"));
+        assert!(!text.contains("<asurite>"));
+        assert!(text.contains("sparky")); // in the commented [keep] example
+    }
+
+    #[test]
+    fn load_unreadable_is_config_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("config.toml");
+        fs::create_dir(&p).unwrap(); // exists, but reading a directory fails
+        let err = load(&p).unwrap_err();
+        assert!(err.0.contains("unable to read"));
+    }
+
+    #[test]
+    fn toml_str_escapes() {
+        assert_eq!(toml_str("plain"), "\"plain\"");
+        assert_eq!(toml_str("a\"b"), "\"a\\\"b\"");
+        assert_eq!(toml_str("a\\b"), "\"a\\\\b\"");
+        assert_eq!(toml_str("a\tb"), "\"a\\tb\"");
+        assert_eq!(toml_str("a\u{1}b"), "\"a\\u0001b\"");
+    }
+}

@@ -272,7 +272,7 @@ doesn't (and shouldn't) wrap them.
 | `thisjob <jobid>` | Job info including the estimated start time. |
 | `seff <jobid>` | Slurm efficiency (CPU + memory used) for a finished job. |
 | `myfairshare` | Your real fairshare score. |
-| `myquota` | Your `$SCRATCH` quota. |
+| `beegfs-ctl --getquota --uid $USER` | Your `/scratch` (BeeGFS) quota — there is no `myquota` wrapper. |
 | `sinfo` / `showparts` | Cluster / partition capacity (`showparts` is color-coded). |
 | `showgpus` | Free GPUs per node (color-coded). |
 | `ns` | Command-line version of the cluster status page. |

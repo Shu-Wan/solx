@@ -7,9 +7,88 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
 From v0.4.0 the CLI and the skill share **one version line**: each entry's
-version matches `solx/src/solx/__init__.py`, the `version` field in
-[`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git tag,
-and a pushed `vX.Y.Z` tag builds and publishes the release.
+version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
+and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
+tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
+
+## [1.0.0] — 2026-06-10
+
+solx is now a single native binary (Rust); the Python implementation is
+retired. Every command starts in ~1ms with no Python interpreter and no
+per-module NFS reads, so startup no longer degrades under node load or a
+cold NFS cache. Install is one static file — download and `chmod +x` — with
+no `uv`, no Python, and no toolchain on the box.
+
+### Highlights
+
+Startup latency, warm median on a Sol compute node (NFS `$HOME`):
+
+| command | raw `squeue` | v0.5.0 (Python) | **v1.0 (Rust)** | speedup |
+|---|---|---|---|---|
+| `solx --version` | — | 0.10s | **0.010s** | 10× |
+| `solx job list` | 0.08s | 0.39s | **0.12s** | 3.3× |
+| `solx job time` | 0.08s | 0.31s | **0.12s** | 2.6× |
+
+The binary tracks raw `squeue` — its residual over `squeue` is just the
+`squeue` subprocess it spawns — and, unlike the Python builds, its startup
+is flat regardless of node load or cache state. ~4.9MB, no runtime
+dependencies (no Python, `uv`, or `rustc` on the target).
+
+### Added
+
+- **`solx cheatsheet`** — prints the Sol quick reference (SLURM basics,
+  `solx` ↔ raw SLURM, the partition/QOS table, Sol's `my*`/`show*`
+  wrappers, laptop tunnels) as text. It's embedded from the skill's single
+  source `skills/sol-skill/references/cheatsheet.md`, so the CLI, the
+  rendered [`docs/cheatsheet.pdf`](docs/cheatsheet.pdf), and the skill
+  reference can't drift. Wired into the bash/zsh/fish completions.
+- **The Sol cheat sheet** in the skill —
+  `skills/sol-skill/references/cheatsheet.md`, with a centered README nav
+  and a `scripts/build-cheatsheet.sh` PDF build.
+- **Eval-harness L3 grader `l3_sbatch_test_only`** — validates an agent's
+  recommended `#SBATCH` header against the live scheduler (`sbatch
+  --test-only`), catching partition/QOS combos that read plausibly but the
+  scheduler rejects (e.g. `-p htc -q debug`).
+
+### Changed
+
+- **The CLI is rewritten in Rust** (the `solx/` crate), preserving the
+  v0.5.0 command surface, output contract, and exit codes; behavioral
+  parity was verified during the port and is locked going forward by the
+  crate's test suite (`solx/tests/cli.rs` + unit vectors). The agent
+  skill's operational guidance is unchanged apart from the install steps,
+  the dropped `~/.solkeep` fallback (below), and the partition/QOS rework
+  (next).
+- **SLURM partition/QOS guidance reworked.** The skill routes jobs by
+  wall-time and priority, not CPU-vs-GPU: ≤4h work (GPUs included) → `htc`;
+  a ≤15-minute urgent check → `-p public -q debug`; longer runs → `public`
+  (or `general` with `-q private` for preemptible buy-in nodes). This
+  fixes the "GPU → `public`" reflex that parked short GPU jobs behind
+  multi-day ones. The Submitting-Jobs section is promoted ahead of storage
+  and gains a personalized "know your access" step (`sacctmgr show assoc`).
+  Factual corrections verified against the live scheduler: `htc` carries
+  H200 nodes; `highmem`'s wall is 7 days; there is no `myquota` wrapper
+  (use `beegfs-ctl --getquota`); `sq` is the whole-cluster queue, not
+  `squeue --me`.
+- **Install is a prebuilt static binary.** Download
+  `solx-x86_64-unknown-linux-musl` from the release, `chmod +x`, and drop
+  it on `PATH`. The `curl install.sh | sh` and `uv tool install` channels
+  are gone, along with their `uv`/Python requirement. See
+  [`solx/README.md`](solx/README.md).
+
+### Removed
+
+- **The Python implementation.** The Typer-then-`argparse` CLI that lived
+  at `solx/` — its test suite, the `.pyz` zipapp build (`build-pyz.sh`),
+  `install.sh`, and the `uv tool` install channel — is deleted. `solx/`
+  now holds the Rust crate, the only solx; the `.pyz` and `uv` install
+  channels no longer exist.
+- **`~/.solkeep` support, end to end.** The config `[keep]` block is now
+  the only keep-list source: `solx keep` never reads a `~/.solkeep` (the
+  implicit fallback, deprecated since 0.4.0, was slated for 1.0.0), and the
+  `solx config import-solkeep` command and the `--solkeep <file>` flag are
+  removed with it. With no `[keep]` block, `keep` errors and points at
+  `solx config edit`.
 
 ## [0.5.1] — 2026-06-10
 
@@ -51,7 +130,7 @@ A `solx job` read now costs the same order as a raw SLURM call. Absolute
 startup over NFS scales with node load — Python pays a per-module open
 storm, so v0.4.0 can reach ~2.5s under contention — and the win is
 removing that import tree. On node-local disk the floor is lower still
-(`--version` ~0.02s). Full table in `docs/ROADMAP.md`.
+(`--version` ~0.02s).
 
 ### Upgrading
 
@@ -85,7 +164,7 @@ removing that import tree. On node-local disk the floor is lower still
   output contract are unchanged apart from the two documented supersets
   below (`--json` placement and `-h`); verified with `evals/parity/`.
 - **Startup latency** drops to the order of a raw SLURM call (see
-  Highlights above; full table in `docs/ROADMAP.md`): removing the
+  Highlights above): removing the
   Typer/`click`/`rich` import tree cuts a `solx job` read from seconds to
   ~0.1–0.4s warm on the NFS `$HOME` install, ~13× / 6.4× / 8.1× over
   v0.4.0 on `--version` / `job list` / `job time`. On node-local disk the
@@ -427,7 +506,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.0
 [0.5.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.4.0

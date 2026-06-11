@@ -24,7 +24,7 @@ invocation to `$MOCK_LOG` (default `/tmp/sol-skill-mock-$$.log`):
 
 The fake `$HOME` (`evals/mocks/home/`) ships with:
 
-- `.solkeep` — sanitized keep-list using `sparky`
+- `.config/solx/config.toml` — sanitized config with a `[keep]` block using `sparky`
 - `scratch-dirs-pending-removal.csv` — synthetic Sol warning
 - `scratch-dirs-over-90days.csv` — synthetic Sol warning
 - `scratch-dirs-inactive.csv` — synthetic Sol warning

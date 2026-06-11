@@ -29,8 +29,8 @@ run already refreshed but Sol hasn't dropped from the CSV yet; that's expected.
 ## What the keep-list matches
 
 `solx keep` renews a directory only when it is **both** flagged by Sol **and**
-matched by your keep-list (`[keep]` in the config; a legacy `~/.solkeep` is read
-as a deprecated fallback). Patterns are gitignore-style and match the
+matched by your keep-list (the `[keep]` block in the config). Patterns are
+gitignore-style and match the
 **directory paths** in the CSVs — so matching decides which *whole flagged
 directories* get touched, not individual files within them. A bare path matches
 that directory and everything under it; `**` matches any depth. Carve out
@@ -52,12 +52,6 @@ not have on `PATH`, so prepend it:
 ```shell
 ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; solx keep --stage inactive -j 24 -y'
 ```
-
-## Migrating off a legacy `~/.solkeep`
-
-The old `sol_renew.py` script (removed) and its `~/.solkeep` keep-list are
-deprecated; `solx keep` still reads `~/.solkeep` (with a notice) until support
-drops in **1.0.0**. Migrate once with `solx config import-solkeep`.
 
 ## Emergency single-path touch (no `solx`)
 

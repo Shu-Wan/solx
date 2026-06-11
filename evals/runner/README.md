@@ -15,19 +15,19 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   and how.
 - **`bench_solx_latency.sh`** — L3 latency benchmark (real Sol,
   read-only): times `solx job` commands against the equivalent raw
-  SLURM call and reports the delta. Quantifies `solx`'s Python/NFS
-  startup tax that informs the skill's "`solx` vs raw SLURM" rule and the
-  startup-latency roadmap item. Usage: `evals/runner/bench_solx_latency.sh [N]`.
-- **L2 renewal coverage lives in the `solx` package.**
-  `solx/tests/test_keep.py::test_keep_end_to_end_real_touch` builds a
-  real tree with stale mtimes (including `.venv`/`__pycache__`), runs
-  `solx keep`, and asserts the filesystem mutations: kept files
-  (recursively) are refreshed, carve-outs are left alone, non-kept dirs
-  are skipped. It is the L2 grader for the `scratch-renewal-*` evals
-  (`check.l2_script`). Run standalone or in CI:
+  SLURM call and reports the delta. Quantifies the residual over raw
+  SLURM that informs the skill's "`solx` vs raw SLURM" rule. Usage:
+  `evals/runner/bench_solx_latency.sh [N]`.
+- **L2 renewal coverage lives in the `solx` crate.** The end-to-end
+  real-touch test in `solx/tests/cli.rs` builds a real tree with stale
+  mtimes (including `.venv`/`__pycache__`), runs `solx keep`, and asserts
+  the filesystem mutations: kept files (recursively) are refreshed,
+  carve-outs are left alone, non-kept dirs are skipped. It is the L2
+  grader for the `scratch-renewal-*` evals (`check.l2_script`). Run
+  standalone or in CI:
 
   ```shell
-  ( cd solx && uv run pytest tests/test_keep.py -q )
+  ( cd solx && cargo test --test cli )
   ```
 
 ## What the runner will do (iteration 1)
@@ -36,8 +36,8 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   `layer` and `check` extensions).
 - For each eval:
   - Apply the `setup` block: write requested mock state
-    (`MOCK_HOSTNAME`, `solx`-shim presence, fake CSVs, fake
-    `.solkeep`).
+    (`MOCK_HOSTNAME`, `solx`-shim presence, fake CSVs, a `[keep]`
+    config).
   - Spawn the with-skill subagent (`--plugin-dir
     skills/sol-skill`) and the baseline subagent (no plugin-dir),
     both inheriting `CLAUDE_CONFIG_DIR` from the parent so neither

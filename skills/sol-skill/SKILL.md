@@ -1,6 +1,6 @@
 ---
 name: sol-skill
-version: 0.5.1
+version: 1.0.0
 description: Conventions and tooling for ASU's Sol supercomputer, built around the `solx` CLI. Use whenever a task is happening on Sol — the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). It covers renewing /scratch files Sol has flagged for deletion (purge/inactivity warnings) via `solx keep` and where to store datasets and model caches; requesting and managing SLURM jobs (the `solx job` interactive-allocation lifecycle, sbatch for batch, GPU and partition/QOS choice, why a job is pending, fairshare-aware and time-aware job management); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, …), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---
@@ -80,12 +80,13 @@ the user's day-to-day tool for templated interactive allocations
 (`job start` / `job jump`) and scratch renewal (`keep`) — install it when
 the user is doing that kind of work.
 
-**`solx` is fast enough to be the default.** A warm `solx job` read
-costs ~0.13s on Sol with the recommended single-file install, vs ~0.08s
-for a raw `squeue` (measured — `evals/runner/bench_solx_latency.sh`), so
-one-off reads carry no meaningful `solx` penalty. Raw SLURM stays a full
-equivalent (see "`solx` vs raw SLURM" below) — it's the fallback when
-`solx` isn't installed, not a faster path to prefer.
+**`solx` is fast enough to be the default.** It's a single native binary
+(Rust), so a warm `solx job` read costs ~0.12s on Sol vs ~0.08s for a raw
+`squeue` (measured — `evals/runner/bench_solx_latency.sh`), and startup is
+flat regardless of node load or NFS cache state. One-off reads carry no
+meaningful `solx` penalty. Raw SLURM stays a full equivalent (see "`solx`
+vs raw SLURM" below) — it's the fallback when `solx` isn't installed, not a
+faster path to prefer.
 
 **Detect, then install when the task needs it.** Once you've confirmed
 you're on Sol (see [Detecting the Environment](#detecting-the-environment)):
@@ -95,24 +96,22 @@ command -v solx        # missing? install it when the user needs job start/jump 
 ```
 
 If it's absent and the task calls for it, **prompt the user to install
-it** (then run `solx init`):
+it** (then run `solx init`). `solx` is one static binary — no Python, no
+`uv`, no toolchain — so installing is a download and a `chmod`:
 
 ```shell
-# Recommended on Sol: single-file install, fast cold start on the NFS home.
-curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
-
-# Alternative: as a uv tool (isolated venv on $PATH).
-uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
+mkdir -p ~/.local/bin
+curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
+chmod +x ~/.local/bin/solx
 
 solx --version
 solx init              # writes ~/.config/solx/config.toml (offers a quick walkthrough)
 ```
 
-Both paths use [`uv`](https://docs.astral.sh/uv/) to provision a modern
-Python (Sol's system `python3` is too old); if `uv` isn't on `PATH`,
-install it first. Installing reaches the network and writes to
-`~/.local/bin` — propose the command and get the user's go-ahead (or run
-it with their OK) rather than installing silently.
+The binary is fully static (musl), so it runs on Sol's RHEL 8 as-is.
+Installing reaches the network and writes to `~/.local/bin` — propose the
+command and get the user's go-ahead (or run it with their OK) rather than
+installing silently. Make sure `~/.local/bin` is on `$PATH`.
 
 **If the user declines or can't install `solx`,** nothing is lost for the
 common cases — raw Slurm covers them: `squeue`/`scancel` for status and
@@ -131,7 +130,7 @@ version:
 | `solx job jump` | Drop a shell onto the job's compute node (`srun --pty`). |
 | `solx job list` · `time` · `stop` | List · time-left · cancel. Raw `squeue`/`scancel` are equivalent (see below). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]`. |
-| `solx config import-solkeep` | Migrate a legacy `~/.solkeep` into `[keep]`. |
+| `solx cheatsheet` | Print the Sol quick reference (`references/cheatsheet.md`) as text. |
 
 `--json` forces JSON — before the subcommand (`solx --json job list`) or
 after it (`solx job list --json`; exception: after `job start`, tokens
@@ -141,12 +140,11 @@ prompt unless `-y`, refuse in a non-interactive session rather than
 hang, and preview with `-n`.
 
 **`solx` vs raw SLURM — equivalent for one-off reads; use either.** A
-warm `solx job` read runs in ~0.13s with the single-file install, vs
-~0.08s for raw `squeue` (measured — see
-`evals/runner/bench_solx_latency.sh`); a venv install on the NFS home is
-slower (~1s warm), which is one more reason to prefer the single-file
-channel. The raw equivalents, for when `solx` isn't installed or the
-user asks for them:
+warm `solx job` read runs in ~0.12s, vs ~0.08s for raw `squeue` (measured
+— see `evals/runner/bench_solx_latency.sh`); the residual over `squeue` is
+just the `squeue` subprocess `solx` spawns, and the native binary's
+startup doesn't degrade under node load or a cold NFS cache. The raw
+equivalents, for when `solx` isn't installed or the user asks for them:
 
 ```shell
 squeue --me                                # = solx job list
@@ -190,157 +188,31 @@ than necessary, and SLURM gives you cleaner answers.
 2. You do not have `sudo` privileges, so maintain a local environment under `/home/$USER/.local` or `/home/$USER/opt`.
 3. Use `git` to keep code in sync between local and cluster.
 
-## Filesystem and Storage
-
-Sol provides two main storage areas:
-
-| Location         | Purpose                      | Policy                          |
-|------------------|------------------------------|---------------------------------|
-| `/home/$USER`    | Config, small files          | Limited space, backed up        |
-| `/scratch/$USER` | Large data, caches, outputs  | Layered deletion — see Sol docs |
-
-Always place large data files, model caches, and outputs under
-`/scratch/$USER`.
-
-### Renewing the Scratch Timestamp — `solx keep`
-
-Sol deletes inactive `/scratch` files on a layered schedule and writes
-per-stage CSV warnings into `$HOME`. ASU Research Computing defines the
-thresholds, CSV filenames, and warning cadence; their doc is
-authoritative: <https://docs.rc.asu.edu/scratch>.
-
-**Use `solx keep`.** It reads those CSVs, keeps only the directories
-that match your **keep-list**, and refreshes their timestamps with
-`touch`. It only ever touches directories that are **both** flagged by
-Sol **and** in your keep-list — so there's nothing to do until Sol
-actually flags something, and it never walks `/scratch` wholesale. That
-bound is the whole point: it's a tool to extend the life of files you
-still use, not to defeat Sol's retention policy.
-
-**Where the keep-list lives:** the `[keep]` block in
-`~/.config/solx/config.toml` (`include` / `exclude`, gitignore-style
-globs). Set it up once with `solx config edit`:
-
-```toml
-# Replace `sparky` with your ASURITE. Patterns are gitignore-style; ** = any depth.
-[keep]
-include = ["/scratch/sparky/my-project", "/scratch/sparky/experiments/**"]
-# Don't spend the renewal on regenerable junk — it rebuilds for free.
-exclude = ["**/.venv", "**/.git", "**/__pycache__", "**/node_modules"]
-```
-
-**Preview before the real pass.** `solx keep` rewrites timestamps on
-every kept file — potentially hundreds of thousands. Never fire it
-blind: run `--dry-run` first and check the plan, *or* get the user's
-go-ahead on the scope. It also prompts (`… ? [y/N]`) before touching
-unless you pass `-y`; in a non-interactive session it refuses rather
-than hang.
-
-```shell
-solx keep --dry-run -v       # preview which directories would be renewed
-solx keep                    # renew them (prompts; -y to skip the prompt)
-solx keep --stage pending    # only the most-urgent CSV
-solx --json keep --dry-run   # machine-readable plan (counts + a capped sample)
-```
-
-#### Where to run it
-
-A renewal is metadata-heavy I/O, not compute — but a touch pass over
-tens of thousands of files is exactly the load Sol's **login nodes
-throttle**. Check the environment first (see [Detecting the
-Environment](#detecting-the-environment)), then branch:
-
-- **On a compute node** (`$SLURM_JOB_ID` set) — run it directly; you
-  already hold dedicated resources.
-- **On a login node** (`$SLURM_JOB_ID` unset) — don't run the heavy
-  pass here. Move it to one of, in rough order of convenience:
-  - the **DTN**: `ssh soldtn '<cmd>'` (the `dtn` wrapper is literally
-    `ssh soldtn`). It's tuned for I/O, isn't throttled, and has many
-    cores — the best home for a large renewal.
-  - a **compute node**: grab one with `solx job start` (or
-    `interactive`) and run it there.
-  - a **batch job**: submit a short `htc` job whose payload is the
-    renewal, for an unattended pass.
-
-Match `-j` (parallel workers) to where it actually runs: a 4-core
-compute node can't feed more than a couple, while the DTN has many. See
-[references/scratch.md](references/scratch.md) for the non-interactive
-`PATH` gotcha when invoking over `ssh soldtn`.
-
-#### Migrating a legacy `~/.solkeep`
-
-The older standalone `sol_renew.py` script and the `~/.solkeep`
-keep-list it read are **deprecated**. `solx keep` still reads a
-`~/.solkeep` if it finds one (so nothing breaks today), but it prints a
-deprecation notice and **support is removed in solx 1.0.0**. If you see
-a `~/.solkeep`, migrate it into the config once:
-
-```shell
-solx config import-solkeep    # folds ~/.solkeep into the [keep] block
-solx config show              # sanity-check the result
-```
-
-After migrating, `solx keep` uses `[keep]` and the warning goes away.
-
-### Sharing Files
-
-See [references/sharing.md](references/sharing.md) for the
-step-by-step procedure to share files with other users on the
-cluster.
-
-## Getting the Software You Need on Sol
-
-Situation: you need a tool — a compiler, a Python interpreter, an R
-package, a LaTeX distribution, a CLI — and the system `PATH` on Sol
-either doesn't have it or has too old a version. You don't have
-`sudo`. There are four non-sudo paths; pick the one that matches the
-kind of software:
-
-1. **Already on the cluster as a module.** Compilers, MPI stacks,
-   Python distributions, R, CUDA, common applications — all live
-   under the `module` system. No modules are loaded when a session
-   starts, so `module load` them every session (or in every SBATCH
-   script). See [references/module.md](references/module.md) for
-   `avail` / `load` / `list` / `purge` and the naming schemes.
-
-2. **Python — use `uv`.** The system `python3` on Sol is older than
-   modern code expects. Don't fight it; use
-   [`uv`](https://docs.astral.sh/uv/) to manage interpreters and
-   environments instead. (It's also what installs `solx`.)
-
-   - Point `uv`'s cache at `/scratch` so it doesn't fill `/home`:
-
-     ```shell
-     export UV_CACHE_DIR=/scratch/$USER/.cache/uv
-     ```
-   - For one-file utility scripts, prefer the PEP 723 inline-metadata
-     shebang `#!/usr/bin/env -S uv run --script` so the script
-     self-bootstraps its interpreter and dependencies.
-
-3. **LaTeX — use R's `tinytex`.** Builds a per-user TeX Live tree
-   under `~/.local/bin/latex`, no sudo:
-
-   1. `module avail r-4` to find a current R, then `module load` it.
-   2. Use the R package `tinytex` to install TeX Live locally.
-   3. Install TeX packages on demand: `tlmgr install <pkg>`.
-   4. If `tlmgr` complains "is older than remote repository", refresh
-      the local TeX Live: load R, then
-      `Rscript -e "tinytex::reinstall_tinytex(repository='illinois')"`.
-
-4. **Anything else — install to `~/.local` or `~/opt`.** No `sudo`
-   on Sol, so anything you build or download from source goes under
-   your home directory. `~/.local/bin` should be on `PATH` by
-   default; add it in `~/.bashrc` / `~/.zshrc` if not.
-
-Across all four: never propose `sudo`. If a tool genuinely requires
-root, file a ticket with ASU Research Computing rather than working
-around it.
-
 ## Submitting Jobs
 
 Sol uses **Slurm**. Interactive allocations go through `solx`; batch
 work goes through `sbatch`. `solx` deliberately doesn't wrap `sbatch` —
 for batch, drive Sol's tooling directly.
+
+### Know your access first
+
+Partition and QOS advice is only correct *for this user* — what they can
+run on depends on their account and group. Before recommending where a
+job goes, check what's actually available to them:
+
+```shell
+sacctmgr -n show assoc user=$USER format=Account,Partition,QOS
+#   → e.g.  grp_yourpi || debug,htc,private,public
+sshare -U -o Account,User,FairShare    # low fairshare → prefer a buy-in/preemptible QOS
+```
+
+The QOS column is the menu. Most users have `public` (default,
+non-preemptable) and `debug` (15-min, high-priority); a `private` or
+`grp_*` entry means the user's group owns nodes they can run on *longer
+than htc's 4 hours* (and preemptibly, for `private`). Tailor the
+partition/QOS choice below to that list — don't suggest a QOS the user
+can't use. The full partition × QOS table is in the cheat sheet,
+[references/cheatsheet.md](references/cheatsheet.md).
 
 ### Interactive allocations — `solx job`
 
@@ -369,19 +241,39 @@ each `[jobs.<name>]` sets `partition`, `time`, optional `qos`, `gres`,
 **The `interactive` wrapper** (the no-`solx` fallback) already defaults
 to `-p htc -q public -c 1 -t 0-4`. Bare `interactive` gets you a 4-hour
 `htc` shell — the right shape for most debug or "just need to check
-something on a compute node" sessions. Override only when the workload
-genuinely needs more (e.g., `interactive -p public -G a100:1` for a GPU
-shell).
+something on a compute node" sessions, GPU work included: `htc` carries
+A100s, so `interactive -p htc -G a100:1` gets you a quick GPU shell.
+Override to `public` only when the run needs more than htc's 4-hour wall.
 
-**Match the partition to the workload size, not the request size.**
-Sol's `htc` partition is the right home for short, lightweight,
-debug-class work. Use `public` for real workloads that genuinely need
-the larger nodes. If the user describes the work as "quick", "debug",
-"lightweight", "just need to check", or specifies under an hour with no
-GPU — that's an `htc` request (a sufficient trigger, not a wall-time
-cap: `htc` still serves the `interactive` wrapper's 4-hour default).
-Don't default to `public` in those cases: defaulting wastes capacity
-that someone else is queued for.
+**Match the partition to the job's wall-time and priority, not to
+whether it uses a GPU.** GPUs live in `htc`, `public`, *and* `general`,
+so "it needs an A100" says nothing about where the job goes — *how
+long* and *how urgently* do:
+
+- **≤ 4 h, including GPU work → `htc`.** The default home for debug,
+  ablations, smoke-tests, and short training. `htc` carries Sol's
+  largest A100 pool (dozens of `a100:4` nodes, plus H100 / L40 / A30)
+  and is far less contended than `public`. Sol nudges you toward it — a
+  ≤4h job submitted to `public` prints `you may consider '-p htc'`, but
+  it doesn't move the job for you, so pass `-p htc` yourself. A 30-minute
+  A100 ablation is an `htc` job, not a `public` one.
+- **≤ 15 min and you want to jump the queue → `-p public -q debug`**
+  (or `-p general -q debug`). The `debug` QOS has a 15-minute hard cap
+  but very high priority and allows GPUs — ideal for "does this even
+  launch?". It is **not** valid on `htc` (`-p htc -q debug` is rejected),
+  so pair it with `public`/`general` — and always *with* `-q debug`, since
+  bare `-p general` (default QOS `public`) is rejected too. One job at a time.
+- **> 4 h, non-preemptable → `-p public`** (7-day wall) — real runs
+  that can't finish or checkpoint inside 4 hours.
+- **> 4 h on borrowed private nodes, OK with preemption → `-p general
+  -q private`.** The `private` QOS has no wall of its own (gated by the
+  partition) and trades preemptibility — owners can cancel your job —
+  for running past htc's 4 hours; it often starts sooner.
+
+The trap is the **"GPU → public" reflex**: sending a short GPU job to
+`public` parks it behind multi-day jobs while hundreds of htc A100s sit
+one partition over. Only the wall-time clock — or a node shape `htc`
+lacks (GH200, Gaudi) — should push GPU work past `htc`.
 
 ### Batch jobs — `sbatch`
 
@@ -473,8 +365,8 @@ them. `solx` owns the *interactive-allocation lifecycle*; these own
 | You want | Command |
 |---|---|
 | Your fairshare / scheduling priority | `myfairshare` |
-| Your `/scratch` quota | `myquota` |
-| Your jobs right now | `myjobs` (or `squeue --me`, `sq`) |
+| Your `/scratch` quota | `beegfs-ctl --getquota --uid $USER` |
+| Your jobs right now | `myjobs` (or `squeue --me`) |
 | Estimated start time of a pending job | `thisjob <jobid>` |
 | Efficiency of a finished job | `seff <jobid>` |
 | Free capacity / partitions | `sinfo`, `showparts` |
@@ -494,16 +386,143 @@ SLURM command itself** — it's portable and stable — and reach for Sol's
 
 | User question | Native SLURM | Sol wrapper (when useful) |
 |---|---|---|
-| What jobs do I have right now? | `squeue --me` | `myjobs` (priority/QOS/GPU columns), `sq` (sorted by priority), `summary` (state counts) |
+| What jobs do I have right now? | `squeue --me` | `myjobs` (priority/QOS/GPU columns), `summary` (state counts). NB `sq` is the *whole-cluster* queue — filter with `sq -u $USER` |
 | Tell me about job N | `scontrol show job N` | `thisjob N` adds a `squeue` row + est. start; `showjob N` also runs `seff` if finished |
 | What's my historical job activity? | `sacct --user=$USER --starttime=YYYY-mm-dd` | `mysacct` (preset format) |
 | What accounts and QOS can I submit under? | `sacctmgr -s show user $USER format=User,DefaultAccount,Account,QOS` | `myaccounts` (same call, shorter to type) |
 | What's my fairshare / scheduling priority? | — | `myfairshare` |
-| What's my scratch quota? | — | `myquota` |
+| What's my scratch quota? | `beegfs-ctl --getquota --uid $USER` | — |
 | Why is my job stuck pending? | `squeue --me -t PD -O Reason` | `showlimited` (cluster-wide capacity holds by group/QOS) |
 | Which partitions have free capacity? | `sinfo` (or `sinfo --Format=...`) | `showparts` (color-coded availability) |
 | Which GPU nodes have free GPUs? | `scontrol show nodes` (parse `Gres` / `AllocTRES`) | `showgpus` (color-coded per-node) |
 | How efficient was a finished job? | `seff <jobid>` | (no wrapper) |
+
+## Filesystem and Storage
+
+Sol provides two main storage areas:
+
+| Location         | Purpose                      | Policy                          |
+|------------------|------------------------------|---------------------------------|
+| `/home/$USER`    | Config, small files          | Limited space, backed up        |
+| `/scratch/$USER` | Large data, caches, outputs  | Layered deletion — see Sol docs |
+
+Always place large data files, model caches, and outputs under
+`/scratch/$USER`.
+
+### Renewing the Scratch Timestamp — `solx keep`
+
+Sol deletes inactive `/scratch` files on a layered schedule and writes
+per-stage CSV warnings into `$HOME`. ASU Research Computing defines the
+thresholds, CSV filenames, and warning cadence; their doc is
+authoritative: <https://docs.rc.asu.edu/scratch>.
+
+**Use `solx keep`.** It reads those CSVs, keeps only the directories
+that match your **keep-list**, and refreshes their timestamps with
+`touch`. It only ever touches directories that are **both** flagged by
+Sol **and** in your keep-list — so there's nothing to do until Sol
+actually flags something, and it never walks `/scratch` wholesale. That
+bound is the whole point: it's a tool to extend the life of files you
+still use, not to defeat Sol's retention policy.
+
+**Where the keep-list lives:** the `[keep]` block in
+`~/.config/solx/config.toml` — `include` / `exclude` gitignore-style
+globs, set up once with `solx config edit`. Keep regenerable junk
+(`.venv`, `__pycache__`, `node_modules`, …) out of `include` so a
+renewal isn't spent on files that rebuild for free. `solx` owns the
+mechanics — the config schema and a worked example are in
+[references/solx.md](references/solx.md).
+
+**Preview before the real pass.** `solx keep` rewrites timestamps on
+every kept file — potentially hundreds of thousands. Never fire it
+blind: run `--dry-run` first and check the plan, *or* get the user's
+go-ahead on the scope. It also prompts (`… ? [y/N]`) before touching
+unless you pass `-y`; in a non-interactive session it refuses rather
+than hang.
+
+```shell
+solx keep --dry-run -v       # preview which directories would be renewed
+solx keep                    # renew them (prompts; -y to skip the prompt)
+solx keep --stage pending    # only the most-urgent CSV
+solx --json keep --dry-run   # machine-readable plan (counts + a capped sample)
+```
+
+#### Where to run it
+
+A renewal is metadata-heavy I/O, not compute — but a touch pass over
+tens of thousands of files is exactly the load Sol's **login nodes
+throttle**. Check the environment first (see [Detecting the
+Environment](#detecting-the-environment)), then branch:
+
+- **On a compute node** (`$SLURM_JOB_ID` set) — run it directly; you
+  already hold dedicated resources.
+- **On a login node** (`$SLURM_JOB_ID` unset) — don't run the heavy
+  pass here. Move it to one of, in rough order of convenience:
+  - the **DTN**: `ssh soldtn '<cmd>'` (the `dtn` wrapper is literally
+    `ssh soldtn`). It's tuned for I/O, isn't throttled, and has many
+    cores — the best home for a large renewal.
+  - a **compute node**: grab one with `solx job start` (or
+    `interactive`) and run it there.
+  - a **batch job**: submit a short `htc` job whose payload is the
+    renewal, for an unattended pass.
+
+Match `-j` (parallel workers) to where it actually runs: a 4-core
+compute node can't feed more than a couple, while the DTN has many. See
+[references/scratch.md](references/scratch.md) for the non-interactive
+`PATH` gotcha when invoking over `ssh soldtn`.
+
+### Sharing Files
+
+See [references/sharing.md](references/sharing.md) for the
+step-by-step procedure to share files with other users on the
+cluster.
+
+## Getting the Software You Need on Sol
+
+Situation: you need a tool — a compiler, a Python interpreter, an R
+package, a LaTeX distribution, a CLI — and the system `PATH` on Sol
+either doesn't have it or has too old a version. You don't have
+`sudo`. There are four non-sudo paths; pick the one that matches the
+kind of software:
+
+1. **Already on the cluster as a module.** Compilers, MPI stacks,
+   Python distributions, R, CUDA, common applications — all live
+   under the `module` system. No modules are loaded when a session
+   starts, so `module load` them every session (or in every SBATCH
+   script). See [references/module.md](references/module.md) for
+   `avail` / `load` / `list` / `purge` and the naming schemes.
+
+2. **Python — use `uv`.** The system `python3` on Sol is older than
+   modern code expects. Don't fight it; use
+   [`uv`](https://docs.astral.sh/uv/) to manage interpreters and
+   environments instead.
+
+   - Point `uv`'s cache at `/scratch` so it doesn't fill `/home`:
+
+     ```shell
+     export UV_CACHE_DIR=/scratch/$USER/.cache/uv
+     ```
+   - For one-file utility scripts, prefer the PEP 723 inline-metadata
+     shebang `#!/usr/bin/env -S uv run --script` so the script
+     self-bootstraps its interpreter and dependencies.
+
+3. **LaTeX — use R's `tinytex`.** Builds a per-user TeX Live tree
+   under `~/.local/bin/latex`, no sudo:
+
+   1. `module avail r-4` to find a current R, then `module load` it.
+   2. Use the R package `tinytex` to install TeX Live locally.
+   3. Install TeX packages on demand: `tlmgr install <pkg>`.
+   4. If `tlmgr` complains "is older than remote repository", refresh
+      the local TeX Live: load R, then
+      `Rscript -e "tinytex::reinstall_tinytex(repository='illinois')"`.
+
+4. **Anything else — install to `~/.local` or `~/opt`.** No `sudo`
+   on Sol, so anything you build or download from source goes under
+   your home directory. `~/.local/bin` should be on `PATH` by
+   default; add it in `~/.bashrc` / `~/.zshrc` if not.
+
+Across all four: never propose `sudo`. If a tool genuinely requires
+root, file a ticket with ASU Research Computing rather than working
+around it.
 
 ## Using a Service That Runs on Sol, From Your Laptop
 

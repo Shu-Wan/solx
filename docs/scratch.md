@@ -68,22 +68,6 @@ ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; solx keep -j 24 -y'
 solx keep
 ```
 
-## Migrating an old `~/.solkeep`
-
-If you used the older `sol_renew.py` script you have a `~/.solkeep` keep-list.
-`solx keep` still reads it (with a deprecation notice; support ends in a future
-release), so migrate it into your config once:
-
-```shell
-solx config import-solkeep      # folds ~/.solkeep into [keep]
-solx config show                # review the result
-```
-
-If your keep-list re-includes a path *under* an earlier `!` carve-out, the
-`[keep]` form (include minus exclude) can't reproduce that ordering — the
-command tells you and asks you to confirm with `-f`. Compare
-`solx keep --dry-run` before and after to be sure.
-
 ---
 
 Full command reference: [solx.md](solx.md). Sol's deletion pipeline + CSV

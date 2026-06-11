@@ -2,8 +2,16 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Shu-Wan/solx/ci.yml?branch=main&label=ci&logo=github)](https://github.com/Shu-Wan/solx/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Shu-Wan/solx?logo=github&color=blue)](https://github.com/Shu-Wan/solx/releases)
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](#installation)
+[![Rust](https://img.shields.io/badge/rust-single%20binary-CE412B?logo=rust&logoColor=white)](#installation)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+<div align="center">
+
+### [📋 Cheat sheet](skills/sol-skill/references/cheatsheet.md) &nbsp;·&nbsp; [📖 solx docs](docs/solx.md) &nbsp;·&nbsp; [🌵 Sol skill](skills/sol-skill/SKILL.md)
+
+<sub>cheat sheet also as a [PDF](docs/cheatsheet.pdf) or from the CLI: `solx cheatsheet`</sub>
+
+</div>
 
 Solx is a CLI for ASU's **Sol** supercomputer, designed for agent-assisted
 work so you can stop babysitting Slurm.
@@ -16,21 +24,17 @@ SSH to Sol, run `solx`, and keep the whole loop in your terminal.
 
 ## Installation
 
-On Sol — `solx` provisions its own Python (≥ 3.10) via
-[uv](https://docs.astral.sh/uv/):
+`solx` is a single static binary — no Python, no `uv`, no toolchain on the
+box. On Sol, download it, make it executable, and put it on your `$PATH`:
 
 ```shell
-curl -fsSL https://github.com/Shu-Wan/solx/releases/latest/download/install.sh | sh
+mkdir -p ~/.local/bin
+curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
+chmod +x ~/.local/bin/solx
 ```
 
-Re-run that command to upgrade. Prefer a package manager?
-
-```shell
-uv tool install git+https://github.com/Shu-Wan/solx.git#subdirectory=solx
-```
-
-Both channels need `uv` on your `$PATH` — install it from
-[astral.sh/uv](https://docs.astral.sh/uv/) first if you don't have it.
+Re-run those two lines to upgrade. The binary is fully static (musl), so it
+runs on any x86-64 Linux — Sol's RHEL 8 included.
 
 ## Usage
 
@@ -57,6 +61,7 @@ What it's good at:
 **Learn more:** the full command manual is [docs/solx.md](docs/solx.md). Cached
 reference notes on Sol conventions —
 [the `solx` CLI](skills/sol-skill/references/solx.md),
+[the Sol cheat sheet](skills/sol-skill/references/cheatsheet.md) ([PDF](docs/cheatsheet.pdf)),
 [modules](skills/sol-skill/references/module.md),
 [scratch policy](skills/sol-skill/references/scratch.md),
 [Slurm jobs](skills/sol-skill/references/slurm.md),
@@ -81,13 +86,13 @@ same way.
 
 ## Development
 
-- **Changelog** — [CHANGELOG.md](CHANGELOG.md); current release **v0.4.0**.
-- **Roadmap** — [docs/ROADMAP.md](docs/ROADMAP.md); next up is the native
-  single-binary rewrite.
+- **Changelog** — [CHANGELOG.md](CHANGELOG.md); current release **v1.0.0**
+  (native Rust binary).
+- **Roadmap** — [docs/ROADMAP.md](docs/ROADMAP.md).
 - **Contributing, tests, and the eval harness** —
   [DEVELOPMENT.md](DEVELOPMENT.md) and
-  [solx/DEVELOPMENT.md](solx/DEVELOPMENT.md), with the coverage matrix in
-  [docs/coverage.md](docs/coverage.md).
+  [solx/DEVELOPMENT.md](solx/DEVELOPMENT.md), with the coverage matrix
+  in [docs/coverage.md](docs/coverage.md).
 
 ## Disclaimer
 
