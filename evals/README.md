@@ -102,6 +102,34 @@ machine-checkable `check`.
 Layer tags drive how the runner executes each eval and how
 `docs/coverage.md` is regenerated.
 
+## Check types
+
+`check` is the machine-checkable grader for an assertion; the runner
+dispatches on its key:
+
+- `transcript_contains` / `transcript_lacks` — literal substring is /
+  isn't anywhere in the agent's transcript (L1).
+- `transcript_matches` — Python regex against the transcript (L1).
+- `l2_script` — run the named script (e.g. the `solx` crate's keep
+  test) and pass if it exits `exit_code` (L2, real filesystem mutation).
+- `l3_sbatch_test_only` — extract the resource flags from the agent's
+  **final** recommendation (the last complete `#SBATCH` / `salloc`
+  header block in the transcript) and run them through `sbatch
+  --test-only` on real Sol; `expect: "accepted"` passes iff the
+  scheduler accepts the combo, `expect: "rejected"` iff it errors (L3,
+  live-scheduler truth). An empty extraction (no header found) scores
+  **FAIL**, not pass. Strip non-resource lines (conda/module/`srun`
+  payload); pass only partition/qos/gres/time/cpu/mem flags.
+
+The `l3_sbatch_test_only` check is the partition/QOS grader. A regex
+assertion checks *which* partition the agent named; this checks the
+recommendation is actually **schedulable**. It catches headers that
+read plausible but the scheduler rejects — `-p htc -q debug` (htc only
+allows `qos=public`), a `debug`-QOS job over its 15-minute wall, or a
+GPU job parked on a partition that can't grant it. It exists because a
+plausible-looking but wrong partition/QOS pairing is exactly the bug
+class regex alone misses.
+
 ## Privacy
 
 `evals.json` and `evals/results/` are gitignored because they may

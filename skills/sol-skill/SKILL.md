@@ -130,6 +130,7 @@ version:
 | `solx job jump` | Drop a shell onto the job's compute node (`srun --pty`). |
 | `solx job list` · `time` · `stop` | List · time-left · cancel. Raw `squeue`/`scancel` are equivalent (see below). |
 | `solx keep` | Renew `/scratch` files Sol flagged, filtered by `[keep]`. |
+| `solx cheatsheet` | Print the Sol quick reference (`references/cheatsheet.md`) as text. |
 
 `--json` forces JSON — before the subcommand (`solx --json job list`) or
 after it (`solx job list --json`; exception: after `job start`, tokens
@@ -187,6 +188,215 @@ than necessary, and SLURM gives you cleaner answers.
 2. You do not have `sudo` privileges, so maintain a local environment under `/home/$USER/.local` or `/home/$USER/opt`.
 3. Use `git` to keep code in sync between local and cluster.
 
+## Submitting Jobs
+
+Sol uses **Slurm**. Interactive allocations go through `solx`; batch
+work goes through `sbatch`. `solx` deliberately doesn't wrap `sbatch` —
+for batch, drive Sol's tooling directly.
+
+### Know your access first
+
+Partition and QOS advice is only correct *for this user* — what they can
+run on depends on their account and group. Before recommending where a
+job goes, check what's actually available to them:
+
+```shell
+sacctmgr -n show assoc user=$USER format=Account,Partition,QOS
+#   → e.g.  grp_yourpi || debug,htc,private,public
+sshare -U -o Account,User,FairShare    # low fairshare → prefer a buy-in/preemptible QOS
+```
+
+The QOS column is the menu. Most users have `public` (default,
+non-preemptable) and `debug` (15-min, high-priority); a `private` or
+`grp_*` entry means the user's group owns nodes they can run on *longer
+than htc's 4 hours* (and preemptibly, for `private`). Tailor the
+partition/QOS choice below to that list — don't suggest a QOS the user
+can't use. The full partition × QOS table is in the cheat sheet,
+[references/cheatsheet.md](references/cheatsheet.md).
+
+### Interactive allocations — `solx job`
+
+`solx job start` requests an allocation from a named template in your
+config and **waits until the queue grants it**, then returns; the
+allocation keeps running in the background until you attach.
+
+```shell
+solx job start debug         # request the [jobs.debug] template; prints the job id
+solx job start debug -n      # dry run: print the salloc argv, submit nothing
+solx job jump                # open a shell on the compute node (srun --pty)
+# … work …
+exit                         # back to the login node; the allocation stays alive
+solx job list                # still RUNNING?            (= squeue --me)
+solx job time                # wall-time left             (= squeue -h -j <id> -o %L)
+solx job stop                # cancel when done; prompts  (= scancel <id>)
+```
+
+Templates live in `~/.config/solx/config.toml` (`solx config edit`);
+each `[jobs.<name>]` sets `partition`, `time`, optional `qos`, `gres`,
+`extra_args`. Anything after `--` on `solx job start` is appended to
+`salloc` (last flag wins), so you can override a template for one run:
+`solx job start gpu -- --mem=128G`. Without `solx`, the equivalent is
+`interactive` / `salloc` directly (next paragraph).
+
+**The `interactive` wrapper** (the no-`solx` fallback) already defaults
+to `-p htc -q public -c 1 -t 0-4`. Bare `interactive` gets you a 4-hour
+`htc` shell — the right shape for most debug or "just need to check
+something on a compute node" sessions, GPU work included: `htc` carries
+A100s, so `interactive -p htc -G a100:1` gets you a quick GPU shell.
+Override to `public` only when the run needs more than htc's 4-hour wall.
+
+**Match the partition to the job's wall-time and priority, not to
+whether it uses a GPU.** GPUs live in `htc`, `public`, *and* `general`,
+so "it needs an A100" says nothing about where the job goes — *how
+long* and *how urgently* do:
+
+- **≤ 4 h, including GPU work → `htc`.** The default home for debug,
+  ablations, smoke-tests, and short training. `htc` carries Sol's
+  largest A100 pool (dozens of `a100:4` nodes, plus H100 / L40 / A30)
+  and is far less contended than `public`. Sol nudges you toward it — a
+  ≤4h job submitted to `public` prints `you may consider '-p htc'`, but
+  it doesn't move the job for you, so pass `-p htc` yourself. A 30-minute
+  A100 ablation is an `htc` job, not a `public` one.
+- **≤ 15 min and you want to jump the queue → `-p public -q debug`**
+  (or `-p general -q debug`). The `debug` QOS has a 15-minute hard cap
+  but very high priority and allows GPUs — ideal for "does this even
+  launch?". It is **not** valid on `htc` (`-p htc -q debug` is rejected),
+  so pair it with `public`/`general` — and always *with* `-q debug`, since
+  bare `-p general` (default QOS `public`) is rejected too. One job at a time.
+- **> 4 h, non-preemptable → `-p public`** (7-day wall) — real runs
+  that can't finish or checkpoint inside 4 hours.
+- **> 4 h on borrowed private nodes, OK with preemption → `-p general
+  -q private`.** The `private` QOS has no wall of its own (gated by the
+  partition) and trades preemptibility — owners can cancel your job —
+  for running past htc's 4 hours; it often starts sooner.
+
+The trap is the **"GPU → public" reflex**: sending a short GPU job to
+`public` parks it behind multi-day jobs while hundreds of htc A100s sit
+one partition over. Only the wall-time clock — or a node shape `htc`
+lacks (GH200, Gaudi) — should push GPU work past `htc`.
+
+### Batch jobs — `sbatch`
+
+For real batch work, submit an SBATCH script with `sbatch` — `solx`
+doesn't try to replace it. **Don't write SBATCH scripts from scratch
+when a template fits.** Sol ships ready-to-modify templates under
+`/packages/public/sol-sbatch-templates/templates/` for serial, MPI
+(`hpcx` / `intel` / `mpich` / `mvapich` / `openmpi` variants), Python,
+Python multiprocessing, R, MATLAB, and rclone jobs. Start from the
+closest match instead of inventing headers.
+
+See [references/slurm.md](references/slurm.md) for submission commands,
+example scripts (serial, MPI, job arrays), troubleshooting, exit codes,
+and the helpful-commands table; and
+[references/sessions.md](references/sessions.md) for the manual
+`interactive` / ssh-tunnel path when `solx` isn't in play.
+
+## Situation-Aware Job Management
+
+Submitting jobs is cheap to *type* and expensive to *get wrong* on a
+shared cluster. Two pieces of state should shape what you do — check
+them, don't fly blind.
+
+### Fairshare — check it before you submit, and back off when it's low
+
+Fairshare is Sol's scheduling-priority score (roughly 0–1): heavy recent
+usage drives it down, which makes your future jobs queue *behind*
+everyone else's. Read it with the wrapper, which does the live priority
+math:
+
+```shell
+myfairshare
+```
+
+`myfairshare` prints a table; the number to read is the rightmost
+**`RealFairShare`** column (the dampened 0–1 score). **Below ~0.05 is
+bad** — the account is effectively throttled. When fairshare is that
+low:
+
+- **Don't spam the scheduler.** Submitting a pile of jobs, or
+  auto-resubmitting on every failure, burns more fairshare and digs the
+  hole deeper — the opposite of what's needed. Submit fewer, right-sized
+  jobs and let them run.
+- **Right-size requests.** Don't grab `public`/GPU/large nodes for work
+  that fits on `htc`; over-asking costs more fairshare per job.
+- **Tell the user.** Surface the low fairshare ("your fairshare is
+  0.03, so jobs will queue for a while") instead of quietly firing more
+  work. Long queue waits are usually fairshare, not a stuck cluster.
+
+Don't reflexively cancel-and-resubmit a pending job to "get a better
+spot" — the new job inherits the same (or worse) priority and you've
+spent fairshare for nothing.
+
+### Remaining time — wrap up or hand off before the node is reclaimed
+
+When the agent is working *inside* an allocation, it's on borrowed
+wall-time: when the clock runs out, Slurm kills the job and **anything
+not written to durable storage is lost.** Know how much time is left:
+
+```shell
+solx job time                          # remaining wall-time (e.g. 2:14:09; D-HH:MM:SS once over a day)
+squeue -h -j "$SLURM_JOB_ID" -o %L     # the no-solx equivalent (TimeLeft, no padding)
+```
+
+Then manage the window deliberately:
+
+- **Don't start what can't finish.** Before kicking off a step, compare
+  its expected runtime to the time left. If it won't fit, either
+  checkpoint-and-resume in chunks, or request more time up front (a new
+  `solx job start` with a longer `time`, or a batch job) rather than
+  losing the work at the boundary.
+- **Wrap up early.** As the remaining time gets short, stop starting new
+  work and instead **flush results/outputs to `/scratch`, checkpoint
+  model state, and write a one-paragraph summary** of where things
+  stand. `/home` and `/scratch` survive the allocation; the compute
+  node's local state does not.
+- **Hand off.** If the task will outlive the allocation, leave a resume
+  note or a small script (what ran, what's left, the command to
+  continue) so the next session — or a follow-up batch job — picks up
+  cleanly instead of redoing work.
+
+### Use Sol's own wrappers directly
+
+For status and introspection, **call Sol's `my*` / `show*` wrappers
+directly** — don't reimplement them and don't expect `solx` to wrap
+them. `solx` owns the *interactive-allocation lifecycle*; these own
+*status*:
+
+| You want | Command |
+|---|---|
+| Your fairshare / scheduling priority | `myfairshare` |
+| Your `/scratch` quota | `beegfs-ctl --getquota --uid $USER` |
+| Your jobs right now | `myjobs` (or `squeue --me`) |
+| Estimated start time of a pending job | `thisjob <jobid>` |
+| Efficiency of a finished job | `seff <jobid>` |
+| Free capacity / partitions | `sinfo`, `showparts` |
+| Free GPUs per node | `showgpus` |
+
+Full command list and output notes:
+[references/slurm.md](references/slurm.md).
+
+## Asking the Cluster About Yourself and Your Jobs
+
+Status questions ("what's queued?", "why is my job pending?", "what
+accounts can I use?") almost always have a one-line answer. **Prefer the
+SLURM command itself** — it's portable and stable — and reach for Sol's
+`my*` / `show*` wrappers when their formatting saves real work
+(`myjobs`, `summary`) or they encapsulate non-trivial calculation
+(`myfairshare`).
+
+| User question | Native SLURM | Sol wrapper (when useful) |
+|---|---|---|
+| What jobs do I have right now? | `squeue --me` | `myjobs` (priority/QOS/GPU columns), `summary` (state counts). NB `sq` is the *whole-cluster* queue — filter with `sq -u $USER` |
+| Tell me about job N | `scontrol show job N` | `thisjob N` adds a `squeue` row + est. start; `showjob N` also runs `seff` if finished |
+| What's my historical job activity? | `sacct --user=$USER --starttime=YYYY-mm-dd` | `mysacct` (preset format) |
+| What accounts and QOS can I submit under? | `sacctmgr -s show user $USER format=User,DefaultAccount,Account,QOS` | `myaccounts` (same call, shorter to type) |
+| What's my fairshare / scheduling priority? | — | `myfairshare` |
+| What's my scratch quota? | `beegfs-ctl --getquota --uid $USER` | — |
+| Why is my job stuck pending? | `squeue --me -t PD -O Reason` | `showlimited` (cluster-wide capacity holds by group/QOS) |
+| Which partitions have free capacity? | `sinfo` (or `sinfo --Format=...`) | `showparts` (color-coded availability) |
+| Which GPU nodes have free GPUs? | `scontrol show nodes` (parse `Gres` / `AllocTRES`) | `showgpus` (color-coded per-node) |
+| How efficient was a finished job? | `seff <jobid>` | (no wrapper) |
+
 ## Filesystem and Storage
 
 Sol provides two main storage areas:
@@ -215,16 +425,12 @@ bound is the whole point: it's a tool to extend the life of files you
 still use, not to defeat Sol's retention policy.
 
 **Where the keep-list lives:** the `[keep]` block in
-`~/.config/solx/config.toml` (`include` / `exclude`, gitignore-style
-globs). Set it up once with `solx config edit`:
-
-```toml
-# Replace `sparky` with your ASURITE. Patterns are gitignore-style; ** = any depth.
-[keep]
-include = ["/scratch/sparky/my-project", "/scratch/sparky/experiments/**"]
-# Don't spend the renewal on regenerable junk — it rebuilds for free.
-exclude = ["**/.venv", "**/.git", "**/__pycache__", "**/node_modules"]
-```
+`~/.config/solx/config.toml` — `include` / `exclude` gitignore-style
+globs, set up once with `solx config edit`. Keep regenerable junk
+(`.venv`, `__pycache__`, `node_modules`, …) out of `include` so a
+renewal isn't spent on files that rebuild for free. `solx` owns the
+mechanics — the config schema and a worked example are in
+[references/solx.md](references/solx.md).
 
 **Preview before the real pass.** `solx keep` rewrites timestamps on
 every kept file — potentially hundreds of thousands. Never fire it
@@ -317,175 +523,6 @@ kind of software:
 Across all four: never propose `sudo`. If a tool genuinely requires
 root, file a ticket with ASU Research Computing rather than working
 around it.
-
-## Submitting Jobs
-
-Sol uses **Slurm**. Interactive allocations go through `solx`; batch
-work goes through `sbatch`. `solx` deliberately doesn't wrap `sbatch` —
-for batch, drive Sol's tooling directly.
-
-### Interactive allocations — `solx job`
-
-`solx job start` requests an allocation from a named template in your
-config and **waits until the queue grants it**, then returns; the
-allocation keeps running in the background until you attach.
-
-```shell
-solx job start debug         # request the [jobs.debug] template; prints the job id
-solx job start debug -n      # dry run: print the salloc argv, submit nothing
-solx job jump                # open a shell on the compute node (srun --pty)
-# … work …
-exit                         # back to the login node; the allocation stays alive
-solx job list                # still RUNNING?            (= squeue --me)
-solx job time                # wall-time left             (= squeue -h -j <id> -o %L)
-solx job stop                # cancel when done; prompts  (= scancel <id>)
-```
-
-Templates live in `~/.config/solx/config.toml` (`solx config edit`);
-each `[jobs.<name>]` sets `partition`, `time`, optional `qos`, `gres`,
-`extra_args`. Anything after `--` on `solx job start` is appended to
-`salloc` (last flag wins), so you can override a template for one run:
-`solx job start gpu -- --mem=128G`. Without `solx`, the equivalent is
-`interactive` / `salloc` directly (next paragraph).
-
-**The `interactive` wrapper** (the no-`solx` fallback) already defaults
-to `-p htc -q public -c 1 -t 0-4`. Bare `interactive` gets you a 4-hour
-`htc` shell — the right shape for most debug or "just need to check
-something on a compute node" sessions. Override only when the workload
-genuinely needs more (e.g., `interactive -p public -G a100:1` for a GPU
-shell).
-
-**Match the partition to the workload size, not the request size.**
-Sol's `htc` partition is the right home for short, lightweight,
-debug-class work. Use `public` for real workloads that genuinely need
-the larger nodes. If the user describes the work as "quick", "debug",
-"lightweight", "just need to check", or specifies under an hour with no
-GPU — that's an `htc` request (a sufficient trigger, not a wall-time
-cap: `htc` still serves the `interactive` wrapper's 4-hour default).
-Don't default to `public` in those cases: defaulting wastes capacity
-that someone else is queued for.
-
-### Batch jobs — `sbatch`
-
-For real batch work, submit an SBATCH script with `sbatch` — `solx`
-doesn't try to replace it. **Don't write SBATCH scripts from scratch
-when a template fits.** Sol ships ready-to-modify templates under
-`/packages/public/sol-sbatch-templates/templates/` for serial, MPI
-(`hpcx` / `intel` / `mpich` / `mvapich` / `openmpi` variants), Python,
-Python multiprocessing, R, MATLAB, and rclone jobs. Start from the
-closest match instead of inventing headers.
-
-See [references/slurm.md](references/slurm.md) for submission commands,
-example scripts (serial, MPI, job arrays), troubleshooting, exit codes,
-and the helpful-commands table; and
-[references/sessions.md](references/sessions.md) for the manual
-`interactive` / ssh-tunnel path when `solx` isn't in play.
-
-## Situation-Aware Job Management
-
-Submitting jobs is cheap to *type* and expensive to *get wrong* on a
-shared cluster. Two pieces of state should shape what you do — check
-them, don't fly blind.
-
-### Fairshare — check it before you submit, and back off when it's low
-
-Fairshare is Sol's scheduling-priority score (roughly 0–1): heavy recent
-usage drives it down, which makes your future jobs queue *behind*
-everyone else's. Read it with the wrapper, which does the live priority
-math:
-
-```shell
-myfairshare
-```
-
-`myfairshare` prints a table; the number to read is the rightmost
-**`RealFairShare`** column (the dampened 0–1 score). **Below ~0.05 is
-bad** — the account is effectively throttled. When fairshare is that
-low:
-
-- **Don't spam the scheduler.** Submitting a pile of jobs, or
-  auto-resubmitting on every failure, burns more fairshare and digs the
-  hole deeper — the opposite of what's needed. Submit fewer, right-sized
-  jobs and let them run.
-- **Right-size requests.** Don't grab `public`/GPU/large nodes for work
-  that fits on `htc`; over-asking costs more fairshare per job.
-- **Tell the user.** Surface the low fairshare ("your fairshare is
-  0.03, so jobs will queue for a while") instead of quietly firing more
-  work. Long queue waits are usually fairshare, not a stuck cluster.
-
-Don't reflexively cancel-and-resubmit a pending job to "get a better
-spot" — the new job inherits the same (or worse) priority and you've
-spent fairshare for nothing.
-
-### Remaining time — wrap up or hand off before the node is reclaimed
-
-When the agent is working *inside* an allocation, it's on borrowed
-wall-time: when the clock runs out, Slurm kills the job and **anything
-not written to durable storage is lost.** Know how much time is left:
-
-```shell
-solx job time                          # remaining wall-time (e.g. 2:14:09; D-HH:MM:SS once over a day)
-squeue -h -j "$SLURM_JOB_ID" -o %L     # the no-solx equivalent (TimeLeft, no padding)
-```
-
-Then manage the window deliberately:
-
-- **Don't start what can't finish.** Before kicking off a step, compare
-  its expected runtime to the time left. If it won't fit, either
-  checkpoint-and-resume in chunks, or request more time up front (a new
-  `solx job start` with a longer `time`, or a batch job) rather than
-  losing the work at the boundary.
-- **Wrap up early.** As the remaining time gets short, stop starting new
-  work and instead **flush results/outputs to `/scratch`, checkpoint
-  model state, and write a one-paragraph summary** of where things
-  stand. `/home` and `/scratch` survive the allocation; the compute
-  node's local state does not.
-- **Hand off.** If the task will outlive the allocation, leave a resume
-  note or a small script (what ran, what's left, the command to
-  continue) so the next session — or a follow-up batch job — picks up
-  cleanly instead of redoing work.
-
-### Use Sol's own wrappers directly
-
-For status and introspection, **call Sol's `my*` / `show*` wrappers
-directly** — don't reimplement them and don't expect `solx` to wrap
-them. `solx` owns the *interactive-allocation lifecycle*; these own
-*status*:
-
-| You want | Command |
-|---|---|
-| Your fairshare / scheduling priority | `myfairshare` |
-| Your `/scratch` quota | `myquota` |
-| Your jobs right now | `myjobs` (or `squeue --me`, `sq`) |
-| Estimated start time of a pending job | `thisjob <jobid>` |
-| Efficiency of a finished job | `seff <jobid>` |
-| Free capacity / partitions | `sinfo`, `showparts` |
-| Free GPUs per node | `showgpus` |
-
-Full command list and output notes:
-[references/slurm.md](references/slurm.md).
-
-## Asking the Cluster About Yourself and Your Jobs
-
-Status questions ("what's queued?", "why is my job pending?", "what
-accounts can I use?") almost always have a one-line answer. **Prefer the
-SLURM command itself** — it's portable and stable — and reach for Sol's
-`my*` / `show*` wrappers when their formatting saves real work
-(`myjobs`, `summary`) or they encapsulate non-trivial calculation
-(`myfairshare`).
-
-| User question | Native SLURM | Sol wrapper (when useful) |
-|---|---|---|
-| What jobs do I have right now? | `squeue --me` | `myjobs` (priority/QOS/GPU columns), `sq` (sorted by priority), `summary` (state counts) |
-| Tell me about job N | `scontrol show job N` | `thisjob N` adds a `squeue` row + est. start; `showjob N` also runs `seff` if finished |
-| What's my historical job activity? | `sacct --user=$USER --starttime=YYYY-mm-dd` | `mysacct` (preset format) |
-| What accounts and QOS can I submit under? | `sacctmgr -s show user $USER format=User,DefaultAccount,Account,QOS` | `myaccounts` (same call, shorter to type) |
-| What's my fairshare / scheduling priority? | — | `myfairshare` |
-| What's my scratch quota? | — | `myquota` |
-| Why is my job stuck pending? | `squeue --me -t PD -O Reason` | `showlimited` (cluster-wide capacity holds by group/QOS) |
-| Which partitions have free capacity? | `sinfo` (or `sinfo --Format=...`) | `showparts` (color-coded availability) |
-| Which GPU nodes have free GPUs? | `scontrol show nodes` (parse `Gres` / `AllocTRES`) | `showgpus` (color-coded per-node) |
-| How efficient was a finished job? | `seff <jobid>` | (no wrapper) |
 
 ## Using a Service That Runs on Sol, From Your Laptop
 

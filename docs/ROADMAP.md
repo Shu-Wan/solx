@@ -20,6 +20,8 @@ Contributor / harness docs: [`../DEVELOPMENT.md`](../DEVELOPMENT.md),
   Sol has actually flagged, never a blanket `touch`.
 - **One TOML config** — `solx init` writes a starter; `solx config`
   shows/edits it.
+- **A built-in cheat sheet** — `solx cheatsheet` prints the Sol quick
+  reference (partition/QOS table, `solx` ↔ raw SLURM, wrappers, tunnels).
 - **Built for CLI agents** — JSON off a TTY, results on stdout /
   diagnostics on stderr, meaningful exit codes, no hidden prompts; static
   shell completions for bash/zsh/fish.

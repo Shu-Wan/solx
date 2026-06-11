@@ -48,7 +48,7 @@ _solx() {
         if [[ "$cur" == -* ]]; then
             mapfile -t COMPREPLY < <(compgen -W "-h --help --version --json" -- "$cur")
         else
-            mapfile -t COMPREPLY < <(compgen -W "init keep jump job config completions version help" -- "$cur")
+            mapfile -t COMPREPLY < <(compgen -W "init keep jump job config completions cheatsheet version help" -- "$cur")
         fi
         return
     fi
@@ -70,6 +70,10 @@ _solx() {
         completions)
             flags="-h --help"
             words="bash zsh fish"
+            ;;
+        cheatsheet)
+            flags="-h --help"
+            words=""
             ;;
         version)
             flags="-h --help"

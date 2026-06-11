@@ -13,6 +13,7 @@
 //! solx config show [--json]
 //! solx config edit
 //! solx completions <bash|zsh|fish>
+//! solx cheatsheet
 //! solx version   (alias of --version)
 //! solx help      (alias of --help)
 //! ```
@@ -22,6 +23,7 @@
 //! accepted both before the subcommand and trailing on every leaf except
 //! `job start`, where a non-leading `--json` is salloc passthrough.
 
+mod cheatsheet;
 mod completions;
 mod config;
 mod gitwild;
@@ -88,6 +90,9 @@ enum Cmd {
         /// Target shell: bash, zsh, or fish.
         shell: String,
     },
+
+    /// Print the Sol cheat sheet (SLURM + solx quick reference) as text.
+    Cheatsheet,
 
     /// Show version and exit (alias of --version).
     Version,
@@ -260,6 +265,7 @@ fn run() -> i32 {
             0
         }
         Some(Cmd::Completions { shell }) => completions::cmd_completions(&shell),
+        Some(Cmd::Cheatsheet) => cheatsheet::cmd_cheatsheet(),
         Some(Cmd::Init { force }) => {
             require_sol();
             let out = Out::auto(json);

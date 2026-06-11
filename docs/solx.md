@@ -43,6 +43,7 @@ solx init        # writes ~/.config/solx/config.toml
 | `solx keep` | Renew `/scratch` files Sol flagged for deletion. |
 | `solx config show` / `edit` | Show or edit your config. |
 | `solx completions <bash\|zsh\|fish>` | Print a shell-completion script. |
+| `solx cheatsheet` | Print the Sol quick reference (SLURM + solx) as text. |
 | `solx version` (alias `--version`) | Print the version. |
 | `solx help` (alias `--help`) | Show help. |
 
@@ -70,7 +71,7 @@ under node load or a cold NFS cache). The raw forms, for shells without
 `solx`:
 
 ```shell
-squeue --me                              # = solx job list          (also: myjobs, sq)
+squeue --me                              # = solx job list          (also: myjobs)
 squeue -h -j "$SLURM_JOB_ID" -o %L       # = solx job time, inside a job
 scancel <jobid>                          # = solx job stop -y <jobid>
 myfairshare                              # scheduling priority (no solx equivalent)

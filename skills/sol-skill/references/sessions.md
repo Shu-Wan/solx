@@ -56,29 +56,34 @@ From the laptop, SSH to the login node:
 ssh $ME@$SOL
 ```
 
-On the login node, request an allocation. **Match the partition to
-the workload size**, not the request size — Sol's `htc` partition is
-the right home for short, lightweight, debug-class shells (anything
-under ~1 hour, modest CPU/RAM, no GPU). Save `public` for real
-work that genuinely needs the larger nodes. Picking `public` for a
-30-minute debug shell wastes capacity that someone else is queued for.
+On the login node, request an allocation. **Match the partition to the
+job's wall-time**, not the request size — Sol's `htc` partition is the
+right home for anything that fits its 4-hour wall (debug, smoke-tests,
+short GPU runs). `htc` carries a large GPU pool (hundreds of A100s,
+plus H100 / L40 / A30), so a short *GPU* shell belongs there too — not
+just CPU work. Save `public` (7-day wall) for runs that genuinely need
+more than 4 hours. Picking `public` for a 30-minute shell — GPU or not
+— wastes capacity that someone else is queued for.
 
 ```shell
-# Lightweight debug — short shell, no GPU, modest resources.
-# Use this for "I just want to test a command" or "I need to inspect
-# something on a compute node for a few minutes."
+# Lightweight debug — short shell, modest resources.
+# "I just want to test a command" / "inspect a compute node briefly."
 interactive -p htc -t 0-01:00 -c 4 --mem=16G
 
-# General-purpose interactive shell — hours of CPU work
-interactive -p public -t 0-04:00 -c 8 --mem=32G
+# Short GPU shell — an A100 for a quick test/ablation; fits htc's 4h.
+interactive -p htc -t 0-04:00 -c 8 --mem=64G -G a100:1
 
-# GPU
-interactive -p public -t 0-04:00 -c 8 --mem=64G -G a100:1
+# Longer run that needs more than htc's 4-hour wall → public (7-day).
+interactive -p public -t 1-00:00 -c 8 --mem=32G
 ```
 
 If the user describes the work as "quick", "debug", "lightweight",
-"just need to check", or specifies under an hour with no GPU — that's
-an `htc` request. Don't default to `public` in those cases.
+"just need to check", or names a wall-time at or under 4 hours — that's
+an `htc` request, GPU or not. Don't default to `public` in those cases;
+only a need for more than 4 hours (or a node shape htc lacks) does. For
+a ≤15-minute test that needs to start *now*, the `debug` QOS (`-p public
+-q debug`, very high priority, GPUs allowed — but not valid on `htc`) is
+the fast lane.
 
 When the allocation lands, the prompt changes and you are now on a
 compute node. **Capture the node hostname** — you will need it from

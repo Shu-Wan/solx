@@ -34,14 +34,42 @@ The binary tracks raw `squeue` — its residual over `squeue` is just the
 is flat regardless of node load or cache state. ~4.9MB, no runtime
 dependencies (no Python, `uv`, or `rustc` on the target).
 
+### Added
+
+- **`solx cheatsheet`** — prints the Sol quick reference (SLURM basics,
+  `solx` ↔ raw SLURM, the partition/QOS table, Sol's `my*`/`show*`
+  wrappers, laptop tunnels) as text. It's embedded from the skill's single
+  source `skills/sol-skill/references/cheatsheet.md`, so the CLI, the
+  rendered [`docs/cheatsheet.pdf`](docs/cheatsheet.pdf), and the skill
+  reference can't drift. Wired into the bash/zsh/fish completions.
+- **The Sol cheat sheet** in the skill —
+  `skills/sol-skill/references/cheatsheet.md`, with a centered README nav
+  and a `scripts/build-cheatsheet.sh` PDF build.
+- **Eval-harness L3 grader `l3_sbatch_test_only`** — validates an agent's
+  recommended `#SBATCH` header against the live scheduler (`sbatch
+  --test-only`), catching partition/QOS combos that read plausibly but the
+  scheduler rejects (e.g. `-p htc -q debug`).
+
 ### Changed
 
 - **The CLI is rewritten in Rust** (the `solx/` crate), preserving the
   v0.5.0 command surface, output contract, and exit codes; behavioral
   parity was verified during the port and is locked going forward by the
   crate's test suite (`solx/tests/cli.rs` + unit vectors). The agent
-  skill's operational guidance is unchanged apart from the install steps
-  and the dropped `~/.solkeep` fallback (below).
+  skill's operational guidance is unchanged apart from the install steps,
+  the dropped `~/.solkeep` fallback (below), and the partition/QOS rework
+  (next).
+- **SLURM partition/QOS guidance reworked.** The skill routes jobs by
+  wall-time and priority, not CPU-vs-GPU: ≤4h work (GPUs included) → `htc`;
+  a ≤15-minute urgent check → `-p public -q debug`; longer runs → `public`
+  (or `general` with `-q private` for preemptible buy-in nodes). This
+  fixes the "GPU → `public`" reflex that parked short GPU jobs behind
+  multi-day ones. The Submitting-Jobs section is promoted ahead of storage
+  and gains a personalized "know your access" step (`sacctmgr show assoc`).
+  Factual corrections verified against the live scheduler: `htc` carries
+  H200 nodes; `highmem`'s wall is 7 days; there is no `myquota` wrapper
+  (use `beegfs-ctl --getquota`); `sq` is the whole-cluster queue, not
+  `squeue --me`.
 - **Install is a prebuilt static binary.** Download
   `solx-x86_64-unknown-linux-musl` from the release, `chmod +x`, and drop
   it on `PATH`. The `curl install.sh | sh` and `uv tool install` channels

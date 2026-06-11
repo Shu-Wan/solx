@@ -89,26 +89,36 @@
       "id": 4,
       "name": "slurm-gpu-pytorch-job",
       "prompt": "Write me an sbatch script that trains a PyTorch model on 2 A100s for 4 hours, in a conda env called `vision`.",
-      "expected_output": "SBATCH script with -p public, -G a100:2 (or --gres=gpu:a100:2), -t 0-04:00:00, module load mamba/latest + source activate vision, no sudo.",
+      "expected_output": "SBATCH script targeting -p htc (the 4h request fits htc's wall and htc carries A100s; qos public is the default), -G a100:2 (or --gres=gpu:a100:2), -t 0-04:00:00, module load mamba/latest + source activate vision, no sudo.",
       "setup": {
         "mock_hostname": "sc001.sol.rc.asu.edu",
         "include_solx": false
       },
       "assertions": [
         {
+          "text": "Routes the 4h GPU job to htc (it fits htc's 4h wall and htc carries A100s), not reflexively to public",
+          "layer": "L1",
+          "check": {"transcript_matches": "(-p\\s*htc|--partition[= ]htc)"}
+        },
+        {
           "text": "Script requests 2 A100 GPUs",
           "layer": "L1",
           "check": {"transcript_matches": "(--gres=gpu:a100:2|-G\\s+a100:2)"}
         },
         {
-          "text": "Time limit is 4 hours",
+          "text": "Time limit is 4 hours (any canonical form: 0-4, 0-04:00:00, 04:00:00, 4:00:00)",
           "layer": "L1",
-          "check": {"transcript_matches": "(0-04:00:00|--time=4:00:00|-t 4:00:00)"}
+          "check": {"transcript_matches": "(0-0?4\\b|0-0?4:00:00|(?<!\\d)0?4:00:00)"}
         },
         {
           "text": "No sudo anywhere",
           "layer": "L1",
           "check": {"transcript_lacks": "sudo"}
+        },
+        {
+          "text": "The recommended #SBATCH header is accepted by the live scheduler (catches invalid partition/QOS/gres/time combos, e.g. -p htc -q debug or an over-wall request)",
+          "layer": "L3",
+          "check": {"l3_sbatch_test_only": "transcript", "expect": "accepted"}
         }
       ]
     },
@@ -202,6 +212,92 @@
           "text": "Agent never proposes a bulk `find /scratch -exec touch`",
           "layer": "L1",
           "check": {"transcript_lacks": "find /scratch"}
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "slurm-short-gpu-prefers-htc",
+      "prompt": "I've got 5 quick ablation runs to fire off — each is a single A100 for about 30 minutes. My main training is already running on public. Give me an sbatch header for the ablations.",
+      "expected_output": "Agent routes the short single-A100 jobs to htc (-p htc, qos public, -t under 4h, --gres=gpu:a100:1) — htc carries A100s, a 30-minute job fits its 4-hour wall, and it is far less contended than public.",
+      "setup": {
+        "mock_hostname": "sc001.sol.rc.asu.edu",
+        "include_solx": false
+      },
+      "assertions": [
+        {
+          "text": "Routes the short GPU jobs to htc, not public (avoids the 'GPU -> public' reflex)",
+          "layer": "L1",
+          "check": {"transcript_matches": "(-p\\s*htc|--partition[= ]htc)"}
+        },
+        {
+          "text": "Requests a single A100",
+          "layer": "L1",
+          "check": {"transcript_matches": "(--gres=gpu:a100:1(?!\\d)|-G\\s+a100:1(?!\\d))"}
+        },
+        {
+          "text": "Recommended header is accepted by the live scheduler",
+          "layer": "L3",
+          "check": {"l3_sbatch_test_only": "transcript", "expect": "accepted"}
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "slurm-long-gpu-needs-public",
+      "prompt": "I need to fine-tune a 7B model on 4 A100s — it'll take about two days of wall-clock. Write me the sbatch header.",
+      "expected_output": "Agent routes the multi-day 4-A100 run to public (7-day) or general (-q private, preemptible), NOT htc — two days far exceeds htc's 4-hour wall. -G a100:4, -t ~2 days.",
+      "setup": {
+        "mock_hostname": "sc001.sol.rc.asu.edu",
+        "include_solx": false
+      },
+      "assertions": [
+        {
+          "text": "Routes the >4h run to public or general, not htc (htc's 4h wall can't hold a 2-day job)",
+          "layer": "L1",
+          "check": {"transcript_matches": "(-p\\s*(public|general)|--partition[= ](public|general))"}
+        },
+        {
+          "text": "Sets a wall-time well beyond htc's 4h (day-dash like 2-00:00:00, or >=24h like 48:00:00)",
+          "layer": "L1",
+          "check": {"transcript_matches": "(-t\\s*[1-9]-|--time[= ]\\s*[1-9]-|[1-9]-[0-9]{2}:|(?<!\\d)(2[4-9]|[3-9][0-9]|[0-9]{3,}):[0-5][0-9]:[0-5][0-9])"}
+        },
+        {
+          "text": "Requests 4 A100s",
+          "layer": "L1",
+          "check": {"transcript_matches": "(--gres=gpu:a100:4|-G\\s+a100:4)"}
+        },
+        {
+          "text": "Recommended header is accepted by the live scheduler (catches a >4h job left on htc, or a bare -p general missing -q private)",
+          "layer": "L3",
+          "check": {"l3_sbatch_test_only": "transcript", "expect": "accepted"}
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "slurm-smoke-test-debug-qos",
+      "prompt": "I just want to confirm my training script even launches on a GPU — a 10-minute test. It keeps sitting in the queue when I submit to public. How do I get it to start as fast as possible?",
+      "expected_output": "Agent suggests the debug QOS (-q debug) on public or general: a 15-minute hard cap but very high priority with GPUs allowed, so a 10-minute launch check starts almost immediately. Notes debug is NOT valid on htc (-p htc -q debug is rejected).",
+      "setup": {
+        "mock_hostname": "sc001.sol.rc.asu.edu",
+        "include_solx": false
+      },
+      "assertions": [
+        {
+          "text": "Surfaces the debug QOS as the fast-start path for a tiny job",
+          "layer": "L1",
+          "check": {"transcript_matches": "(-q\\s*debug|--qos[= ]debug)"}
+        },
+        {
+          "text": "Names public or general as the debug-QOS partition (the L3 check below catches an invalid -p htc -q debug)",
+          "layer": "L1",
+          "check": {"transcript_matches": "(-p\\s*(public|general)|--partition[= ](public|general))"}
+        },
+        {
+          "text": "Recommended header is accepted by the live scheduler (would catch the invalid -p htc -q debug combo)",
+          "layer": "L3",
+          "check": {"l3_sbatch_test_only": "transcript", "expect": "accepted"}
         }
       ]
     }
