@@ -36,7 +36,15 @@ mod tests {
     #[test]
     fn scripts_embed_the_command_tree() {
         for script in [BASH, ZSH, FISH] {
-            for needle in ["solx", "init", "keep", "jump", "completions", "config"] {
+            for needle in [
+                "solx",
+                "init",
+                "keep",
+                "jump",
+                "completions",
+                "cheatsheet",
+                "config",
+            ] {
                 assert!(script.contains(needle), "missing {needle}");
             }
         }

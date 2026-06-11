@@ -116,6 +116,7 @@ _solx() {
                 'job:Manage interactive Slurm jobs on Sol (alias\: jobs).'
                 'config:Inspect and edit the solx config.'
                 'completions:Emit a shell completion script (bash, zsh, or fish).'
+                'cheatsheet:Print the Sol cheat sheet (SLURM + solx quick reference) as text.'
                 'version:Show version and exit (alias of --version).'
                 'help:Show help and exit (alias of --help).'
             )
@@ -157,6 +158,10 @@ _solx() {
                     _arguments \
                         '(-h --help)'{-h,--help}'[Show this help message and exit.]' \
                         '1:shell:(bash zsh fish)'
+                    ;;
+                (cheatsheet)
+                    _arguments \
+                        '(-h --help)'{-h,--help}'[Show this help message and exit.]'
                     ;;
                 (version)
                     _arguments \

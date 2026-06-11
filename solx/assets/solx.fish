@@ -51,6 +51,8 @@ complete -c solx -n '__fish_seen_subcommand_from config; and __fish_seen_subcomm
 complete -c solx -n __fish_use_subcommand -a completions -d 'Emit a shell completion script (bash, zsh, or fish).'
 complete -c solx -n '__fish_seen_subcommand_from completions' -s h -l help -d 'Show this help message and exit.'
 complete -c solx -n '__fish_seen_subcommand_from completions; and not __fish_seen_subcommand_from bash zsh fish' -a 'bash zsh fish'
+complete -c solx -n __fish_use_subcommand -a cheatsheet -d 'Print the Sol cheat sheet (SLURM + solx quick reference) as text.'
+complete -c solx -n '__fish_seen_subcommand_from cheatsheet' -s h -l help -d 'Show this help message and exit.'
 complete -c solx -n __fish_use_subcommand -a version -d 'Show version and exit (alias of --version).'
 complete -c solx -n '__fish_seen_subcommand_from version' -s h -l help -d 'Show this help message and exit.'
 complete -c solx -n __fish_use_subcommand -a help -d 'Show help and exit (alias of --help).'
