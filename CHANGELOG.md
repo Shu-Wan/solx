@@ -11,6 +11,41 @@ version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
 and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
 tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
 
+## [Unreleased]
+
+Skill guidance for AI agents — framing/packaging changes, no new
+commands (issue #36).
+
+### Added
+
+- **Proactive "job is PENDING" playbook** in the skill body
+  (`SKILL.md` → Situation-Aware Job Management). An ordered decision
+  tree: get cause + ETA up front (`squeue --me -t PD -O JobID,Reason`,
+  `scontrol show job`), classify the `Reason` (`Priority` →
+  priority-bound, report and wait; `ReqNodeNotAvail` → node unavailable,
+  drained/down or reserved; `Resources` → capacity-bound, a reroute can
+  help), right-size, and —
+  when a reroute is warranted — modify the job in place with `scontrol
+  update job` rather than `scancel` + `sbatch` (which forfeits accrued
+  priority). The point: an agent should
+  *diagnose and report* a stuck queue (cause + ETA + whether routing
+  helps) instead of parking it or spraying jobs across partitions.
+  Backing detail (full `Reason` taxonomy) in `references/slurm.md`; a
+  compact version in the cheat sheet.
+
+### Changed
+
+- **Status-query guidance now tags commands by audience.** The "Asking
+  the Cluster About Yourself and Your Jobs" table and the cheat sheet's
+  wrappers table separate the **agent-parseable** form (SLURM-native /
+  `--json` / `-O`) from the **human-facing** `my*`/`show*` wrapper, with
+  the rule: for an agent, default to the parseable form; reach for a
+  color-coded wrapper only to show a human (or for `myfairshare`'s
+  dampened score). The "free GPUs" answer parses cleanly via `sinfo`
+  (`Gres` − `GresUsed`) instead of the color-coded `showgpus`, and the
+  pending-diagnosis commands widen the `Reason` column so a multi-word
+  reason (`ReqNodeNotAvail, UnavailableNodes:…`) isn't truncated.
+
 ## [1.0.0] — 2026-06-10
 
 solx is now a single native binary (Rust); the Python implementation is

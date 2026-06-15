@@ -212,6 +212,45 @@ Run `kill -l` to list signal codes, or `man signal` for details.
 The load-bearing rules are in SKILL.md ("Situation-Aware Job
 Management"); this is the backing detail.
 
+### When a job is pending
+
+The load-bearing routine is in SKILL.md ("When a job is PENDING —
+diagnose cause + ETA"); this is the backing detail. Two commands get
+cause + ETA, both parseable (no color):
+
+```shell
+squeue --me -t PD -O "JobID,Reason:50,StartTime"   # full reason + estimated start
+scontrol show job <jobid>                          # all fields for one job (Reason=…, StartTime=…)
+#   Reason=Resources  StartTime=2026-06-18T16:56:36   ← next in line; backfill estimate
+#   Reason=Priority   StartTime=Unknown               ← deep in the queue; no estimate yet
+```
+
+Widen `Reason` (`:50`) so a multi-word reason
+(`ReqNodeNotAvail, UnavailableNodes:sc013`) isn't truncated — a plain
+`grep 'Reason=[^ ]+'` stops at the first space.
+
+`StartTime` is the scheduler's *current* estimate — it moves as the
+queue changes, and `Unknown` means it can't estimate one yet. The
+`Reason` classes you'll actually see, and what each implies:
+
+| `Reason` | Class | Implication |
+|---|---|---|
+| `Priority` | priority-bound | Other jobs outrank yours (usually low fairshare). No partition change beats a per-user priority cap — report the ETA and wait. |
+| `ReqNodeNotAvail, UnavailableNodes:<n>` | node unavailable | A required node is **drained/down** (the common `UnavailableNodes:` form — may need an admin, no predictable clear time) or held by a reservation. SLURM uses a separate `Reservation` reason for waiting on an advanced reservation. Reroute to a partition whose nodes are healthy. |
+| `Resources` | capacity-bound | The QOS/partition is full right now (usually still carries a backfill `StartTime` estimate). A reroute to a partition with free nodes for a QOS you hold *can* help; so can right-sizing. |
+| `QOSMaxJobsPerUserLimit` / other `QOSMax…` | QOS limit | You're at a per-QOS cap (e.g. `debug` allows one job at a time). Wait for the running one, or pick a QOS you're not capped on. |
+| `AssocGrp…` (e.g. `AssocGrpGRES` for a group GPU cap) | group limit | Your group's allocation cap is hit; another partition under the same account won't help. |
+
+Don't cancel-and-resubmit to chase a slot — the resubmit inherits the
+same priority and spends more fairshare. If you do test a reroute,
+validate it and compare estimated starts *before* cancelling the
+original, and only cancel the loser:
+
+```shell
+scontrol show job <jobid> | grep -o 'StartTime=[^ ]*'   # current estimate
+sbatch --test-only other.sh                             # validates + prints an estimated start, submits nothing
+```
+
 ### Fairshare
 
 `myfairshare` prints a table; the 0–1 score to read is the rightmost
@@ -263,6 +302,14 @@ ASU ships convenience wrappers on top of Slurm
 Slurm command when it's just as short; reach for a wrapper when its
 formatting or calculation earns it. Call these **directly** — `solx`
 doesn't (and shouldn't) wrap them.
+
+**Audience matters for an agent.** The color-coded wrappers (`showparts`,
+`showgpus`, `myfairshare`) are built for human eyes and fight `awk`/`grep`
+— use them to *show a user*. For anything you'll **parse**, prefer the
+SLURM-native or `--json` form (e.g. GPU types per partition:
+`sinfo -h -o "%P %t %G"`, with `GresUsed` for the free count — `%G`
+alone is *configured*, not free). The audience-tagged table is in
+SKILL.md ("Asking the Cluster About Yourself and Your Jobs").
 
 | Command | What it does |
 |---|---|
