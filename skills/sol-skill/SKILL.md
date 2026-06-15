@@ -203,7 +203,7 @@ job goes, check what's actually available to them:
 ```shell
 sacctmgr -n show assoc user=$USER format=Account,Partition,QOS
 #   → e.g.  grp_yourpi || debug,htc,private,public
-sshare -U -o Account,User,FairShare    # low fairshare → prefer a buy-in/preemptible QOS
+myfairshare                            # dampened RealFairShare; low → prefer a buy-in/preemptible QOS (raw `sshare -U` is undampened)
 ```
 
 The QOS column is the menu. Most users have `public` (default,
@@ -294,8 +294,56 @@ and the helpful-commands table; and
 ## Situation-Aware Job Management
 
 Submitting jobs is cheap to *type* and expensive to *get wrong* on a
-shared cluster. Two pieces of state should shape what you do — check
-them, don't fly blind.
+shared cluster. Check the cluster's state before and after you submit —
+fairshare and remaining wall-time should shape what you do, and a
+PENDING job is a question to *answer*, not a state to sit in. Don't fly
+blind.
+
+### When a job is PENDING — diagnose cause + ETA, don't park it
+
+PENDING is a **question, not a resting state.** The moment a job pends,
+find out *why* and *when it will start* before deciding anything — and
+never report "it's pending, want me to wait or switch partitions?"
+without that diagnosis. Get cause + ETA up front:
+
+```shell
+squeue --me -t PD -O "JobID,Reason:50,StartTime"   # full reason + estimated start, parseable
+scontrol show job <jobid>                          # all fields for one job (Reason=…, StartTime=…)
+```
+
+(Widen `Reason` — a real reason can be multi-word, e.g.
+`ReqNodeNotAvail, UnavailableNodes:sc013`; a `grep 'Reason=[^ ]+'`
+truncates it at the first space.)
+
+**The `Reason` dictates the move** — and most of the time the move is
+*report, don't reroute*:
+
+| `Reason` | What it means | Do this |
+|---|---|---|
+| `Priority` (with low `myfairshare`) | **Priority-bound** — you're behind others under a per-user cap. | No reroute beats a priority cap. Report the `StartTime` ETA; **don't cancel-and-resubmit** — the new job inherits the same priority and burns more fairshare. |
+| `ReqNodeNotAvail, UnavailableNodes:<n>` | **A required node is unavailable** — drained/down (may need an admin, no predictable clear time) or held by a reservation. SLURM uses a separate `Reservation` reason for waiting on an advanced reservation. | Check the node's state. A reservation clears at its `StartTime`; a drained/down node may not — reroute to a partition whose nodes are healthy. |
+| `Resources` | **Capacity-bound** — the QOS/partition is simply full right now (usually carries a backfill `StartTime` estimate). | *Now* a reroute can help: check `sinfo` for a partition with free nodes for a QOS you hold (your `sacctmgr` menu), and/or right-size. |
+
+Then, before blaming the queue:
+
+1. **Right-size the request.** An over-specific GRES is often the whole
+   reason a job waits — don't pin `--gres=gpu:a100:1` when any GPU runs
+   the job (`--gres=gpu:1`), and don't grab `public`/large nodes for
+   work that fits on `htc`.
+2. **Reroute in place, and only if it wins.** Modify the pending job
+   with `scontrol update job <id> Partition=… QOS=…` rather than
+   `scancel` + `sbatch` — resubmitting forfeits the priority the job has
+   already accrued in the queue. Compare the candidate's `StartTime`
+   against the current one before committing (`sbatch --test-only` /
+   `scontrol show job` estimate the move without losing your slot).
+
+**The punchline:** when the wait is fairshare- or reservation-bound,
+spraying the job across partitions is wasted motion — every partition
+converges on the same start time because the binding constraint is
+*you* (priority) or *the reservation*, not the partition. The correct
+proactive move is to **diagnose, report cause + ETA + whether routing
+can help, then stop submitting.** Long queue waits are usually fairshare
+(see **Fairshare**, next), not a stuck cluster.
 
 ### Fairshare — check it before you submit, and back off when it's low
 
@@ -357,10 +405,11 @@ Then manage the window deliberately:
 
 ### Use Sol's own wrappers directly
 
-For status and introspection, **call Sol's `my*` / `show*` wrappers
-directly** — don't reimplement them and don't expect `solx` to wrap
-them. `solx` owns the *interactive-allocation lifecycle*; these own
-*status*:
+For status and introspection, Sol ships `my*` / `show*` wrappers (and
+their SLURM-native equivalents). Call them **directly** — `solx` doesn't
+wrap them (it owns the *interactive-allocation lifecycle*; these own
+*status*), and don't reimplement them. Which form to prefer depends on
+audience — see the caveat under the table:
 
 | You want | Command |
 |---|---|
@@ -370,31 +419,45 @@ them. `solx` owns the *interactive-allocation lifecycle*; these own
 | Estimated start time of a pending job | `thisjob <jobid>` |
 | Efficiency of a finished job | `seff <jobid>` |
 | Free capacity / partitions | `sinfo`, `showparts` |
-| Free GPUs per node | `showgpus` |
+| Free GPUs per node | `showgpus` (color-coded; to *parse* free counts use `sinfo -h -O "Partition,StateLong,Gres,GresUsed"` — free = `Gres` − `GresUsed`) |
 
-Full command list and output notes:
-[references/slurm.md](references/slurm.md).
+These wrappers are built for **human eyes** (color, tty layout), so
+they're the right call when you're *showing a user* or when the wrapper
+does a calculation you'd otherwise reimplement (`myfairshare`). **When
+you're going to parse the output yourself, prefer the SLURM-native or
+`--json` form** — see the audience-tagged table in [Asking the Cluster
+About Yourself and Your
+Jobs](#asking-the-cluster-about-yourself-and-your-jobs). Full command
+list and output notes: [references/slurm.md](references/slurm.md).
 
 ## Asking the Cluster About Yourself and Your Jobs
 
 Status questions ("what's queued?", "why is my job pending?", "what
-accounts can I use?") almost always have a one-line answer. **Prefer the
-SLURM command itself** — it's portable and stable — and reach for Sol's
-`my*` / `show*` wrappers when their formatting saves real work
-(`myjobs`, `summary`) or they encapsulate non-trivial calculation
-(`myfairshare`).
+accounts can I use?") almost always have a one-line answer. But the two
+forms are **not interchangeable for an agent**: the SLURM-native and
+`--json`/`-O`/`-o` forms are built to be parsed, while Sol's `my*` /
+`show*` wrappers are built for **human eyes** — ANSI color, tty layout,
+pagination — and fight `awk`/`grep`.
 
-| User question | Native SLURM | Sol wrapper (when useful) |
+**Rule of thumb: for an agent, default to the agent-parseable form.
+Reach for a `show*` / `my*` wrapper only to show a human, or when it
+encapsulates a calculation you'd otherwise reimplement (`myfairshare`'s
+dampened score).** Concretely, `showgpus` is color-coded and its column
+layout fights parsers — `sinfo -h -o "%P %t %G %N"` parses cleanly and
+shows which GPU *types* each partition carries and each node's state;
+for the actual free count, subtract `GresUsed` from `Gres` (below).
+
+| User question | Agent-parseable form (parse this) | Human wrapper (to show a user) |
 |---|---|---|
-| What jobs do I have right now? | `squeue --me` | `myjobs` (priority/QOS/GPU columns), `summary` (state counts). NB `sq` is the *whole-cluster* queue — filter with `sq -u $USER` |
+| What jobs do I have right now? | `squeue --me -O JobID,Partition,State,Reason` (or `solx --json job list`) | `myjobs` (priority/QOS/GPU columns), `summary` (state counts). NB `sq` is the *whole-cluster* queue — filter with `sq -u $USER` |
 | Tell me about job N | `scontrol show job N` | `thisjob N` adds a `squeue` row + est. start; `showjob N` also runs `seff` if finished |
-| What's my historical job activity? | `sacct --user=$USER --starttime=YYYY-mm-dd` | `mysacct` (preset format) |
-| What accounts and QOS can I submit under? | `sacctmgr -s show user $USER format=User,DefaultAccount,Account,QOS` | `myaccounts` (same call, shorter to type) |
-| What's my fairshare / scheduling priority? | — | `myfairshare` |
+| What's my historical job activity? | `sacct --user=$USER --starttime=YYYY-mm-dd -X -P -o JobID,State,Elapsed,ReqMem` (`-P` = parseable) | `mysacct` (preset format) |
+| What accounts and QOS can I submit under? | `sacctmgr -n show assoc user=$USER format=Account,Partition,QOS` | `myaccounts` (color table) |
+| What's my fairshare / scheduling priority? | `myfairshare` → read the `RealFairShare` column — the **exception**: the wrapper *is* the parseable source (it does the dampening math; raw `sshare -U` gives only undampened shares) | — (same wrapper) |
 | What's my scratch quota? | `beegfs-ctl --getquota --uid $USER` | — |
-| Why is my job stuck pending? | `squeue --me -t PD -O Reason` | `showlimited` (cluster-wide capacity holds by group/QOS) |
-| Which partitions have free capacity? | `sinfo` (or `sinfo --Format=...`) | `showparts` (color-coded availability) |
-| Which GPU nodes have free GPUs? | `scontrol show nodes` (parse `Gres` / `AllocTRES`) | `showgpus` (color-coded per-node) |
+| Why is my job stuck pending? | `squeue --me -t PD -O "JobID,Reason:50,StartTime"` (widen `Reason` so a multi-word reason isn't truncated); `scontrol show job N` for one job's full detail | `showlimited` (cluster-wide capacity holds by group/QOS) |
+| Which partitions have free capacity? | `sinfo -h -o "%P %a %l %D %t"` | `showparts` (color-coded availability) |
+| Which GPU nodes have free GPUs? | `sinfo -h -O "Partition,StateLong,Gres,GresUsed,NodeList"` (free = `Gres` − `GresUsed`); `%G` alone / `scontrol show nodes` show *configured* GPUs, not free | `showgpus` (color-coded per-node) |
 | How efficient was a finished job? | `seff <jobid>` | (no wrapper) |
 
 ## Filesystem and Storage

@@ -18,7 +18,7 @@ drives every job decision below:
 ```shell
 sacctmgr -n show assoc user=$USER format=Account,Partition,QOS
 #   → e.g.  grp_yourpi || debug,htc,private,public
-sshare -U                      # your fairshare (lower = back off / use a buy-in QOS)
+myfairshare                    # dampened RealFairShare (lower = back off / use a buy-in QOS); raw `sshare -U` is undampened
 ```
 
 ---
@@ -81,6 +81,27 @@ interactive                    # quick shell; defaults to -p htc -q public -c 1 
 
 ---
 
+## Job stuck PENDING? Diagnose, don't spray
+
+```shell
+squeue --me -t PD -O "JobID,Reason:50,StartTime"   # full reason + ETA (widen Reason; don't grep '[^ ]+')
+scontrol show job <id>                             # all fields for one job
+```
+
+| `Reason` | Move |
+|----------|------|
+| `Priority` (low fairshare) | priority-bound — report the ETA, **don't** resubmit |
+| `ReqNodeNotAvail` | node unavailable (drained/down or reserved) — check the node; reroute to healthy nodes |
+| `Resources` | capacity-bound — *now* a reroute / right-size can help |
+
+A reroute beats only `Resources`. For `Priority` / reservations every
+partition converges on the same start — diagnose + report, then stop
+submitting (resubmitting just spends more fairshare). When a reroute
+*is* right, modify in place: `scontrol update job <id> Partition=… QOS=…`
+(not `scancel` + `sbatch`, which resets accrued priority).
+
+---
+
 ## `solx` ↔ raw SLURM
 
 `solx` owns the interactive-allocation lifecycle; raw SLURM is the
@@ -103,15 +124,19 @@ Config lives at `~/.config/solx/config.toml` (`solx config edit`). Add
 
 ## Sol's own `my*` / `show*` wrappers
 
-| You want | Command |
-|----------|---------|
-| Your fairshare / priority | `myfairshare` |
-| Your `/scratch` quota | `beegfs-ctl --getquota --uid $USER` |
-| Your jobs right now | `myjobs` (or `squeue --me`) |
-| Estimated start of a pending job | `thisjob <jobid>` |
-| Efficiency of a finished job | `seff <jobid>` |
-| Free capacity / partitions | `sinfo`, `showparts` |
-| Free GPUs per node | `showgpus` |
+The `show*` wrappers are color-coded for **human eyes** and fight
+`awk`/`grep` — use them to *show a user*. As an **agent**, parse the
+right-hand form instead.
+
+| You want | Human wrapper | Parse this (agent) |
+|----------|---------------|--------------------|
+| Your fairshare / priority | `myfairshare` | `myfairshare` → `RealFairShare` col |
+| Your `/scratch` quota | — | `beegfs-ctl --getquota --uid $USER` |
+| Your jobs right now | `myjobs` | `squeue --me -O JobID,State,Reason` |
+| Estimated start of a pending job | `thisjob <id>` | `scontrol show job <id>` → `StartTime=` |
+| Efficiency of a finished job | — | `seff <jobid>` |
+| Free capacity / partitions | `showparts` | `sinfo -h -o "%P %a %l %D %t"` |
+| Free GPUs (= Gres − GresUsed) | `showgpus` | `sinfo -h -O "Partition,StateLong,Gres,GresUsed"` |
 
 ---
 
