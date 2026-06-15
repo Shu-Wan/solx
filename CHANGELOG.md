@@ -11,7 +11,7 @@ version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
 and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
 tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
 
-## [Unreleased]
+## [1.0.1] — 2026-06-15
 
 Skill guidance for AI agents — framing/packaging changes, no new
 commands (issue #36).
