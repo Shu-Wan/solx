@@ -5,7 +5,7 @@ automated verification, and what's a known gap. The eval harness
 requires manual orchestration today, so this document is updated by
 hand before each release.
 
-**Version:** v1.0.0 (see [`../CHANGELOG.md`](../CHANGELOG.md))
+**Version:** v1.1.0 (see [`../CHANGELOG.md`](../CHANGELOG.md))
 **Last verified:** the `solx` CLI is covered by its own crate suite
 (`cargo test` in `solx/`: unit tests per module plus the end-to-end
 `tests/cli.rs`, including a real-touch renewal test), which runs in CI.
