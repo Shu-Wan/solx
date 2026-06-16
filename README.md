@@ -86,8 +86,8 @@ same way.
 
 ## Development
 
-- **Changelog** — [CHANGELOG.md](CHANGELOG.md); current release **v1.0.0**
-  (native Rust binary).
+- **Changelog** — [CHANGELOG.md](CHANGELOG.md); the current release is
+  shown by the **Release** badge at the top of this README.
 - **Roadmap** — [docs/ROADMAP.md](docs/ROADMAP.md).
 - **Contributing, tests, and the eval harness** —
   [DEVELOPMENT.md](DEVELOPMENT.md) and
