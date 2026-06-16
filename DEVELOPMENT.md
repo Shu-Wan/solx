@@ -271,8 +271,13 @@ publish the GitHub Release with it attached). Before tagging:
    (`cd solx && cargo test`).
 3. Walk the L3 manual checklist on real Sol (login + compute node).
 4. Hand-edit `docs/coverage.md`: bump the "Last verified" date, flip
-   any cells in the matrix, refresh "Known gaps". Move the
-   `[Unreleased]` notes under a `## [X.Y.Z]` heading in `CHANGELOG.md`.
+   any cells in the matrix, refresh "Known gaps", and bump its
+   `**Version:**` line. Move the `[Unreleased]` notes under a
+   `## [X.Y.Z]` heading in `CHANGELOG.md`, **and update the
+   link-reference footer at the bottom** (repoint `[Unreleased]` to
+   `compare/vX.Y.Z...HEAD` and add a `[X.Y.Z]` release-tag target) — a
+   missed footer leaves the new heading as a dead link. The README's
+   version is shown by the dynamic Release badge, so it needs no edit.
 5. If the release added a user-visible capability, touch the "What this
    skill helps with" bullets in `skills/sol-skill/SKILL.md`.
 6. Commit the docs on the release commit, then tag `vX.Y.Z` and push —

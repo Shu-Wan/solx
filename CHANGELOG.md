@@ -541,7 +541,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.0
 [0.5.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.0

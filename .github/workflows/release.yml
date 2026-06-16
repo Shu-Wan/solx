@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build a release for, e.g. v1.0.0"
+        description: "Existing tag to (re)build a release for, e.g. v1.2.3"
         required: true
 
 permissions:
