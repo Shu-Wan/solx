@@ -340,11 +340,49 @@ pub fn scancel_argv(job_id: &str) -> Vec<String> {
 /// already running in it. Without it, srun demands exclusive use of the node
 /// and stalls with "step creation temporarily disabled (Requested nodes are
 /// busy)" whenever the job already has a step occupying its resources.
+///
+/// The remaining flags neutralize *step-shaping* state that a `jump` issued
+/// from inside another allocation would otherwise inherit from the enclosing
+/// job's `SLURM_*` environment. srun's precedence is command line > input env
+/// var, so each flag deterministically overrides the leak (all verified on
+/// Sol's srun 25.11.6); each is a no-op from a login node, where there is no
+/// enclosing allocation to leak from:
+///
+/// * `--nodes=1` — otherwise `SLURM_JOB_NUM_NODES` from a multi-node job makes
+///   srun try to place the one shell across N nodes and warn "can't run 1
+///   processes on 2 nodes, setting nnodes to 1".
+/// * `--ntasks=1` — otherwise `SLURM_NTASKS` sets the step size, so jumping
+///   from an `-n 16` allocation launches 16 tasks (only task zero gets the
+///   pty; the rest run with I/O nulled). A shell is one task.
+/// * `--cpu-bind=none` — otherwise srun picks up the enclosing job's
+///   `SLURM_CPU_BIND` (a cpuset belonging to a *different* job) and fails on
+///   the target node with "CPU binding outside of job step allocation … Unable
+///   to satisfy cpu bind request". `none` is right for an interactive shell
+///   (which shouldn't be pinned to a subset of the job's cores anyway), and
+///   the job's cgroup still confines it to the target allocation's cpuset.
+/// * `--mem-bind=none` — the NUMA sibling of `--cpu-bind`, neutralizing a
+///   leaked `SLURM_MEM_BIND` mask the same way.
+/// * `--mem=0` — restricts the step to the target job's own memory. Otherwise
+///   a leaked `SLURM_MEM_PER_NODE` / `SLURM_MEM_PER_CPU` (e.g., from a job
+///   allocated with `--mem=64G`) is requested for the step and fails step
+///   creation with "Memory required by task is not available" — or, if both
+///   leak at once, "SLURM_MEM_PER_CPU … and SLURM_MEM_PER_NODE are mutually
+///   exclusive".
+///
+/// Leaked `SLURM_CPUS_PER_TASK` (`-c` has no zero/none sentinel) and GRES vars
+/// (`--gres=none` would strip the shell's GPU cgroup access) still have no
+/// clean flag override; neutralizing them would need a targeted `env_remove`
+/// before the exec.
 pub fn srun_pty_argv(job_id: &str, shell: &str) -> Vec<String> {
     vec![
         "srun".to_string(),
         format!("--jobid={job_id}"),
         "--overlap".to_string(),
+        "--nodes=1".to_string(),
+        "--ntasks=1".to_string(),
+        "--cpu-bind=none".to_string(),
+        "--mem-bind=none".to_string(),
+        "--mem=0".to_string(),
         "--pty".to_string(),
         shell.to_string(),
     ]
@@ -778,10 +816,24 @@ mod tests {
 
     #[test]
     fn srun_pty_argv_shape() {
-        // --overlap lets the step share the allocation's busy resources.
+        // --overlap lets the step share the allocation's busy resources; the
+        // node/task-count and bind/mem flags neutralize step-shaping SLURM_*
+        // state a nested jump would inherit from the enclosing job (see
+        // srun_pty_argv's doc comment for what each leak does).
         assert_eq!(
             srun_pty_argv("12345", "zsh"),
-            ["srun", "--jobid=12345", "--overlap", "--pty", "zsh"]
+            [
+                "srun",
+                "--jobid=12345",
+                "--overlap",
+                "--nodes=1",
+                "--ntasks=1",
+                "--cpu-bind=none",
+                "--mem-bind=none",
+                "--mem=0",
+                "--pty",
+                "zsh"
+            ]
         );
     }
 

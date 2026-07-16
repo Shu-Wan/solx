@@ -253,9 +253,9 @@ pub fn cmd_start(
     };
 
     out.status(&format!("allocated job {jobid}"));
+    let attach_cmd = slurm::shell_join(&slurm::srun_pty_argv(&jobid, &config.default_shell));
     out.status(&format!(
-        "attach: solx job jump {jobid}  (or: srun --jobid={jobid} --overlap --pty {})",
-        config.default_shell
+        "attach: solx job jump {jobid}  (or: {attach_cmd})"
     ));
     if out.json_mode {
         out.json(&json!({"jobid": jobid, "template": name}));

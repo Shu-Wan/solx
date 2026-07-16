@@ -11,6 +11,29 @@ version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
 and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
 tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
 
+## [1.0.2] — 2026-07-16
+
+### Fixed
+
+- **`solx job jump` from inside another allocation** no longer fails or
+  misbehaves from inherited `SLURM_*` step-shaping state. Run from inside
+  another job, the pty step picked up the *enclosing* allocation's environment
+  and, on the target node — depending on which vars that job set — could fail
+  cpu binding (`Unable to satisfy cpu bind request`, from a leaked
+  `SLURM_CPU_BIND` cpuset belonging to a different job), fail step creation
+  (`Memory required by task is not available`, from a leaked `SLURM_MEM_PER_*` —
+  e.g., a `--mem=64G` allocation), spread across `SLURM_JOB_NUM_NODES` nodes, or
+  launch `SLURM_NTASKS` tasks (jumping from an `-n 16` job started 16, only task
+  zero with the pty). `jump` now pins the step with `--nodes=1 --ntasks=1
+  --cpu-bind=none --mem-bind=none --mem=0` (each verified on Sol's srun
+  25.11.6); srun's command line overrides the inherited env vars, the target
+  job's cgroup still confines the shell to its cpuset, and jumping from a login
+  node is unaffected. `job jump` is the only command that launches a job
+  *step*, so it is the only one exposed — `job start` (creates a new allocation
+  via `salloc`), `stop`, `list`, `time`, and `keep` (direct filesystem `touch`)
+  are not. Leaked `SLURM_CPUS_PER_TASK` (`-c`) and GRES vars have no clean flag
+  override and are left as-is.
+
 ## [1.0.1] — 2026-06-15
 
 Skill guidance for AI agents — framing/packaging changes, no new
@@ -541,7 +564,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.2
 [1.0.1]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.0
 [0.5.1]: https://github.com/Shu-Wan/solx/releases/tag/v0.5.1

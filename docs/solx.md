@@ -322,8 +322,19 @@ Sol runs Slurm 25.x, which supports `salloc --no-shell` natively.
 3. Parses the granted jobid from `salloc`'s stderr (`Granted job allocation N`).
 4. Returns. The allocation keeps running in the background as a "headless"
    reservation — nothing consumes it until you attach.
-5. You attach with `solx job jump`, which execs
-   `srun --jobid=N --overlap --pty $default_shell` to drop you onto the node.
+5. You attach with `solx job jump`, which execs `srun --jobid=N --overlap
+   --nodes=1 --ntasks=1 --cpu-bind=none --mem-bind=none --mem=0 --pty
+   $default_shell` to drop you onto the node. The flags after `--overlap` keep a
+   `jump` issued from *inside* another allocation from inheriting that job's
+   step-shaping `SLURM_*` state — otherwise, depending on which vars the
+   enclosing job set, srun launches `SLURM_NTASKS` tasks (only task zero gets
+   the pty), spreads them across `SLURM_JOB_NUM_NODES` nodes, fails cpu binding
+   with "Unable to satisfy cpu bind request", or fails step creation with
+   "Memory required by task is not available". The job's cgroup still confines
+   the shell to the target allocation's cpuset. One consequence: because srun
+   exports the step's binding, a bare `srun` *launched from inside* a jump shell
+   inherits `cpu-bind=none` as its default — pass an explicit `--cpu-bind` for
+   NUMA-sensitive runs started that way.
 
 If the queue stalls, `start_timeout` (CLI `--timeout` overrides) caps the wait
 so a stuck request surfaces instead of hanging forever.
