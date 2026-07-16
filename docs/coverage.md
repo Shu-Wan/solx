@@ -1,4 +1,4 @@
-# Test coverage — sol-skill
+# Test coverage - sol-skill
 
 What this skill is verified to do, what's documented without
 automated verification, and what's a known gap. The eval harness
@@ -21,7 +21,7 @@ scans visually; the label after gives context.
 |---|---|
 | 🟢 tested | Covered by the eval harness and currently passing for this release |
 | 🟡 documented | Described in the skill; no automated test yet (works in routine use, not formally probed) |
-| 🔴 gap | Known limitation — the skill does not cover this case |
+| 🔴 gap | Known limitation - the skill does not cover this case |
 | ⚪ roadmap | Planned for a later release; not promised by this version |
 
 ## Coverage by skill section
@@ -40,7 +40,7 @@ to the skill should mean adding a row here in the same group.
 | Always previews destructive or long-running ops with `--dry-run` | 🟡 documented | |
 | Never proposes `sudo` | 🟡 documented | Cross-cutting negative assertion |
 
-### `solx` — install it first
+### `solx` - install it first
 
 | Behavior | Status | Notes |
 |---|---|---|
@@ -94,8 +94,8 @@ to the skill should mean adding a row here in the same group.
 |---|---|---|
 | Picks `interactive` wrapper for interactive shells over raw `salloc` | 🟢 tested | Verified iter-4 eval B |
 | Knows `interactive` defaults to `-p htc -q public -c 1 -t 0-4` (bare invocation works) | 🟡 documented | Added after reading `/usr/local/bin/interactive` source |
-| Routes work by wall-time, not CPU-vs-GPU: ≤4h (incl. GPU) → `htc`; resists the "GPU → public" reflex | 🟢 tested | Partition eval: fixed skill 14/14 vs pre-fix 10/14 (evals #4/#8/#9/#10) |
-| Knows the QOS layer: `debug` (≤15m, high-pri, public/general only — rejected on `htc`), `private` (preemptible, >4h) | 🟢 tested | Eval #10; `-p htc -q debug` rejected by live `sbatch --test-only` |
+| Routes work by wall-time, not CPU-vs-GPU: ≤4h (incl. GPU) -> `htc`; resists the "GPU -> public" reflex | 🟢 tested | Partition eval: fixed skill 14/14 vs pre-fix 10/14 (evals #4/#8/#9/#10) |
+| Knows the QOS layer: `debug` (≤15m, high-pri, public/general only - rejected on `htc`), `private` (preemptible, >4h) | 🟢 tested | Eval #10; `-p htc -q debug` rejected by live `sbatch --test-only` |
 | L3 grader: agent's recommended `#SBATCH` header is validated against the live scheduler (`sbatch --test-only`) | 🟢 tested | `l3_sbatch_test_only` check on evals #4/#8/#9/#10 |
 | Recommends `/packages/public/sol-sbatch-templates/` over writing SBATCH from scratch | 🟡 documented | Iter-5 P5: agent acknowledged templates exist but didn't name the specific subdir; skill gap to sharpen |
 | SBATCH header generation (partition, QOS, time, GPU) | 🟢 tested | Verified iter-5 P5: complete OpenMPI script with correct partition/QOS, `srun --mpi=pmix`, `--export=NONE`, `/scratch` logs |
@@ -108,33 +108,33 @@ to the skill should mean adding a row here in the same group.
 |---|---|---|
 | Checks `myfairshare` before submitting; backs off below ~0.05 (no scheduler spam) | 🟡 documented | skill eval pending; `myfairshare` lookup itself 🟢 (iter-5 P3) |
 | Tracks remaining wall-time (`solx job time` / `squeue -O TimeLeft`) and wraps up / hands off before expiry | 🟡 documented | skill eval pending |
-| Uses Sol wrappers directly (`myfairshare`/`myjobs`/`seff`/`showgpus`/…) rather than wrapping them | 🟢 tested | Status-query rows below verified iter-5 P2–P4 |
+| Uses Sol wrappers directly (`myfairshare`/`myjobs`/`seff`/`showgpus`/...) rather than wrapping them | 🟢 tested | Status-query rows below verified iter-5 P2–P4 |
 
 ### Asking the Cluster About Yourself and Your Jobs
 
 | Behavior | Status | Notes |
 |---|---|---|
-| "What jobs do I have?" → `squeue --me` (or `myjobs` / `sq` / `summary`) | 🟢 tested | Verified iter-5 P2 |
-| "Tell me about job N" → `scontrol show job N` (or `thisjob` / `showjob`) | 🟢 tested | Verified iter-5 P2 |
-| "Past jobs?" → `sacct --user=$USER --starttime=…` (or `mysacct`) | 🟢 tested | Verified iter-5 P2 |
-| "What accounts/QOS can I use?" → `sacctmgr -s show user $USER` (or `myaccounts`) | 🟢 tested | Verified iter-5 P3 |
-| "What's my fairshare?" → `myfairshare` | 🟢 tested | Verified iter-5 P3; wrapper does the priority math (live `DampeningFactor`) |
-| "Why is my job pending?" → `squeue --me -t PD -O Reason` (and `showlimited` for cluster-wide holds) | 🟢 tested | Verified iter-5 P2 |
-| "Which partitions have free capacity?" → `sinfo` (or `showparts`) | 🟢 tested | Verified iter-5 P4 |
-| "Which GPU nodes are free?" → `scontrol show nodes` (or `showgpus`) | 🟢 tested | Verified iter-5 P4 |
-| "How efficient was my job?" → `seff <jobid>` | 🟢 tested | Verified iter-5 P2 |
+| "What jobs do I have?" -> `squeue --me` (or `myjobs` / `sq` / `summary`) | 🟢 tested | Verified iter-5 P2 |
+| "Tell me about job N" -> `scontrol show job N` (or `thisjob` / `showjob`) | 🟢 tested | Verified iter-5 P2 |
+| "Past jobs?" -> `sacct --user=$USER --starttime=...` (or `mysacct`) | 🟢 tested | Verified iter-5 P2 |
+| "What accounts/QOS can I use?" -> `sacctmgr -s show user $USER` (or `myaccounts`) | 🟢 tested | Verified iter-5 P3 |
+| "What's my fairshare?" -> `myfairshare` | 🟢 tested | Verified iter-5 P3; wrapper does the priority math (live `DampeningFactor`) |
+| "Why is my job pending?" -> `squeue --me -t PD -O Reason` (and `showlimited` for cluster-wide holds) | 🟢 tested | Verified iter-5 P2 |
+| "Which partitions have free capacity?" -> `sinfo` (or `showparts`) | 🟢 tested | Verified iter-5 P4 |
+| "Which GPU nodes are free?" -> `scontrol show nodes` (or `showgpus`) | 🟢 tested | Verified iter-5 P4 |
+| "How efficient was my job?" -> `seff <jobid>` | 🟢 tested | Verified iter-5 P2 |
 
 ### Using a Service That Runs on Sol, From Your Laptop
 
 | Behavior | Status | Notes |
 |---|---|---|
 | Recommends Open OnDemand for casual GPU / Jupyter use | 🟢 tested | Verified iter-4 eval C: agent leads with OnDemand |
-| Builds correct `ssh -L … -J …` ProxyJump chain | 🟢 tested | Verified iter-4 eval C (compute nodes aren't internet-reachable, so `-J` is mandatory) |
+| Builds correct `ssh -L ... -J ...` ProxyJump chain | 🟢 tested | Verified iter-4 eval C (compute nodes aren't internet-reachable, so `-J` is mandatory) |
 | Binds compute-node services to `127.0.0.1`, not `0.0.0.0` | 🟡 documented | |
 | Multi-port forwarding (stacked `-L`) | 🟡 documented | |
 | OAuth callback reverse tunnel (`-R`) | 🟡 documented | |
 | Tunnel diagnostics (port-in-use, ControlMaster, wrong-side `-L`) | 🟡 documented | |
-| Laptop-side one-command (`solx up`/`down`, ssh-chain construction) | ⚪ roadmap | Deferred; `solx` is Sol-only today — see [`ROADMAP.md`](ROADMAP.md) |
+| Laptop-side one-command (`solx up`/`down`, ssh-chain construction) | ⚪ roadmap | Deferred; `solx` is Sol-only today - see [`ROADMAP.md`](ROADMAP.md) |
 | VS Code wrapper (`/usr/local/bin/vscode`) integration | 🔴 gap | Manual smoke only; wrapper itself maintained by ASU |
 
 ### Transferring Data

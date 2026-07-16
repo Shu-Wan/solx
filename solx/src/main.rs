@@ -438,7 +438,7 @@ fn run_keep(args: &KeepArgs, json: bool) -> i32 {
         return 2;
     }
     // The keep-list lives in the config `[keep]` block. A missing config.toml
-    // is fine (config stays None → `keep` reports no [keep] block); a config
+    // is fine (config stays None -> `keep` reports no [keep] block); a config
     // that exists but is malformed still errors.
     let config = if config::config_path().exists() {
         match load_or_exit(&out) {

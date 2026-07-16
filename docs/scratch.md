@@ -2,21 +2,21 @@
 
 Sol deletes inactive `/scratch` files on a layered schedule and warns you first,
 dropping per-stage CSV files in your home directory. `solx keep` renews the
-directories you still need — and *only* those — so you don't lose work to a
+directories you still need - and *only* those - so you don't lose work to a
 purge, and don't abuse a shared filesystem by blanket-touching everything.
 
 ## The idea
 
 `solx keep` renews a directory only when it is **both**:
 
-1. **flagged by Sol** — listed in one of the warning CSVs Sol writes to `$HOME`
-   (`scratch-dirs-pending-removal.csv`, `…-over-90days.csv`, `…-inactive.csv`),
+1. **flagged by Sol** - listed in one of the warning CSVs Sol writes to `$HOME`
+   (`scratch-dirs-pending-removal.csv`, `...-over-90days.csv`, `...-inactive.csv`),
    **and**
-2. **matched by your keep-list** — the `[keep]` block in your config.
+2. **matched by your keep-list** - the `[keep]` block in your config.
 
 So there is nothing to do until Sol actually flags something, and a stray
 keep-list can't keep arbitrary files alive forever. It only ever touches
-timestamps (`atime`/`mtime`) — never file contents.
+timestamps (`atime`/`mtime`) - never file contents.
 
 ## 1. Set up your keep-list
 
@@ -57,7 +57,7 @@ solx --json keep --dry-run | jq .
 
 ## 3. Run a big pass off the login node
 
-A renewal is metadata-heavy I/O — the load Sol's **login nodes throttle**. For
+A renewal is metadata-heavy I/O - the load Sol's **login nodes throttle**. For
 a large pass, run it on the Data Transfer Node or a compute node instead:
 
 ```shell

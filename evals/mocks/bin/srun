@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock srun — never actually runs anything; logs args and exits 0.
+# Mock srun - never actually runs anything; logs args and exits 0.
 # An eval that wants to assert "agent invoked srun with -p general" greps
 # $MOCK_LOG for the recorded line.
 set -u

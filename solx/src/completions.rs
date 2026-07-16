@@ -1,4 +1,4 @@
-//! `solx completions <shell>` — emit a static shell completion script.
+//! `solx completions <shell>` - emit a static shell completion script.
 //!
 //! The scripts live under `assets/` and are embedded at build time; they are
 //! synced from the Python package's completion generator so both

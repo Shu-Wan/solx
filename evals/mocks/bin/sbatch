@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock sbatch — logs args, parses the script for #SBATCH headers (so an eval
+# Mock sbatch - logs args, parses the script for #SBATCH headers (so an eval
 # can assert on them indirectly via the log), prints a fake job id, exits 0.
 set -u
 

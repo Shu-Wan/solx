@@ -27,7 +27,7 @@ _solx() {
     done
 
     # Option values. Path candidates go through mapfile (no word splitting,
-    # no glob expansion — spaces and metacharacters survive) and `compopt -o
+    # no glob expansion - spaces and metacharacters survive) and `compopt -o
     # filenames` (where available) so readline escapes what it inserts.
     case "$prev" in
         --csv-dir)

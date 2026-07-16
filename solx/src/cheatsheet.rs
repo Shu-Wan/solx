@@ -1,4 +1,4 @@
-//! `solx cheatsheet` — print the Sol quick-reference as text.
+//! `solx cheatsheet` - print the Sol quick-reference as text.
 //!
 //! Single source of truth: the skill's `references/cheatsheet.md`, embedded
 //! at build time. The CLI text, the rendered PDF
@@ -10,7 +10,7 @@
 /// The cheat sheet, embedded from the skill's markdown source.
 pub const CHEATSHEET: &str = include_str!("../../skills/sol-skill/references/cheatsheet.md");
 
-/// Print the cheat sheet to stdout. Works anywhere — no Sol required.
+/// Print the cheat sheet to stdout. Works anywhere - no Sol required.
 pub fn cmd_cheatsheet() -> i32 {
     print!("{CHEATSHEET}");
     0

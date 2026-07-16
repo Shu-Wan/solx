@@ -3,17 +3,17 @@
 Wrapper around skill-creator's spawn / aggregate / view pipeline,
 specialized for `sol-skill`. The runner itself (`__main__.py` /
 `runner.py`) lands in iteration 1; this directory is reserved so
-imports (`python -m evals.runner …`) line up with the structure
+imports (`python -m evals.runner ...`) line up with the structure
 documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
 
 ## What's already here
 
-- **`build_sandbox_home.sh`** — constructs a `CLAUDE_CONFIG_DIR`
+- **`build_sandbox_home.sh`** - constructs a `CLAUDE_CONFIG_DIR`
   sandbox that mirrors the user's real `~/.claude/` but hides the
   user-scope `sol-skill` install. Run it once before each eval
   session. See `DEVELOPMENT.md` ("Baseline isolation") for the why
   and how.
-- **`bench_solx_latency.sh`** — L3 latency benchmark (real Sol,
+- **`bench_solx_latency.sh`** - L3 latency benchmark (real Sol,
   read-only): times `solx job` commands against the equivalent raw
   SLURM call and reports the delta. Quantifies the residual over raw
   SLURM that informs the skill's "`solx` vs raw SLURM" rule. Usage:
@@ -44,7 +44,7 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
     sees the user-scope install.
   - Capture transcript, `$MOCK_LOG`, exit codes, files mutated under
     `evals/mocks/scratch/`.
-- Grade per assertion using the `check` field — text patterns against
+- Grade per assertion using the `check` field - text patterns against
   transcript, exit codes against the L2 script run, mock-log greps,
   etc. Save `grading.json` per run dir matching skill-creator's
   schema.
@@ -59,5 +59,5 @@ documented in [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md).
   comparison).
 - The runner never modifies `~/.claude/` or anything outside its
   workspace and `evals/mocks/scratch/`.
-- Per-eval `setup` is reset between evals — no state leaks across
+- Per-eval `setup` is reset between evals - no state leaks across
   runs.

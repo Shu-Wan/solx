@@ -11,10 +11,10 @@ recipient controls access to their storage for a limited duration.
 2. Sender copies files into that directory.
 3. Recipient revokes the open permissions.
 
-> Use `/scratch` for sharing — opening permissions on `/home`
+> Use `/scratch` for sharing - opening permissions on `/home`
 > directories is discouraged due to technical issues.
 
-## Step 1 — Recipient Creates a Receiving Directory
+## Step 1 - Recipient Creates a Receiving Directory
 
 Replace `<recipient>` with the actual ASURITE.
 
@@ -23,7 +23,7 @@ chmod -R o+rx /scratch/<recipient>
 install -d -m 777 /scratch/<recipient>/receiving_dir
 ```
 
-## Step 2 — Sender Copies Files
+## Step 2 - Sender Copies Files
 
 ```shell
 chmod o+rwx /path/to/mydirectory_of_files
@@ -34,7 +34,7 @@ chmod o-rwx /path/to/mydirectory_of_files
 The third command reverts permissions on the original files; the copy
 on the recipient side is unaffected.
 
-## Step 3 — Recipient Revokes Permissions
+## Step 3 - Recipient Revokes Permissions
 
 ```shell
 chmod o-rwx /scratch/<recipient>

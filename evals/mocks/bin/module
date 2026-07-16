@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock `module` — emits canned avail/list output, logs every invocation.
+# Mock `module` - emits canned avail/list output, logs every invocation.
 # Real Sol uses Lmod; this mock supports avail/load/list/unload/purge enough
 # to test agent decision logic without loading anything.
 set -u

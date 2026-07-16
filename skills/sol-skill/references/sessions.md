@@ -1,14 +1,14 @@
-# Sessions and tunneling — manual SSH
+# Sessions and tunneling - manual SSH
 
 The laptop ↔ Sol dev loop, entirely through the user's existing
-`ssh` client — no extra tooling, no reads of `~/.ssh/*`. Use this
+`ssh` client - no extra tooling, no reads of `~/.ssh/*`. Use this
 when Open OnDemand isn't the right fit (terminal-driven workflow,
 custom env vars, multiple ports, scripts that wrap the allocation).
 
 > **Substitute the username once.** At the start of the session, run
 > `whoami` and reuse the result throughout. The examples below set
 > `ME=$(whoami)` once and reference `$ME` afterward. Do not emit
-> angle-bracket username placeholders to the user — substitute first.
+> angle-bracket username placeholders to the user - substitute first.
 
 ## The shape of the problem
 
@@ -21,7 +21,7 @@ To work on Sol from a laptop you need two things:
 The login node (`sol.asu.edu`) is reachable from the internet; compute
 nodes are not. Every laptop ↔ compute-node connection therefore has to
 chain through the login node with `-J` (ProxyJump). The single command
-on the laptop builds the whole chain — SSH dials the login node, hops
+on the laptop builds the whole chain - SSH dials the login node, hops
 to the compute node via ProxyJump, and the `-L` flag forwards the
 compute-node port back to the laptop:
 
@@ -57,13 +57,13 @@ ssh $ME@$SOL
 ```
 
 On the login node, request an allocation. **Match the partition to the
-job's wall-time**, not the request size — Sol's `htc` partition is the
+job's wall-time**, not the request size - Sol's `htc` partition is the
 right home for anything that fits its 4-hour wall (debug, smoke-tests,
 short GPU runs). `htc` carries a large GPU pool (hundreds of A100s,
-plus H100 / L40 / A30), so a short *GPU* shell belongs there too — not
+plus H100 / L40 / A30), so a short *GPU* shell belongs there too - not
 just CPU work. Save `public` (7-day wall) for runs that genuinely need
-more than 4 hours. Picking `public` for a 30-minute shell — GPU or not
-— wastes capacity that someone else is queued for.
+more than 4 hours. Picking `public` for a 30-minute shell - GPU or not -
+wastes capacity that someone else is queued for.
 
 ```shell
 # Lightweight debug — short shell, modest resources.
@@ -78,15 +78,15 @@ interactive -p public -t 1-00:00 -c 8 --mem=32G
 ```
 
 If the user describes the work as "quick", "debug", "lightweight",
-"just need to check", or names a wall-time at or under 4 hours — that's
+"just need to check", or names a wall-time at or under 4 hours - that's
 an `htc` request, GPU or not. Don't default to `public` in those cases;
 only a need for more than 4 hours (or a node shape htc lacks) does. For
 a ≤15-minute test that needs to start *now*, the `debug` QOS (`-p public
--q debug`, very high priority, GPUs allowed — but not valid on `htc`) is
+-q debug`, very high priority, GPUs allowed - but not valid on `htc`) is
 the fast lane.
 
 When the allocation lands, the prompt changes and you are now on a
-compute node. **Capture the node hostname** — you will need it from
+compute node. **Capture the node hostname** - you will need it from
 the laptop:
 
 ```shell
@@ -108,7 +108,7 @@ jupyter lab --no-browser --ip=127.0.0.1 --port=8888
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Bind to `127.0.0.1`, never `0.0.0.0` — the tunnel does not need a
+Bind to `127.0.0.1`, never `0.0.0.0` - the tunnel does not need a
 network-facing socket and binding publicly invites trouble on a shared
 node.
 
@@ -128,8 +128,8 @@ What each flag does:
 
 | Flag | Purpose |
 | --- | --- |
-| `-N` | Don't run a remote command — tunnel only. |
-| `-L 8888:localhost:8888` | Laptop port 8888 → compute-node port 8888. |
+| `-N` | Don't run a remote command - tunnel only. |
+| `-L 8888:localhost:8888` | Laptop port 8888 -> compute-node port 8888. |
 | `-J $ME@$SOL` | ProxyJump through the login node. |
 
 Now `http://localhost:8888` on the laptop reaches the Jupyter on the
@@ -162,7 +162,7 @@ ssh -N -R 53682:localhost:53682 -J $ME@$SOL $ME@$NODE
 Now anything on the compute node hitting `http://localhost:53682`
 reaches the OAuth helper running on your laptop. Pick whichever port
 the tool prints; some hard-code it (`gcloud` uses 8085, `gh` uses an
-ephemeral port — read the prompt).
+ephemeral port - read the prompt).
 
 ## 5. Diagnostics
 
@@ -207,7 +207,7 @@ Quick sanity check:
 command -v sacctmgr   # nothing → laptop. A path → you're on Sol.
 ```
 
-If `sacctmgr` resolves to a path you are on Sol — abort and re-run
+If `sacctmgr` resolves to a path you are on Sol - abort and re-run
 the `-L` from a laptop terminal.
 
 ### Tunnel established but page won't load
@@ -218,7 +218,7 @@ In order, check:
    `ss -tlnp 'sport = :8888'` from the compute-node shell.
 2. Tunnel still up on the laptop: `ss -tlnp 'sport = :8888'` (Linux)
    or `lsof -iTCP:8888 -sTCP:LISTEN` (macOS).
-3. Browser: try `curl -v http://localhost:8888` — rules out browser
+3. Browser: try `curl -v http://localhost:8888` - rules out browser
    caching/extensions.
 
 ## 6. Tear down
@@ -231,6 +231,6 @@ In order, check:
 
 ## See also
 
-- [slurm.md](slurm.md) — non-interactive job submission via SBATCH.
-- [module.md](module.md) — loading software inside the interactive
+- [slurm.md](slurm.md) - non-interactive job submission via SBATCH.
+- [module.md](module.md) - loading software inside the interactive
   shell before starting a server.

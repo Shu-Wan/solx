@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock squeue — logs args and prints a single fake row matching $USER.
+# Mock squeue - logs args and prints a single fake row matching $USER.
 set -u
 
 mock_log="${MOCK_LOG:-/dev/null}"

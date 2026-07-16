@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_sandbox_home.sh — construct a CLAUDE_CONFIG_DIR sandbox that
+# build_sandbox_home.sh - construct a CLAUDE_CONFIG_DIR sandbox that
 # mirrors the user's real ~/.claude with controlled perturbations:
 # hide a named skill, drop CLAUDE.md, inject an alternate skill tree.
 #

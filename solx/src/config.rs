@@ -1,7 +1,7 @@
 //! Single-file config under `$XDG_CONFIG_HOME/solx/config.toml`.
 //!
 //! The user runs `solx init` to write a starter file; everything else just
-//! reads it. No `[shared]` merge — each `[jobs.<name>]` table is
+//! reads it. No `[shared]` merge - each `[jobs.<name>]` table is
 //! self-contained, which keeps the schema obvious at the cost of repeating
 //! a flag across templates if someone really wants that.
 
@@ -343,7 +343,7 @@ pub fn starter_config_text(default_shell: &str) -> String {
 /// Render `s` as a TOML basic string, escaping every char TOML forbids.
 ///
 /// Besides backslash and double-quote, control characters (other than tab)
-/// are illegal in a TOML basic string and must be `\uXXXX`-escaped —
+/// are illegal in a TOML basic string and must be `\uXXXX`-escaped -
 /// otherwise a keep pattern carrying a stray control byte would render an
 /// unparseable config. Tab is emitted as `\t`.
 pub fn toml_str(s: &str) -> String {

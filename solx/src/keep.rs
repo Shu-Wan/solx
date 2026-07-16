@@ -1,13 +1,13 @@
-//! `solx keep` — renew scratch files Sol has flagged, filtered by `[keep]`.
+//! `solx keep` - renew scratch files Sol has flagged, filtered by `[keep]`.
 //!
 //! Read Sol's warning CSVs from `--csv-dir`, intersect the flagged
 //! directories with the `[keep]` include/exclude globs from config, and
 //! refresh timestamps (`touch -a -m -c` semantics) on only the intersection.
-//! Only what Sol has explicitly flagged is renewed — never a wholesale
+//! Only what Sol has explicitly flagged is renewed - never a wholesale
 //! `/scratch` walk.
 //!
 //! Execution is file-level-sharded: a streaming pipeline over one worker
-//! pool — enumerate a kept directory, split its files into evenly-sized
+//! pool - enumerate a kept directory, split its files into evenly-sized
 //! batches, and touch the batches across the pool. A single huge directory
 //! fans out into many batches, so `-j` scales the parallelism of the whole
 //! run including its largest directory, not just the count of directories.
@@ -55,7 +55,7 @@ pub const JSON_LIST_CAP: usize = 100;
 ///
 /// `ncpus` is the count of ONLINE system CPUs (`sysconf(_SC_NPROCESSORS_ONLN)`,
 /// i.e. Python `os.cpu_count()` semantics), NOT the cgroup/affinity-limited
-/// parallelism of the current process — inside a 4-core Slurm allocation on a
+/// parallelism of the current process - inside a 4-core Slurm allocation on a
 /// 128-CPU node the default is still 8.
 pub fn default_jobs() -> u64 {
     let n = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
@@ -75,7 +75,7 @@ pub struct Plan {
 
 /// Return the `Directory` column from one of Sol's warning CSVs.
 ///
-/// A missing file is fine — Sol only drops the CSV when there's something
+/// A missing file is fine - Sol only drops the CSV when there's something
 /// to flag. An empty result means nothing to do for that stage. An existing
 /// file that can't be read or decoded is a hard error (the command must
 /// fail loudly rather than treat the stage as "nothing flagged").
@@ -254,7 +254,7 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
         return 2;
     }
 
-    // The keep-list comes from the config `[keep]` block — the single source
+    // The keep-list comes from the config `[keep]` block - the single source
     // of truth.
     let keep_rules: &KeepRules = match opts.config_keep {
         Some(rules) => rules,
@@ -380,7 +380,7 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
     }
 }
 
-/// Print the plan summary to stderr (human) — stdout stays the data channel.
+/// Print the plan summary to stderr (human) - stdout stays the data channel.
 fn report_plan(
     out: &Out,
     plan: &Plan,
@@ -431,7 +431,7 @@ fn report_plan(
 /// Bounded plan document: exact counts, a capped sample of each list.
 ///
 /// When either list is truncated, the COMPLETE plan is spilled to a temp
-/// file and its path returned under `full_plan_path` — so the response
+/// file and its path returned under `full_plan_path` - so the response
 /// stays small enough for an agent's context while the full detail is one
 /// `cat` away.
 fn plan_json(
@@ -504,7 +504,7 @@ struct PoolState {
 
 /// Renew `plan.kept`. Returns `(files_touched, failures)`.
 ///
-/// With `jobs_n <= 1` runs serially (no pool — fast and deterministic for
+/// With `jobs_n <= 1` runs serially (no pool - fast and deterministic for
 /// small runs). Otherwise one worker pool runs both halves: enumerate a
 /// directory, shard its files, and queue the batches as touch tasks, so a
 /// single huge directory spreads its batches over every worker.

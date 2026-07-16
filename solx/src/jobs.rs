@@ -136,8 +136,8 @@ pub struct StartTail {
 ///   error.
 /// * The first `--` is dropped; everything after it is treated as bare
 ///   tokens (no option parsing).
-/// * The first unconsumed bare token — even one after `--` that looks like
-///   a flag — becomes the TEMPLATE; every other leftover token is salloc
+/// * The first unconsumed bare token - even one after `--` that looks like
+///   a flag - becomes the TEMPLATE; every other leftover token is salloc
 ///   passthrough, in original order.
 pub fn parse_start_tail(args: &[String]) -> Result<StartTail, String> {
     let mut tail = StartTail::default();
@@ -296,7 +296,7 @@ pub fn cmd_stop(
     let jid = res.job_id.clone().expect("resolved job id");
     let argv = slurm::scancel_argv(&jid);
 
-    // Acting on the job you're sitting inside ends this session — surface it
+    // Acting on the job you're sitting inside ends this session - surface it
     // in every path, including a dry-run preview, so the resolver's decision
     // is never a surprise.
     let self_cancel = res.acting_on_current();
@@ -361,7 +361,7 @@ pub fn cmd_stop(
 ///
 /// Nesting heads-up: attaching from *inside* an allocation ($SLURM_JOB_ID
 /// set) spawns a nested step. Unlike `stop`, attach is non-destructive and
-/// Ctrl-D-recoverable, so the command WARNS-AND-PROCEEDS (not refuses) —
+/// Ctrl-D-recoverable, so the command WARNS-AND-PROCEEDS (not refuses) -
 /// `-q/--quiet` silences the heads-up.
 pub fn cmd_jump(
     config: &Config,

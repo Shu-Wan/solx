@@ -5,7 +5,7 @@ and scratch renewal on Sol.
 
 ## Behavior contract
 
-These invariants are load-bearing — preserve them when you touch any
+These invariants are load-bearing - preserve them when you touch any
 user-visible output. The crate's own suite ([Tests](#tests)) is what
 locks them.
 
@@ -15,7 +15,7 @@ locks them.
   markup, no color).
 * Exit codes: 0 success, 1 runtime failure, 2 usage error / missing
   config / refused action.
-* Help/usage and completion scripts are clap-rendered — assert on content,
+* Help/usage and completion scripts are clap-rendered - assert on content,
   not exact wording.
 
 ## Module map
@@ -37,7 +37,7 @@ Notable design decisions:
 * **CLI parsing.** clap handles the tree; two paths are parsed by hand
   because their semantics predate clap conventions: the leading global
   flags (`--json`, eager `--version`) and the whole `job start` tail, where
-  the first unconsumed bare token — even after `--` — is the template and
+  the first unconsumed bare token - even after `--` - is the template and
   every other leftover token passes through to salloc in order.
 * **`[keep]` matching.** `ignore::gitignore::Gitignore` rooted at `/` with
   `matched_path_or_any_parents`, so a bare path pattern matches the
@@ -46,7 +46,7 @@ Notable design decisions:
   `keep.rs`; run them before touching matcher code.
 * **Enumeration.** `ignore::WalkBuilder` with every ignore facility off
   (`hidden(false)`, `ignore(false)`, `git_*(false)`, `parents(false)`,
-  `follow_links(false)`), files only — semantics equal `find DIR -type f`,
+  `follow_links(false)`), files only - semantics equal `find DIR -type f`,
   hidden files included.
 * **Touch.** `filetime::set_file_times` to now; a missing path is a silent
   skip and nothing is ever created (`touch -c` semantics).
@@ -59,7 +59,7 @@ Notable design decisions:
 
 Toolchain setup on Sol (rustup user-install, `CARGO_TARGET_DIR`, crates.io
 access, glibc vs musl) is covered in
-[`README.md` → Toolchain on Sol](README.md#toolchain-on-sol).
+[`README.md` -> Toolchain on Sol](README.md#toolchain-on-sol).
 
 ```console
 $ export CARGO_TARGET_DIR=/tmp/solx-target
@@ -89,8 +89,8 @@ $ cp "$CARGO_TARGET_DIR/release/solx" ~/.local/bin-test/solx
 ```
 
 This links the host's glibc, so it runs on the box it was built on (Sol
-included). For a binary that runs anywhere — the form CI uploads and a
-release ships — build the statically linked musl target:
+included). For a binary that runs anywhere - the form CI uploads and a
+release ships - build the statically linked musl target:
 
 ```console
 $ rustup target add x86_64-unknown-linux-musl    # one-time; no musl-gcc needed
@@ -102,8 +102,8 @@ linked") with no libc-version dependency.
 
 **From a PR, without a toolchain.** The `build` job attaches the musl
 binary as the `solx-x86_64-linux-musl` artifact on every push/PR.
-Download it from the PR's *Checks → Artifacts*, `chmod +x`, and run it
-on Sol as-is — no install step, no toolchain:
+Download it from the PR's *Checks -> Artifacts*, `chmod +x`, and run it
+on Sol as-is - no install step, no toolchain:
 
 ```console
 $ chmod +x solx && ./solx --version

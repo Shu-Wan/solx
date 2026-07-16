@@ -82,7 +82,7 @@ impl Out {
 
 /// Ask a yes/no question on stderr and read the answer from stdin.
 ///
-/// Callers gate on [`Out::interactive`] first — a non-interactive session
+/// Callers gate on [`Out::interactive`] first - a non-interactive session
 /// must never reach a prompt. Empty input takes `default`; `y`/`yes`
 /// (case-insensitive) is true, anything else false.
 pub fn confirm(prompt: &str, default: bool) -> bool {
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn json_strings_escape_non_ascii_like_python() {
-        // Python: json.dumps("café — ok\t\x7f") == '"caf\\u00e9 \\u2014 ok\\t\\u007f"'
+        // Python: json.dumps("café - ok\t\x7f") == '"caf\\u00e9 \\u2014 ok\\t\\u007f"'
         let v = json!("café — ok\t\u{7f}");
         assert_eq!(to_python_json(&v), "\"caf\\u00e9 \\u2014 ok\\t\\u007f\"");
     }

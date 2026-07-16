@@ -8,13 +8,13 @@
 //! * `*` and `?` never cross a `/`; `**` spans directories.
 //! * `[...]` is a character class; a class with no closing `]` makes the
 //!   whole pattern invalid, and an invalid pattern is discarded (it matches
-//!   nothing) — git's behavior.
+//!   nothing) - git's behavior.
 //! * `{a,b}` braces are literal characters, not alternation.
 //! * A pattern of exactly `/` matches nothing.
 //! * A pattern with no `/` (or only a trailing one) matches at any depth;
 //!   one with an internal `/` is anchored to the root.
 //! * `!` negates. The last matching pattern decides, except that an exact
-//!   (non-ancestor) match takes precedence over ancestor-directory matches —
+//!   (non-ancestor) match takes precedence over ancestor-directory matches -
 //!   git's re-include-from-excluded-directory edge case.
 //!
 //! Paths are matched as strings: one leading `/` (or a leading `./`) is
@@ -300,7 +300,7 @@ mod tests {
         GitIgnoreSpec::from_lines(lines)
     }
 
-    // Vectors generated from Python pathspec's GitIgnoreSpec — the
+    // Vectors generated from Python pathspec's GitIgnoreSpec - the
     // reference implementation this module must agree with.
     // Each row: (pattern lines, path, expected match).
     const VECTORS: &[(&[&str], &str, bool)] = &[
