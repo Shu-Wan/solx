@@ -215,6 +215,8 @@ fn job_start_real_parses_granted_allocation() {
         .stderr(predicate::str::contains("allocated job 54809999"));
 }
 
+const EXPECTED_JUMP_SRUN: &str = "MOCK_SRUN --jobid=12345 --overlap --nodes=1 --ntasks=1 --cpu-bind=none --mem-bind=none --mem=0 --pty zsh\n";
+
 #[test]
 fn jump_exec_replaces_with_srun() {
     let sb = Sandbox::new().with_config();
@@ -222,7 +224,30 @@ fn jump_exec_replaces_with_srun() {
         .args(["jump", "12345", "-q"])
         .assert()
         .success()
-        .stdout("MOCK_SRUN --jobid=12345 --overlap --pty zsh\n");
+        .stdout(EXPECTED_JUMP_SRUN);
+}
+
+#[test]
+fn jump_from_inside_another_allocation_pins_env_independent_argv() {
+    // A nested jump: inside job 54800001, attaching to a different job. The
+    // emitted srun argv must be identical regardless of the leaked SLURM_*
+    // step-shaping vars (solx pins them on the command line), and the nesting
+    // heads-up must fire on stderr. `env_clear` in `cmd()` means these are the
+    // only SLURM_* vars solx sees.
+    let sb = Sandbox::new().with_config();
+    sb.cmd()
+        .args(["jump", "12345"])
+        .env("SLURM_JOB_ID", "54800001")
+        .env("SLURM_NTASKS", "16")
+        .env("SLURM_JOB_NUM_NODES", "2")
+        .env("SLURM_CPU_BIND", "quiet,mask_cpu:0x1")
+        .env("SLURM_MEM_PER_NODE", "65536")
+        .assert()
+        .success()
+        .stdout(EXPECTED_JUMP_SRUN)
+        .stderr(predicate::str::contains(
+            "nesting: you're inside job 54800001; attaching to job 12345",
+        ));
 }
 
 #[test]
