@@ -9,6 +9,10 @@ hand before each release.
 **Last verified:** the `solx` CLI is covered by its own crate suite
 (`cargo test` in `solx/`: unit tests per module plus the end-to-end
 `tests/cli.rs`, including a real-touch renewal test), which runs in CI.
+**1.0.2** (2026-07-16) was a CLI-only release - skill guidance unchanged -
+so per [`../DEVELOPMENT.md`](../DEVELOPMENT.md) it was gated by that crate
+suite plus an L3 CLI smoke on real Sol (the nested `job jump` fix and the
+shipped binary exercised on a Sol compute node), not a skill-eval re-run.
 The skill-level L1/L2/L3 evals for the `solx`-driven flows are **pending
 re-run on Sol** and are marked 🟡 below.
 
