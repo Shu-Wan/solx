@@ -4,7 +4,7 @@ name: release
 # GitHub Release with it attached, so
 #   curl -fLo solx .../releases/latest/download/solx-x86_64-unknown-linux-musl
 # always fetches the build matching the tag. The skill rides the same tag
-# (one version line — see CHANGELOG.md), installed from the repo tree.
+# (one version line - see CHANGELOG.md), installed from the repo tree.
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
       - name: Resolve tag
         id: tag
         env:
-          # Bind into env and reference shell vars — never interpolate a
+          # Bind into env and reference shell vars - never interpolate a
           # tag/input directly into a run: line (GitHub script-injection).
           INPUT_TAG: ${{ github.event.inputs.tag }}
           REF_NAME: ${{ github.ref_name }}

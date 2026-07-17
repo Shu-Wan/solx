@@ -1,4 +1,4 @@
-//! `solx init` — write a starter `config.toml`.
+//! `solx init` - write a starter `config.toml`.
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -63,7 +63,7 @@ pub fn cmd_init(force: bool, out: &Out) -> i32 {
         }
     }
 
-    // Optional interactive walkthrough — skipped entirely in a
+    // Optional interactive walkthrough - skipped entirely in a
     // non-interactive session (an agent/cron just gets the defaults, never a
     // hung prompt).
     let mut default_shell = "bash".to_string();
@@ -87,7 +87,7 @@ pub fn cmd_init(force: bool, out: &Out) -> i32 {
         out.error(&format!("error: unable to write {}: {e}", p.display()));
         return 1;
     }
-    // Mode 0600 — config may eventually contain user-specific paths or
+    // Mode 0600 - config may eventually contain user-specific paths or
     // mail-user etc.; keep it readable only by the owner.
     let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
 

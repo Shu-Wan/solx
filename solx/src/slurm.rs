@@ -1,6 +1,6 @@
 //! Thin wrappers around `squeue`, `scancel`, `salloc`, and `srun`.
 //!
-//! Not a Slurm client library — every function shells out and parses the
+//! Not a Slurm client library - every function shells out and parses the
 //! result. Tests inject a [`Runner`] so they can mock subprocess output
 //! without spawning anything.
 
@@ -117,12 +117,12 @@ pub fn squeue_user_jobs(user: Option<&str>, runner: Runner) -> Result<Vec<Job>, 
 //
 //   * `time`/`jump` (read / attach): when several jobs match, auto-pick the
 //     MOST RECENT one (like `tmux attach`). Deterministic, so it's agent-safe.
-//   * `stop` (cancel): NEVER auto-picks among several — that's how you cancel
+//   * `stop` (cancel): NEVER auto-picks among several - that's how you cancel
 //     the wrong job. It returns the candidates so the caller can print them
 //     and exit 2.
 //   * `jump`'s auto-pick considers RUNNING jobs only (you can't attach to a
 //     pending one). An EXPLICIT arg or $SLURM_JOB_ID is passed through as-is
-//     (no state pre-check) — `srun` surfaces a wrong-state job far more
+//     (no state pre-check) - `srun` surfaces a wrong-state job far more
 //     clearly than we could, and it saves a squeue round-trip.
 //
 // "Inside an allocation" ($SLURM_JOB_ID set) is treated as "the current
@@ -139,9 +139,9 @@ pub enum Verb {
 /// Outcome of resolving a jobid for one verb.
 ///
 /// Exactly one of these holds:
-/// * `job_id` is set     → resolved; act on it.
-/// * `ambiguous` is true → several candidates, caller must disambiguate.
-/// * `error` is set      → nothing to act on (no jobs / none running).
+/// * `job_id` is set     -> resolved; act on it.
+/// * `ambiguous` is true -> several candidates, caller must disambiguate.
+/// * `error` is set      -> nothing to act on (no jobs / none running).
 #[derive(Debug, Clone, Default)]
 pub struct Resolution {
     pub job_id: Option<String>,
@@ -166,7 +166,7 @@ impl Resolution {
 /// Sort key making "most recent" == "highest job id".
 ///
 /// Slurm assigns monotonically increasing ids, so the highest id is the
-/// newest submission — which for `solx job start` is the one you just made.
+/// newest submission - which for `solx job start` is the one you just made.
 /// Array ids like `123_4` sort by (base, index); a non-numeric id sorts
 /// first so a real number always wins.
 fn jobid_key(job_id: &str) -> (i64, i64) {
@@ -348,25 +348,25 @@ pub fn scancel_argv(job_id: &str) -> Vec<String> {
 /// Sol's srun 25.11.6); each is a no-op from a login node, where there is no
 /// enclosing allocation to leak from:
 ///
-/// * `--nodes=1` — otherwise `SLURM_JOB_NUM_NODES` from a multi-node job makes
+/// * `--nodes=1` - otherwise `SLURM_JOB_NUM_NODES` from a multi-node job makes
 ///   srun try to place the one shell across N nodes and warn "can't run 1
 ///   processes on 2 nodes, setting nnodes to 1".
-/// * `--ntasks=1` — otherwise `SLURM_NTASKS` sets the step size, so jumping
+/// * `--ntasks=1` - otherwise `SLURM_NTASKS` sets the step size, so jumping
 ///   from an `-n 16` allocation launches 16 tasks (only task zero gets the
 ///   pty; the rest run with I/O nulled). A shell is one task.
-/// * `--cpu-bind=none` — otherwise srun picks up the enclosing job's
+/// * `--cpu-bind=none` - otherwise srun picks up the enclosing job's
 ///   `SLURM_CPU_BIND` (a cpuset belonging to a *different* job) and fails on
-///   the target node with "CPU binding outside of job step allocation … Unable
+///   the target node with "CPU binding outside of job step allocation ... Unable
 ///   to satisfy cpu bind request". `none` is right for an interactive shell
 ///   (which shouldn't be pinned to a subset of the job's cores anyway), and
 ///   the job's cgroup still confines it to the target allocation's cpuset.
-/// * `--mem-bind=none` — the NUMA sibling of `--cpu-bind`, neutralizing a
+/// * `--mem-bind=none` - the NUMA sibling of `--cpu-bind`, neutralizing a
 ///   leaked `SLURM_MEM_BIND` mask the same way.
-/// * `--mem=0` — restricts the step to the target job's own memory. Otherwise
+/// * `--mem=0` - restricts the step to the target job's own memory. Otherwise
 ///   a leaked `SLURM_MEM_PER_NODE` / `SLURM_MEM_PER_CPU` (e.g., from a job
 ///   allocated with `--mem=64G`) is requested for the step and fails step
-///   creation with "Memory required by task is not available" — or, if both
-///   leak at once, "SLURM_MEM_PER_CPU … and SLURM_MEM_PER_NODE are mutually
+///   creation with "Memory required by task is not available" - or, if both
+///   leak at once, "SLURM_MEM_PER_CPU ... and SLURM_MEM_PER_NODE are mutually
 ///   exclusive".
 ///
 /// Leaked `SLURM_CPUS_PER_TASK` (`-c` has no zero/none sentinel) and GRES vars

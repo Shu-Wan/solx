@@ -1,7 +1,7 @@
 //! Detect whether the current host is part of the Sol cluster.
 //!
 //! `solx` is Sol-only. Each subcommand asks [`require_sol`] to enforce the
-//! guard — wrong-side invocations exit 2 with a clear redirect rather than
+//! guard - wrong-side invocations exit 2 with a clear redirect rather than
 //! attempting to talk to a Slurm controller that isn't there.
 
 use std::io::Read;
@@ -108,7 +108,7 @@ fn reverse_names(name: &str) -> Option<(String, Vec<String>)> {
 
     // glibc gethostbyaddr returns the primary name plus aliases (a
     // getnameinfo lookup yields only one name, which on Sol is the short
-    // one — the FQDN arrives as an alias).
+    // one - the FQDN arrives as an alias).
     let hostent = unsafe {
         gethostbyaddr(
             bytes.as_ptr() as *const libc::c_void,

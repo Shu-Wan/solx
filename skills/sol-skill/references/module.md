@@ -7,7 +7,7 @@ To prevent conflicts while balancing ease of use, the software your
 research needs must be loaded into the environment as a
 **software module**.
 
-No modules are loaded when you start a new session — you must load
+No modules are loaded when you start a new session - you must load
 software in every session.
 
 ## Listing Available Modules

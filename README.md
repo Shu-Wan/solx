@@ -24,7 +24,7 @@ SSH to Sol, run `solx`, and keep the whole loop in your terminal.
 
 ## Installation
 
-`solx` is a single static binary — no Python, no `uv`, no toolchain on the
+`solx` is a single static binary - no Python, no `uv`, no toolchain on the
 box. On Sol, download it, make it executable, and put it on your `$PATH`:
 
 ```shell
@@ -34,7 +34,7 @@ chmod +x ~/.local/bin/solx
 ```
 
 Re-run those two lines to upgrade. The binary is fully static (musl), so it
-runs on any x86-64 Linux — Sol's RHEL 8 included.
+runs on any x86-64 Linux - Sol's RHEL 8 included.
 
 ## Usage
 
@@ -53,20 +53,20 @@ What it's good at:
   the node. Cancel with `solx job stop` (or raw `scancel`).
 - **Keeping `/scratch` alive.** Sol purges inactive files on a schedule;
   `solx keep` renews only the directories you listed in `[keep]` that Sol has
-  *actually flagged* — never a blanket `touch`.
-  → walkthrough: **[docs/scratch.md](docs/scratch.md)**
+  *actually flagged* - never a blanket `touch`.
+  -> walkthrough: **[docs/scratch.md](docs/scratch.md)**
 - **Built for CLI agents.** Output auto-switches to JSON off a TTY, exit codes
   are meaningful, and destructive commands refuse rather than hang on a prompt.
 
 **Learn more:** the full command manual is [docs/solx.md](docs/solx.md). Cached
-reference notes on Sol conventions —
+reference notes on Sol conventions -
 [the `solx` CLI](skills/sol-skill/references/solx.md),
 [the Sol cheat sheet](skills/sol-skill/references/cheatsheet.md) ([PDF](docs/cheatsheet.pdf)),
 [modules](skills/sol-skill/references/module.md),
 [scratch policy](skills/sol-skill/references/scratch.md),
 [Slurm jobs](skills/sol-skill/references/slurm.md),
 [ssh tunnels](skills/sol-skill/references/sessions.md),
-[file sharing](skills/sol-skill/references/sharing.md) — live with the skill.
+[file sharing](skills/sol-skill/references/sharing.md) - live with the skill.
 
 ## 🌵 The companion skill
 
@@ -86,20 +86,20 @@ same way.
 
 ## Development
 
-- **Changelog** — [CHANGELOG.md](CHANGELOG.md); the current release is
+- **Changelog** - [CHANGELOG.md](CHANGELOG.md); the current release is
   shown by the **Release** badge at the top of this README.
-- **Roadmap** — [docs/ROADMAP.md](docs/ROADMAP.md).
-- **Contributing, tests, and the eval harness** —
+- **Roadmap** - [docs/ROADMAP.md](docs/ROADMAP.md).
+- **Contributing, tests, and the eval harness** -
   [DEVELOPMENT.md](DEVELOPMENT.md) and
   [solx/DEVELOPMENT.md](solx/DEVELOPMENT.md), with the coverage matrix
   in [docs/coverage.md](docs/coverage.md).
 
 ## Disclaimer
 
-A personal toolkit — **not affiliated with or endorsed by ASU Research
+A personal toolkit - **not affiliated with or endorsed by ASU Research
 Computing.** The official documentation at <https://docs.rc.asu.edu/> is
 authoritative on every Sol policy referenced here. `solx keep` changes file
 *timestamps* under `/scratch` (it never reads, moves, or deletes content); the
 job commands submit and cancel Slurm jobs. Preview with `--dry-run`, review
 what an agent proposes before approving it, and verify against the official
-docs. Provided as-is, with no warranty. MIT licensed — see [LICENSE](LICENSE).
+docs. Provided as-is, with no warranty. MIT licensed - see [LICENSE](LICENSE).

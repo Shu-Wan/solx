@@ -12,7 +12,7 @@ __pycache__/
 .claude/
 .claude/worktrees/
 
-# Eval harness — private maintainer state (see DEVELOPMENT.md)
+# Eval harness - private maintainer state (see DEVELOPMENT.md)
 evals/evals.json
 evals/results/
 sol-skill-workspace/

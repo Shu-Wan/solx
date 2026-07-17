@@ -24,10 +24,10 @@ invocation to `$MOCK_LOG` (default `/tmp/sol-skill-mock-$$.log`):
 
 The fake `$HOME` (`evals/mocks/home/`) ships with:
 
-- `.config/solx/config.toml` — sanitized config with a `[keep]` block using `sparky`
-- `scratch-dirs-pending-removal.csv` — synthetic Sol warning
-- `scratch-dirs-over-90days.csv` — synthetic Sol warning
-- `scratch-dirs-inactive.csv` — synthetic Sol warning
+- `.config/solx/config.toml` - sanitized config with a `[keep]` block using `sparky`
+- `scratch-dirs-pending-removal.csv` - synthetic Sol warning
+- `scratch-dirs-over-90days.csv` - synthetic Sol warning
+- `scratch-dirs-inactive.csv` - synthetic Sol warning
 
 The fake `/scratch` tree (`evals/mocks/scratch/sparky/`) has empty
 `my-project/`, `experiments/`, and `old-stuff/` directories so
@@ -42,12 +42,12 @@ export MOCK_HOSTNAME=macbook.local
 source evals/mocks/activate.sh
 ```
 
-(Use `export` before sourcing — `MOCK_HOSTNAME=… source …` on a
+(Use `export` before sourcing - `MOCK_HOSTNAME=... source ...` on a
 single line does not reliably set the variable for `source`.)
 
 ## Toggle the solx-present branch
 
-The mock deliberately ships **no** `solx` shim — that's the
+The mock deliberately ships **no** `solx` shim - that's the
 not-yet-installed branch (the skill should detect the absence and prompt
 to install `solx`). To test the `solx`-present branch, drop a shim into
 `bin/`:

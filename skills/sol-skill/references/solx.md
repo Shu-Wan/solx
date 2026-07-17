@@ -1,4 +1,4 @@
-# `solx` — the CLI
+# `solx` - the CLI
 
 `solx` is a small command-line tool for daily work on Sol. You SSH to
 Sol yourself, then run `solx` from a login or compute node; it shells out
@@ -11,7 +11,7 @@ Sol and reported on stdout (results) / stderr (diagnostics).
 
 ## Install + first run
 
-`solx` is one static binary — no Python, no `uv`, no toolchain. Install
+`solx` is one static binary - no Python, no `uv`, no toolchain. Install
 is a download and a `chmod`:
 
 ```shell
@@ -27,13 +27,13 @@ solx config show     # sanity-check the resolved config
 
 The binary is fully static (musl), so it runs on Sol's RHEL 8 as-is.
 Installing reaches the network and writes `~/.local/bin/solx` (make sure
-that's on `$PATH`) — propose it and get the user's OK rather than
+that's on `$PATH`) - propose it and get the user's OK rather than
 installing silently.
 
 ## When to use `solx` vs raw SLURM
 
-For one-off reads the two are equivalent — use either. A warm `solx job`
-read runs in ~0.12s on Sol, vs ~0.08s for raw `squeue` (measured —
+For one-off reads the two are equivalent - use either. A warm `solx job`
+read runs in ~0.12s on Sol, vs ~0.08s for raw `squeue` (measured -
 `evals/runner/bench_solx_latency.sh`); the residual over `squeue` is just
 the `squeue` subprocess `solx` spawns, and the native binary's startup
 doesn't degrade under node load or a cold NFS cache. The raw equivalents,
@@ -75,7 +75,7 @@ solx job stop            # cancel it when done
 ```
 
 `solx job start` is for **interactive** allocations (via `salloc
---no-shell`). For batch work, use `sbatch your-script.sbatch` directly —
+--no-shell`). For batch work, use `sbatch your-script.sbatch` directly -
 `solx` deliberately doesn't wrap `sbatch`.
 
 ## Configuration
@@ -123,10 +123,10 @@ run needs more than htc's 4-hour wall.
 1. An explicit `JOBID` wins.
 2. Else, if inside an allocation (`$SLURM_JOB_ID` set), that job.
 3. Else `solx` looks at `squeue -u $USER`:
-   - **No jobs** → it says so and stops.
-   - **One job** → it uses that one.
-   - **Several jobs** → `time`/`jump` auto-pick the **most recent**
-     (highest job id) and note which; `stop` **refuses to guess** —
+   - **No jobs** -> it says so and stops.
+   - **One job** -> it uses that one.
+   - **Several jobs** -> `time`/`jump` auto-pick the **most recent**
+     (highest job id) and note which; `stop` **refuses to guess** -
      it lists the candidates and exits 2 so you can't cancel the wrong
      job by accident.
 
@@ -140,20 +140,20 @@ allocation warns about nesting (`jump`, `-q` silences) or self-cancel
 
 | Flag | Behavior |
 |---|---|
-| (none) | Show the plan, then prompt `… ? [y/N]`. |
+| (none) | Show the plan, then prompt `... ? [y/N]`. |
 | `-y` / `--yes` (or `-f` / `--force`) | Skip the prompt and do it. |
-| `-n` / `--dry-run` | Show the plan, do nothing — no prompt. |
+| `-n` / `--dry-run` | Show the plan, do nothing - no prompt. |
 
 `-y` and `-n` are mutually exclusive (exit 2). In a **non-interactive
 session** (no stdin TTY) without `-y`/`-n`, both **refuse with exit 2**
-instead of hanging on a prompt — safe to drive from an agent.
+instead of hanging on a prompt - safe to drive from an agent.
 
 ## Output for agents
 
 Output **auto-detects**: Rich tables on a terminal, **JSON when stdout
 is not a TTY**. The `--json` flag forces JSON anywhere; it works before
 the subcommand (`solx --json job list`) or after it (`solx job list
---json`) — except after `job start`, where post-command tokens pass
+--json`) - except after `job start`, where post-command tokens pass
 through to `salloc`. Results go to **stdout**, all
 diagnostics/prompts/errors to **stderr**, so values pipe cleanly:
 
@@ -168,13 +168,13 @@ under-specified, unconfirmed, or wrong-side (off-Sol). Every subcommand
 exits 2 off-Sol with a redirect message, so a stray invocation on a
 laptop is harmless.
 
-## `solx keep` — renew flagged scratch files
+## `solx keep` - renew flagged scratch files
 
 `solx keep` reads Sol's warning CSVs from `$HOME`
 (`scratch-dirs-pending-removal.csv`, `scratch-dirs-over-90days.csv`,
 `scratch-dirs-inactive.csv`), keeps only directories that match your
 keep-list, and `touch`es them. It only ever touches directories that are
-**both** flagged by Sol **and** in your keep-list — nothing to do until
+**both** flagged by Sol **and** in your keep-list - nothing to do until
 Sol flags something, and it never walks `/scratch` wholesale.
 
 The keep-list is the `[keep]` block in the config (`include` / `exclude`),
@@ -187,16 +187,16 @@ solx keep --stage pending     # only the most-urgent CSV
 ```
 
 Flags: `--stage {pending,over90,inactive,all}`, `--csv-dir DIR` (default
-`$HOME`), `-j N` (parallel workers — default small on purpose; `/scratch`
+`$HOME`), `-j N` (parallel workers - default small on purpose; `/scratch`
 is networked storage), `-y` / `-n` / `-v`.
 
-This is metadata-heavy NFS I/O, which login nodes throttle — run a big
+This is metadata-heavy NFS I/O, which login nodes throttle - run a big
 pass on a compute node or the DTN (`ssh soldtn`). See
 [scratch.md](scratch.md) for the CSV schema and performance notes.
 
 ## Shell completion
 
-`solx completions <shell>` prints a fully static completion script —
+`solx completions <shell>` prints a fully static completion script -
 completing never runs `solx`, so the first Tab is instant. Add it to the
 user's shell startup file:
 

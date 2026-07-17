@@ -1,6 +1,6 @@
 # evals/
 
-Eval harness for `sol-skill`. **Not** part of the shipped skill —
+Eval harness for `sol-skill`. **Not** part of the shipped skill -
 nothing in this directory is bundled into the `.skill` artifact.
 
 For the conceptual layout (L0–L3 layers, release process, what's in
@@ -61,7 +61,7 @@ suites, and runs in CI on every push.
 ## Eval entry schema
 
 `evals.json` (and `evals.example.json`) follows the skill-creator
-schema with one extension — each assertion carries a `layer` tag and a
+schema with one extension - each assertion carries a `layer` tag and a
 machine-checkable `check`.
 
 ```json
@@ -107,12 +107,12 @@ Layer tags drive how the runner executes each eval and how
 `check` is the machine-checkable grader for an assertion; the runner
 dispatches on its key:
 
-- `transcript_contains` / `transcript_lacks` — literal substring is /
+- `transcript_contains` / `transcript_lacks` - literal substring is /
   isn't anywhere in the agent's transcript (L1).
-- `transcript_matches` — Python regex against the transcript (L1).
-- `l2_script` — run the named script (e.g. the `solx` crate's keep
+- `transcript_matches` - Python regex against the transcript (L1).
+- `l2_script` - run the named script (e.g. the `solx` crate's keep
   test) and pass if it exits `exit_code` (L2, real filesystem mutation).
-- `l3_sbatch_test_only` — extract the resource flags from the agent's
+- `l3_sbatch_test_only` - extract the resource flags from the agent's
   **final** recommendation (the last complete `#SBATCH` / `salloc`
   header block in the transcript) and run them through `sbatch
   --test-only` on real Sol; `expect: "accepted"` passes iff the
@@ -124,7 +124,7 @@ dispatches on its key:
 The `l3_sbatch_test_only` check is the partition/QOS grader. A regex
 assertion checks *which* partition the agent named; this checks the
 recommendation is actually **schedulable**. It catches headers that
-read plausible but the scheduler rejects — `-p htc -q debug` (htc only
+read plausible but the scheduler rejects - `-p htc -q debug` (htc only
 allows `qos=public`), a `debug`-QOS job over its 15-minute wall, or a
 GPU job parked on a partition that can't grant it. It exists because a
 plausible-looking but wrong partition/QOS pairing is exactly the bug
@@ -139,5 +139,5 @@ specific to your Sol environment. The sanitized example uses
 public Sol concepts.
 
 If you contribute new evals back upstream, please launder identifiers
-out before opening a PR — `sed -i "s/$(whoami)/sparky/g"` over the
+out before opening a PR - `sed -i "s/$(whoami)/sparky/g"` over the
 prompts is usually enough.

@@ -7,7 +7,7 @@ management (`solx job start/stop/jump/time/list`), scratch renewal
 A single native binary (Rust). The command surface, JSON output,
 diagnostics, and exit codes are locked by the crate's end-to-end and unit
 tests; see [`../docs/solx.md`](../docs/solx.md) for the full command
-reference. One binary, no interpreter or virtualenv on the critical path —
+reference. One binary, no interpreter or virtualenv on the critical path -
 a cold start from NFS home is a single exec.
 
 ## Install
@@ -32,7 +32,7 @@ $ solx completions zsh > ~/.zfunc/_solx   # optional tab completion
 
 ## Toolchain on Sol
 
-Contributor setup for building from source — users installing a release
+Contributor setup for building from source - users installing a release
 binary never need any of this. None of it requires sudo.
 
 * **Rust via rustup, user-install.**

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock hostname — returns whatever $MOCK_HOSTNAME is set to.
+# Mock hostname - returns whatever $MOCK_HOSTNAME is set to.
 # Honors -s (short), -a (all), and no-arg invocations the way SKILL.md uses it.
 set -u
 

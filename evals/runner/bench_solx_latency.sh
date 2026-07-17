@@ -5,7 +5,7 @@
 # quantifies the residual over raw SLURM so the skill's "solx vs raw SLURM"
 # guidance is grounded in real numbers rather than a guess.
 #
-# This is an L3 (real-Sol) measurement — the numbers only mean anything on a
+# This is an L3 (real-Sol) measurement - the numbers only mean anything on a
 # Sol login/compute node, where the NFS home and a live Slurm controller are
 # what they are. It is strictly READ-ONLY: it times `squeue`, `solx job
 # list/time`, and `solx --version`; it never allocates or cancels anything.
@@ -37,7 +37,7 @@ command -v solx >/dev/null 2>&1 || {
 
 _median() { sort -n | awk '{a[NR]=$1} END{print (NR%2)?a[(NR+1)/2]:(a[NR/2]+a[NR/2+1])/2}'; }
 
-# bench "<label>" cmd args...  — prints "<label>  warm <median>s (n=N) · cold <t>s"
+# bench "<label>" cmd args...  - prints "<label>  warm <median>s (n=N) · cold <t>s"
 # Reports BOTH the warm median (steady state for repeated calls in a session)
 # and the cold first invocation (the NFS/import-storm tax a fresh session
 # pays once). A command that exits non-zero is reported as failed and never
