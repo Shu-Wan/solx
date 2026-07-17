@@ -202,8 +202,8 @@ job goes, check what's actually available to them:
 
 ```shell
 sacctmgr -n show assoc user=$USER format=Account,Partition,QOS
-#   → e.g.  grp_yourpi || debug,htc,private,public
-myfairshare                            # dampened RealFairShare; low → prefer a buy-in/preemptible QOS (raw `sshare -U` is undampened)
+#   -> e.g.  grp_yourpi || debug,htc,private,public
+myfairshare                            # dampened RealFairShare; low -> prefer a buy-in/preemptible QOS (raw `sshare -U` is undampened)
 ```
 
 The QOS column is the menu. Most users have `public` (default,
@@ -224,7 +224,7 @@ allocation keeps running in the background until you attach.
 solx job start debug         # request the [jobs.debug] template; prints the job id
 solx job start debug -n      # dry run: print the salloc argv, submit nothing
 solx job jump                # open a shell on the compute node (srun --pty)
-# … work …
+# ... work ...
 exit                         # back to the login node; the allocation stays alive
 solx job list                # still RUNNING?            (= squeue --me)
 solx job time                # wall-time left             (= squeue -h -j <id> -o %L)
@@ -308,7 +308,7 @@ without that diagnosis. Get cause + ETA up front:
 
 ```shell
 squeue --me -t PD -O "JobID,Reason:50,StartTime"   # full reason + estimated start, parseable
-scontrol show job <jobid>                          # all fields for one job (Reason=…, StartTime=…)
+scontrol show job <jobid>                          # all fields for one job (Reason=..., StartTime=...)
 ```
 
 (Widen `Reason` - a real reason can be multi-word, e.g.

@@ -220,7 +220,7 @@ cause + ETA, both parseable (no color):
 
 ```shell
 squeue --me -t PD -O "JobID,Reason:50,StartTime"   # full reason + estimated start
-scontrol show job <jobid>                          # all fields for one job (Reason=…, StartTime=…)
+scontrol show job <jobid>                          # all fields for one job (Reason=..., StartTime=...)
 #   Reason=Resources  StartTime=2026-06-18T16:56:36   ← next in line; backfill estimate
 #   Reason=Priority   StartTime=Unknown               ← deep in the queue; no estimate yet
 ```

@@ -69,7 +69,7 @@ solx job start debug     # request an allocation; waits for the grant, prints th
 solx job list            # see it (RUNNING)
 solx job time            # how much time is left
 solx job jump            # open a shell on the compute node
-# … work …
+# ... work ...
 exit                     # back to the login node; the allocation stays alive
 solx job stop            # cancel it when done
 ```
@@ -94,7 +94,7 @@ time = "1-0"                    # Slurm time format: D-HH:MM:SS
 qos = "public"
 
 [jobs.debug]
-partition = "htc"              # the fast queue — good for quick tests
+partition = "htc"              # the fast queue - good for quick tests
 time = "0-1"
 
 [jobs.gpu]
@@ -201,16 +201,16 @@ completing never runs `solx`, so the first Tab is instant. Add it to the
 user's shell startup file:
 
 ```shell
-# bash — ~/.bashrc
+# bash - ~/.bashrc
 eval "$(solx completions bash)"
 
-# zsh — ~/.zshrc (after compinit)
+# zsh - ~/.zshrc (after compinit)
 eval "$(solx completions zsh)"
 
-# zsh, fpath install (no per-shell eval) — the same script works autoloaded:
+# zsh, fpath install (no per-shell eval) - the same script works autoloaded:
 #   mkdir -p ~/.zfunc && solx completions zsh > ~/.zfunc/_solx
 #   then in ~/.zshrc, before compinit:  fpath+=(~/.zfunc)
 
-# fish — ~/.config/fish/config.fish
+# fish - ~/.config/fish/config.fish
 solx completions fish | source
 ```

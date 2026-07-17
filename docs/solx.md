@@ -19,7 +19,7 @@ Install instructions are in [`solx/README.md`](../solx/README.md). The short
 version, on Sol:
 
 ```shell
-# solx is one static binary — download it, make it executable, put it on PATH:
+# solx is one static binary - download it, make it executable, put it on PATH:
 mkdir -p ~/.local/bin
 curl -fLo ~/.local/bin/solx https://github.com/Shu-Wan/solx/releases/latest/download/solx-x86_64-unknown-linux-musl
 chmod +x ~/.local/bin/solx
@@ -56,7 +56,7 @@ A typical session:
 solx config edit           # set up your templates and [keep] paths
 solx job start debug       # request an allocation; prints the job id
 solx job jump              # open a shell on the compute node
-# … do your work …
+# ... do your work ...
 exit                       # back to the login node; the allocation stays alive
 ```
 
@@ -90,13 +90,13 @@ first Tab of a session is instant. Add one to your shell's startup file, then
 restart your shell:
 
 ```shell
-# bash — add to ~/.bashrc
+# bash - add to ~/.bashrc
 eval "$(solx completions bash)"
 
-# zsh — add to ~/.zshrc (after compinit)
+# zsh - add to ~/.zshrc (after compinit)
 eval "$(solx completions zsh)"
 
-# fish — add to ~/.config/fish/config.fish
+# fish - add to ~/.config/fish/config.fish
 solx completions fish | source
 ```
 
@@ -134,14 +134,14 @@ default_template = "default"
 # How long `solx job start` waits for the queue before giving up.
 start_timeout = "10m"
 
-# Job templates — run `solx job start <name>` to allocate one.
+# Job templates - run `solx job start <name>` to allocate one.
 [jobs.default]
 partition = "lightwork"
 time = "1-0"          # 1 day. Slurm time format: D-HH:MM:SS
 qos = "public"
 
 [jobs.debug]
-partition = "htc"     # the fast queue — good for quick tests
+partition = "htc"     # the fast queue - good for quick tests
 time = "0-1"          # 1 hour
 
 [jobs.gpu]

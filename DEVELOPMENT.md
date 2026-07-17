@@ -23,13 +23,13 @@ solx/                               # the repo
 └── evals/                          # eval harness (not shipped with the skill)
     ├── README.md
     ├── evals.example.json          # sanitized template
-    ├── evals.json                  # gitignored — maintainer's real prompts
+    ├── evals.json                  # gitignored - maintainer's real prompts
     ├── mocks/                      # userland Sol mock environment
     │   ├── activate.sh
-    │   ├── bin/                    # PATH shims (hostname, module, srun, …)
+    │   ├── bin/                    # PATH shims (hostname, module, srun, ...)
     │   └── home/                   # fake $HOME with solx config ([keep]) + CSV warnings
     ├── runner/                     # thin wrapper over skill-creator
-    └── results/                    # gitignored — per-iteration benchmarks
+    └── results/                    # gitignored - per-iteration benchmarks
 ```
 
 The live skill-creator workspace (`sol-skill-workspace/`, sibling to the
@@ -158,7 +158,7 @@ intentionally **absent** from `bin/` - that's how we exercise the
 ```shell
 cd /path/to/sol-skill
 source evals/mocks/activate.sh
-hostname -a                                  # → sc001.sol.rc.asu.edu
+hostname -a                                  # -> sc001.sol.rc.asu.edu
 solx keep --dry-run -v                       # exercises CSV + keep-list parsing (needs solx)
 cat "$MOCK_LOG"                              # see what was invoked
 ```
