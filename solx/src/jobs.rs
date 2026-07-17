@@ -89,7 +89,7 @@ fn print_candidates(out: &Out, jobs: &[Job], reason: &str) {
     if out.json_mode {
         out.json(&json!({"error": reason, "jobs": jobs_payload(jobs)}));
     } else {
-        out.error(&format!("{reason} — specify a JOBID:"));
+        out.error(&format!("{reason} - specify a JOBID:"));
         out.error(&jobs_table(jobs));
     }
 }
@@ -231,7 +231,7 @@ pub fn cmd_start(
     let argv = slurm::salloc_argv(template, passthrough);
 
     if dry_run {
-        out.status("dry-run — would run:");
+        out.status("dry-run - would run:");
         out.emit(
             &json!({"dry_run": true, "template": name, "argv": argv}),
             || Some(format!("  {}", slurm::shell_join(&argv))),
@@ -242,7 +242,7 @@ pub fn cmd_start(
     let timeout = timeout_override.unwrap_or(config.start_timeout_seconds);
     out.status(&format!("submitting: {}", slurm::shell_join(&argv)));
     out.status(&format!(
-        "waiting up to {timeout}s for the queue to grant the allocation…"
+        "waiting up to {timeout}s for the queue to grant the allocation..."
     ));
     let jobid = match slurm::run_salloc(&argv, timeout, salloc_runner) {
         Ok(j) => j,
@@ -308,7 +308,7 @@ pub fn cmd_stop(
     }
 
     if dry_run {
-        out.status("dry-run — would run:");
+        out.status("dry-run - would run:");
         out.emit(
             &json!({
                 "dry_run": true,
@@ -324,7 +324,7 @@ pub fn cmd_stop(
     if !yes {
         if !out.interactive {
             out.error(&format!(
-                "error: non-interactive session — pass -y to cancel job {jid}, \
+                "error: non-interactive session - pass -y to cancel job {jid}, \
                  or -n to preview."
             ));
             return 2;
@@ -385,7 +385,7 @@ pub fn cmd_jump(
     if !quiet {
         if res.acting_on_current() {
             out.status(&format!(
-                "already inside job {} — opening a nested srun step here burns \
+                "already inside job {} - opening a nested srun step here burns \
                  extra resources. `exit` to leave, or pass another JOBID. \
                  Attaching anyway.",
                 res.inside_job_id.as_deref().unwrap_or("")

@@ -283,6 +283,16 @@ publish the GitHub Release with it attached). Before tagging:
 6. Commit the docs on the release commit, then tag `vX.Y.Z` and push -
    CI builds and publishes the release.
 
+**CLI-only releases skip the skill eval re-run.** When a release changes
+only the `solx` crate and leaves the skill's guidance content unchanged
+(everything under `skills/sol-skill/` identical apart from the shared
+`version:` line), the L1/L2/L3 *skill* evals in steps 2-3 don't need
+re-running - they still hold, because the skill itself is unchanged. The
+gate for such a release is the crate's own `cargo test` suite plus an L3
+*CLI* smoke on real Sol (the shipped binary still needs exercising). A
+release that touches skill prose, references, or decision rules must run
+the skill evals. (1.0.2 - the nested `job jump` fix - was CLI-only.)
+
 ## What's in the repo vs. not
 
 | Thing | Location | In git? | Why |

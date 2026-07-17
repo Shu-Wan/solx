@@ -303,7 +303,7 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
                 }
             }
         } else {
-            out.status("no flagged directories matched  — nothing to do.");
+            out.status("no flagged directories matched - nothing to do.");
         }
         return 0;
     }
@@ -325,7 +325,7 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
         // Destructive: never block on a prompt in a non-interactive session.
         if !out.interactive {
             out.error(&format!(
-                "error: non-interactive session — pass -y to renew {} \
+                "error: non-interactive session - pass -y to renew {} \
                  directories, or -n to preview.",
                 plan.kept.len()
             ));
@@ -415,7 +415,7 @@ fn report_plan(
                 out.status(&format!("  {stage:>9} {d}"));
             }
             if plan.kept.len() > 20 {
-                out.status(&format!("  … and {} more", plan.kept.len() - 20));
+                out.status(&format!("  ... and {} more", plan.kept.len() - 20));
             }
         }
         if !plan.skipped.is_empty() {

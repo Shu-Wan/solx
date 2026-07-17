@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn json_strings_escape_non_ascii_like_python() {
-        // Python: json.dumps("café - ok\t\x7f") == '"caf\\u00e9 \\u2014 ok\\t\\u007f"'
+        // Python: json.dumps("café — ok\t\x7f") == '"caf\\u00e9 \\u2014 ok\\t\\u007f"'
         let v = json!("café — ok\t\u{7f}");
         assert_eq!(to_python_json(&v), "\"caf\\u00e9 \\u2014 ok\\t\\u007f\"");
     }
