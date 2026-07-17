@@ -154,7 +154,7 @@ fn job_stop_dry_run_previews_scancel() {
         .success()
         .stdout(predicate::str::contains("\"dry_run\": true"))
         .stdout(predicate::str::contains("\"inside_allocation\": false"))
-        .stderr("dry-run — would run:\n");
+        .stderr("dry-run - would run:\n");
 }
 
 #[test]
@@ -165,7 +165,7 @@ fn job_stop_non_interactive_refuses_without_yes() {
         .assert()
         .code(2)
         .stderr(
-            "error: non-interactive session — pass -y to cancel job 12345, or -n to preview.\n",
+            "error: non-interactive session - pass -y to cancel job 12345, or -n to preview.\n",
         );
 }
 
@@ -178,7 +178,7 @@ fn job_start_dry_run_uses_default_template() {
         .success()
         .stdout(predicate::str::contains("\"template\": \"default\""))
         .stdout(predicate::str::contains("\"-q\",\n    \"public\""))
-        .stderr("dry-run — would run:\n");
+        .stderr("dry-run - would run:\n");
 }
 
 #[test]

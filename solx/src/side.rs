@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 pub const SOL_HOSTNAME_SUFFIX: &str = ".sol.rc.asu.edu";
 
-const NOT_SOL_MESSAGE: &str = "solx is Sol-only — SSH to a Sol login node first, then re-run.\n\
+const NOT_SOL_MESSAGE: &str = "solx is Sol-only - SSH to a Sol login node first, then re-run.\n\
                                See: https://docs.rc.asu.edu/";
 
 /// Return `true` if the current host is on the Sol cluster.

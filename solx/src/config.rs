@@ -364,7 +364,7 @@ pub fn toml_str(s: &str) -> String {
     out
 }
 
-const STARTER_CONFIG_BASE: &str = r#"# solx config — see https://github.com/Shu-Wan/solx/blob/main/solx/README.md
+const STARTER_CONFIG_BASE: &str = r#"# solx config - see https://github.com/Shu-Wan/solx/blob/main/solx/README.md
 #
 # Used by `solx job jump` when dropping into a shell on a compute node.
 default_shell = "bash"
