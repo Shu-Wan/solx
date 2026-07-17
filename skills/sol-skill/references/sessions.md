@@ -66,14 +66,14 @@ more than 4 hours. Picking `public` for a 30-minute shell - GPU or not -
 wastes capacity that someone else is queued for.
 
 ```shell
-# Lightweight debug — short shell, modest resources.
+# Lightweight debug - short shell, modest resources.
 # "I just want to test a command" / "inspect a compute node briefly."
 interactive -p htc -t 0-01:00 -c 4 --mem=16G
 
-# Short GPU shell — an A100 for a quick test/ablation; fits htc's 4h.
+# Short GPU shell - an A100 for a quick test/ablation; fits htc's 4h.
 interactive -p htc -t 0-04:00 -c 8 --mem=64G -G a100:1
 
-# Longer run that needs more than htc's 4-hour wall → public (7-day).
+# Longer run that needs more than htc's 4-hour wall -> public (7-day).
 interactive -p public -t 1-00:00 -c 8 --mem=32G
 ```
 
@@ -155,7 +155,7 @@ URL pointing at it. The remote process can't reach the laptop without
 a reverse tunnel.
 
 ```shell
-# Laptop: forward laptop:53682 → compute-node:53682
+# Laptop: forward laptop:53682 -> compute-node:53682
 ssh -N -R 53682:localhost:53682 -J $ME@$SOL $ME@$NODE
 ```
 
@@ -204,7 +204,7 @@ on. The chained form in step 3 must be issued **from the laptop**.
 Quick sanity check:
 
 ```shell
-command -v sacctmgr   # nothing → laptop. A path → you're on Sol.
+command -v sacctmgr   # nothing -> laptop. A path -> you're on Sol.
 ```
 
 If `sacctmgr` resolves to a path you are on Sol - abort and re-run

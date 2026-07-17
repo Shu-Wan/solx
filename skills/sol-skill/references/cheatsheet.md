@@ -17,7 +17,7 @@ drives every job decision below:
 
 ```shell
 sacctmgr -n show assoc user=$USER format=Account,Partition,QOS
-#   → e.g.  grp_yourpi || debug,htc,private,public
+#   -> e.g.  grp_yourpi || debug,htc,private,public
 myfairshare                    # dampened RealFairShare (lower = back off / use a buy-in QOS); raw `sshare -U` is undampened
 ```
 

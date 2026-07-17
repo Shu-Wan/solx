@@ -15,7 +15,7 @@ For the public-facing coverage matrix, see
 evals/
 ├── README.md                       # this file
 ├── evals.example.json              # sanitized template; copy to evals.json
-├── evals.json                      # gitignored — your real eval set
+├── evals.json                      # gitignored - your real eval set
 ├── mocks/                          # userland Sol mock environment
 │   ├── activate.sh                 # source to put mocks on PATH
 │   ├── bin/                        # PATH shims
@@ -24,7 +24,7 @@ evals/
 ├── runner/
 │   ├── bench_solx_latency.sh       # L3: solx vs raw SLURM latency, on real Sol
 │   └── build_sandbox_home.sh       # hides the skill for fair baselines
-└── results/                        # gitignored — per-iteration benchmarks
+└── results/                        # gitignored - per-iteration benchmarks
 ```
 
 ## Quick start
@@ -36,10 +36,10 @@ cp evals/evals.example.json evals/evals.json
 
 # 2. Verify the mock environment activates cleanly
 source evals/mocks/activate.sh
-hostname -a                          # → sc001.sol.rc.asu.edu (mocked)
+hostname -a                          # -> sc001.sol.rc.asu.edu (mocked)
 echo "$MOCK_LOG"                     # path to per-session invocation log
 
-# 3. The renewal mechanism is tested in the solx crate — run that suite
+# 3. The renewal mechanism is tested in the solx crate - run that suite
 #    for the L2 filesystem-mutation coverage (real files + stale mtimes;
 #    refreshes kept files, honors carve-outs, skips the rest):
 ( cd solx && cargo test --test cli )

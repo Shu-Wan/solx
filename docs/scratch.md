@@ -29,7 +29,7 @@ Add a `[keep]` block (replace `sparky` with your ASURITE):
 ```toml
 [keep]
 include = ["/scratch/sparky/my-project", "/scratch/sparky/experiments/**"]
-# Don't spend the pass on regenerable trees — they rebuild for free.
+# Don't spend the pass on regenerable trees - they rebuild for free.
 exclude = ["**/.venv", "**/.git", "**/__pycache__", "**/node_modules"]
 ```
 
@@ -39,7 +39,7 @@ directory and everything under it.
 ## 2. Preview, then renew
 
 ```shell
-# Always preview first — shows exactly which flagged directories would renew.
+# Always preview first - shows exactly which flagged directories would renew.
 solx keep --dry-run -v
 
 # Renew them (prompts once; -y skips the prompt for scripts).
@@ -61,7 +61,7 @@ A renewal is metadata-heavy I/O - the load Sol's **login nodes throttle**. For
 a large pass, run it on the Data Transfer Node or a compute node instead:
 
 ```shell
-# From a login node — hand the heavy pass to the DTN (many cores, not throttled):
+# From a login node - hand the heavy pass to the DTN (many cores, not throttled):
 ssh soldtn 'export PATH=$HOME/.local/bin:$PATH; solx keep -j 24 -y'
 
 # Already inside an allocation? Just run it directly:
