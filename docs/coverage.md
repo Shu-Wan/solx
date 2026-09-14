@@ -5,8 +5,8 @@ automated verification, and what's a known gap. The eval harness
 requires manual orchestration today, so this document is updated by
 hand before each release.
 
-**Version:** v1.0.3 (see [`../CHANGELOG.md`](../CHANGELOG.md))
-**Last verified:** the `solx` CLI is covered by its own crate suite
+**Version:** v1.0.4 (see [`../CHANGELOG.md`](../CHANGELOG.md))
+**Last verified:** 2026-09-14. The `solx` CLI is covered by its own crate suite
 (`cargo test` in `solx/`: unit tests per module plus the end-to-end
 `tests/cli.rs`, including a real-touch renewal test), which runs in CI.
 **1.0.2** (2026-07-16) was CLI-only and was gated by that suite plus a real-Sol
@@ -23,6 +23,13 @@ scheduler. The private skill-level L1/L2 eval inputs are unavailable in this
 checkout, so those flows remain **pending re-run on Sol** and are marked 🟡
 below. The targeted scratch-renewal guidance was evaluated separately as
 described next; other pending skill flows remain unverified.
+
+For **1.0.4**, all 160 crate tests pass. A locally built static musl binary
+passed a compute-node smoke on a temporary BeeGFS `/scratch` fixture with
+one and four workers: stage-filtered previews, direct file and recursive
+directory renewal, keep-list exclusions, missing-path and symlink skips,
+and timestamp checks. The login-node smoke could not run because SSH to
+`sol.asu.edu` timed out. Collaborator-owned renewal was not re-tested.
 
 ## Scratch renewal evaluation
 

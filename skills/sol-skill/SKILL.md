@@ -1,6 +1,6 @@
 ---
 name: sol-skill
-version: 1.0.3
+version: 1.0.4
 description: Conventions and tooling for ASU's Sol supercomputer, built around the `solx` CLI. Use whenever a task is happening on Sol - the user mentions Sol or ASU Research Computing, or is clearly on their Sol account (a Sol /scratch path, an sbatch/interactive job, a login/compute node). It covers renewing /scratch files Sol has flagged for deletion (purge/inactivity warnings) via `solx keep` and where to store datasets and model caches; requesting and managing SLURM jobs (the `solx job` interactive-allocation lifecycle, sbatch for batch, GPU and partition/QOS choice, why a job is pending, fairshare-aware and time-aware job management); installing software without sudo (module load, uv for Python, tinytex for LaTeX); reaching a Sol compute-node service like Jupyter from a laptop browser; detecting login-vs-compute nodes and choosing where to run heavy I/O (the DTN, a compute node, or a batch job); and transferring data to and from Sol. Not for generic SLURM/HPC on other clusters (Phoenix, NERSC, ...), cloud GPUs, or purely local-laptop tasks (local virtualenvs, local LaTeX, local file/timestamp cleanup).
 license: MIT
 ---
@@ -29,9 +29,10 @@ tools. Concretely, it covers:
 - **Storage decisions** - putting datasets, model weights, and caches
   under `/scratch/$USER` and keeping `/home` for config; never asking
   for `sudo`.
-- **Scratch retention** - refreshing files Sol has flagged for deletion
-  with `solx keep`, driven by Sol's own warning CSVs and a `[keep]`
-  block in the `solx` config; refusing to bulk-`touch` `/scratch`.
+- **Scratch retention** - renewing flagged files and directory trees
+  with `solx keep`, using unified or legacy warning CSVs and the `[keep]`
+  config block; interpreting skipped paths and owner-grouped permission
+  failures; refusing to bulk-`touch` `/scratch`.
 - **Getting software onto Sol without sudo** - `module load` for what
   the cluster already provides, `uv` for Python interpreters and envs,
   R's `tinytex` for LaTeX, `~/.local`/`~/opt` for everything else.

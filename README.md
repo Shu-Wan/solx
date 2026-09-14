@@ -52,8 +52,8 @@ What it's good at:
   `solx job start gpu` allocates and waits and `solx job jump` drops you onto
   the node. Cancel with `solx job stop` (or raw `scancel`).
 - **Keeping `/scratch` alive.** Sol purges inactive files on a schedule;
-  `solx keep` renews only the directories you listed in `[keep]` that Sol has
-  *actually flagged* - never a blanket `touch`.
+  `solx keep` renews flagged files and directory trees selected by `[keep]`.
+  It reads unified and legacy warning CSVs.
   -> walkthrough: **[docs/scratch.md](docs/scratch.md)**
 - **Built for CLI agents.** Output auto-switches to JSON off a TTY, exit codes
   are meaningful, and destructive commands refuse rather than hang on a prompt.

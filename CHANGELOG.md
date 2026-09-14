@@ -11,6 +11,27 @@ version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
 and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
 tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
 
+## [1.0.4] - 2026-09-14
+
+### Fixed
+
+- `solx keep` reads Sol's unified `sol-scratch-cleanup.csv` alongside legacy
+  warning CSVs, maps actions to stages, deduplicates flagged paths, and renews
+  directly flagged regular files as well as directory trees (issue #51).
+- Malformed unified rows fail before renewal. Missing paths and symlinks are
+  skipped with bounded diagnostics; permission failures are grouped by owner
+  with counts, bounded samples, and an emptiness summary.
+- Runtime skips use `runtime_skipped*` JSON fields, preserving the dry-run
+  plan's `skipped*` fields for keep-list exclusions.
+
+### Changed
+
+- The skill and references explain unified warnings, file renewal, permission
+  summaries, and how exclusions interact with recursive directory renewal.
+- Four reusable skill-eval scenarios cover scratch renewal. The updated skill
+  passed 36/36 assertions across two runs, versus 22/36 for the prior version.
+  CLI coverage totals 116 unit tests and 44 integration tests.
+
 ## [1.0.3] - 2026-08-28
 
 ### Fixed
@@ -617,7 +638,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.4
 [1.0.3]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.3
 [1.0.2]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.2
 [1.0.1]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.1
