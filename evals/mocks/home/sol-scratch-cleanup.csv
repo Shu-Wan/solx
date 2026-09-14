@@ -1,0 +1,4 @@
+Action,Type,Path,Last Used,Days Since Last Used,Oldest Use,Days Since Oldest Use,File Count,Size (GiB)
+MARKED FOR REMOVAL,directory,/scratch/sparky/my-project/runs/2025-12,2025-12-15,273,2025-12-15,273,1240,3.4
+Final Warning,file,/scratch/sparky/my-project/backup.jsonl,2026-05-01,136,2026-05-01,136,1,0.1
+Warning,directory,/scratch/sparky/experiments/older-run,2026-06-01,105,2026-06-01,105,20,0.2

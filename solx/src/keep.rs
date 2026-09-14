@@ -1,7 +1,7 @@
 //! `solx keep` - renew scratch files Sol has flagged, filtered by `[keep]`.
 //!
 //! Read Sol's warning CSVs from `--csv-dir`, intersect the flagged
-//! directories with the `[keep]` include/exclude globs from config, and
+//! paths with the `[keep]` include/exclude globs from config, and
 //! refresh timestamps (`touch -a -m -c` semantics) on only the intersection.
 //! Only what Sol has explicitly flagged is renewed - never a wholesale
 //! `/scratch` walk.
@@ -16,11 +16,12 @@
 //! This is metadata-heavy NFS I/O. On Sol run it on a compute node or the
 //! DTN (`ssh soldtn`), not a throttled login node.
 
-use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::collections::{BTreeMap, HashSet};
 use std::ffi::CString;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex};
 
@@ -31,6 +32,7 @@ use crate::output::{confirm, to_python_json, Out};
 
 pub const STAGE_ORDER: [&str; 3] = ["pending", "over90", "inactive"];
 pub const STAGES_ALL: &str = "all";
+const UNIFIED_CSV: &str = "sol-scratch-cleanup.csv";
 
 pub fn stage_file(stage: &str) -> &'static str {
     match stage {
@@ -65,7 +67,7 @@ pub fn default_jobs() -> u64 {
     (cpus / 4).clamp(1, 8)
 }
 
-/// The directories `solx keep` would touch (`kept`) vs filter out (`skipped`),
+/// The paths `solx keep` would touch (`kept`) vs filter out (`skipped`),
 /// each tagged with the warning stage that flagged it.
 #[derive(Debug, Default, Clone)]
 pub struct Plan {
@@ -75,7 +77,7 @@ pub struct Plan {
 
 // --- planning ----------------------------------------------------------------
 
-/// Return the `Directory` column from one of Sol's warning CSVs.
+/// Return `Directory`, or `Path` when absent, from a legacy warning CSV.
 ///
 /// A missing file is fine - Sol only drops the CSV when there's something
 /// to flag. An empty result means nothing to do for that stage. An existing
@@ -86,19 +88,29 @@ pub struct Plan {
 /// BOM'd `Directory` header is not the `Directory` column and the file
 /// yields no directories).
 pub fn load_csv_dirs(csv_path: &Path) -> Result<Vec<String>, String> {
-    if !csv_path.exists() {
-        return Ok(Vec::new());
-    }
+    Ok(load_csv_rows(csv_path, false)?
+        .into_iter()
+        .map(|(_, path)| path)
+        .collect())
+}
+
+/// Read legacy paths or unified (stage, path) rows. Unknown unified actions
+/// and types are errors so a changed schema cannot silently omit warnings.
+fn load_csv_rows(csv_path: &Path, unified: bool) -> Result<Vec<(String, String)>, String> {
     let read_err =
         |e: &dyn std::fmt::Display| format!("unable to read {}: {e}", csv_path.display());
-    let has_bom = std::fs::File::open(csv_path)
-        .and_then(|mut f| {
-            use std::io::Read;
-            let mut head = [0u8; 3];
-            let n = f.read(&mut head)?;
-            Ok(n == 3 && head == [0xEF, 0xBB, 0xBF])
-        })
-        .map_err(|e| read_err(&e))?;
+    let mut file = match std::fs::File::open(csv_path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(read_err(&e)),
+    };
+    let has_bom = (|| {
+        use std::io::Read;
+        let mut head = [0u8; 3];
+        let n = file.read(&mut head)?;
+        Ok::<_, std::io::Error>(n == 3 && head == [0xEF, 0xBB, 0xBF])
+    })()
+    .map_err(|e| read_err(&e))?;
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
         .from_path(csv_path)
@@ -107,30 +119,60 @@ pub fn load_csv_dirs(csv_path: &Path) -> Result<Vec<String>, String> {
     let dir_idx = match headers
         .iter()
         .enumerate()
-        .position(|(i, name)| name == "Directory" && !(i == 0 && has_bom))
+        .position(|(i, name)| name == "Directory" && !(i == 0 && has_bom && !unified))
+        .or_else(|| headers.iter().position(|name| name == "Path"))
     {
         Some(i) => i,
-        None => return Ok(Vec::new()),
+        None if !unified => return Ok(Vec::new()),
+        None => return Err(read_err(&"missing Path or Directory column")),
     };
+    let action_idx = headers.iter().position(|name| name == "Action");
+    let type_idx = headers.iter().position(|name| name == "Type");
+    if unified && (action_idx.is_none() || type_idx.is_none()) {
+        return Err(read_err(&"missing Action or Type column"));
+    }
     let mut dirs = Vec::new();
     for record in reader.records() {
         let record = record.map_err(|e| read_err(&e))?;
+        let stage = if unified {
+            let action = record.get(action_idx.unwrap()).unwrap_or("").trim();
+            let stage = match action {
+                "MARKED FOR REMOVAL" => "pending",
+                "Final Warning" => "over90",
+                "Warning" => "inactive",
+                _ => return Err(read_err(&format!("unknown Action {action:?}"))),
+            };
+            let kind = record.get(type_idx.unwrap()).unwrap_or("").trim();
+            if !matches!(kind, "directory" | "file") {
+                return Err(read_err(&format!("unknown Type {kind:?}")));
+            }
+            stage
+        } else {
+            ""
+        };
         if let Some(d) = record.get(dir_idx) {
             let d = d.trim();
             if !d.is_empty() {
-                dirs.push(d.to_string());
+                dirs.push((stage.to_string(), d.to_string()));
             }
         }
     }
     Ok(dirs)
 }
 
-/// Walk the chosen stages' CSVs and split flagged dirs into kept/skipped.
+/// Combine both CSV formats and split selected stages' paths into kept/skipped.
 pub fn build_plan(csv_dir: &Path, stages: &[String], keep: &KeepRules) -> Result<Plan, String> {
     let mut plan = Plan::default();
     let mut seen: HashSet<String> = HashSet::new();
+    let unified = load_csv_rows(&csv_dir.join(UNIFIED_CSV), true)?;
     for stage in stages {
-        for d in load_csv_dirs(&csv_dir.join(stage_file(stage)))? {
+        let legacy = load_csv_dirs(&csv_dir.join(stage_file(stage)))?;
+        for d in unified
+            .iter()
+            .filter(|(s, _)| s == stage)
+            .map(|(_, p)| p.clone())
+            .chain(legacy)
+        {
             if !seen.insert(d.clone()) {
                 continue;
             }
@@ -164,15 +206,35 @@ pub struct Walk {
     pub msg: String,
 }
 
-/// List regular files and directories under `directory`.
+/// List a flagged regular file itself, or the entries under a directory.
 ///
 /// Includes hidden and ignored entries, but not symlinks. `dirs` includes the
-/// root. Missing directories are skipped. On error, returns the entries found
-/// with the last error.
+/// root. Missing paths and unsupported types are skipped. On error, returns
+/// entries found with the last error.
 pub fn enumerate_dir(directory: &str) -> Walk {
-    if !Path::new(directory).is_dir() {
+    let metadata = match std::fs::symlink_metadata(directory) {
+        Ok(metadata) => metadata,
+        Err(e) => {
+            return Walk {
+                msg: if e.kind() == std::io::ErrorKind::NotFound {
+                    "skipped: missing path".to_string()
+                } else {
+                    e.to_string()
+                },
+                ..Walk::default()
+            }
+        }
+    };
+    if metadata.is_file() {
         return Walk {
-            msg: "skipped: not a directory".to_string(),
+            files: vec![PathBuf::from(directory)],
+            msg: "ok".to_string(),
+            ..Walk::default()
+        };
+    }
+    if !metadata.is_dir() {
+        return Walk {
+            msg: "skipped: not a regular file or directory".to_string(),
             ..Walk::default()
         };
     }
@@ -233,16 +295,32 @@ fn touch_now(path: &Path) -> std::io::Result<()> {
 /// failure plus how many followed - a whole shard can fail, and that has to
 /// be legible without `BATCH` lines. An entry deleted between enumeration
 /// and touch is neither renewed nor an error, and nothing is ever created.
+#[cfg(test)]
 pub fn touch_entries(paths: &[PathBuf]) -> (usize, usize, String) {
+    touch_entries_with_report(paths, &mut Renewal::default())
+}
+
+fn touch_entries_with_report(paths: &[PathBuf], report: &mut Renewal) -> (usize, usize, String) {
+    touch_entries_using(paths, report, touch_now)
+}
+
+fn touch_entries_using(
+    paths: &[PathBuf],
+    report: &mut Renewal,
+    mut touch: impl FnMut(&Path) -> std::io::Result<()>,
+) -> (usize, usize, String) {
     let mut renewed = 0;
     let mut errors = 0;
     let mut msg = "ok".to_string();
     for p in paths {
-        match touch_now(p) {
+        match touch(p) {
             Ok(()) => renewed += 1,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 errors += 1;
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    report.record_unwritable(p);
+                }
                 if errors == 1 {
                     msg = format!("touch {}: {e}", p.display());
                 }
@@ -341,7 +419,7 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
                 }
             }
         } else {
-            out.status("no flagged directories matched - nothing to do.");
+            out.status("no flagged paths matched - nothing to do.");
         }
         return 0;
     }
@@ -364,13 +442,16 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
         if !out.interactive {
             out.error(&format!(
                 "error: non-interactive session - pass -y to renew {} \
-                 directories, or -n to preview.",
+                 paths, or -n to preview.",
                 plan.kept.len()
             ));
             return 2;
         }
         if !confirm(
-            &format!("Touch mtimes on {} directories?", plan.kept.len()),
+            &format!(
+                "Touch atime and mtime on {} flagged paths?",
+                plan.kept.len()
+            ),
             false,
         ) {
             out.status("aborted");
@@ -379,6 +460,27 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
     }
 
     let renewal = execute(&plan, opts.jobs_n, out);
+    let unwritable = renewal.unwritable_json();
+    if !renewal.unwritable.is_empty() {
+        let count: usize = renewal.unwritable.values().map(|group| group.count).sum();
+        out.error(&format!(
+            "warning: {count} entries not renewed (permission denied)"
+        ));
+        for group in &unwritable {
+            let empty = match group["all_empty"].as_bool() {
+                Some(true) => "all empty directories",
+                Some(false) => "includes files or non-empty directories",
+                None => "directory contents could not be checked",
+            };
+            out.error(&format!(
+                "  {}: {} entries, {empty}; {}",
+                group["owner"].as_str().unwrap_or("unknown"),
+                group["count"],
+                group["sample"][0].as_str().unwrap_or("")
+            ));
+        }
+        out.error("  -> ask the owner to renew them or grant write permission (chmod g+w for your group).");
+    }
 
     if out.json_mode {
         let kept_truncated = plan.kept.len() > JSON_LIST_CAP;
@@ -388,6 +490,10 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
             "files_touched": renewal.files,
             "dirs_touched": renewal.dirs,
             "failures": renewal.failures,
+            "skipped_count": renewal.skipped_count,
+            "skipped": renewal.skipped,
+            "skipped_truncated": renewal.skipped_count > JSON_LIST_CAP,
+            "unwritable": unwritable,
             "kept_truncated": kept_truncated,
             "kept": plan.kept.iter().take(JSON_LIST_CAP).map(|(_, d)| d.clone()).collect::<Vec<_>>(),
         });
@@ -408,10 +514,11 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
             String::new()
         };
         out.status(&format!(
-            "done {} flagged dirs · touched {} files + {} dirs{failed}",
+            "done {} flagged paths · touched {} files + {} dirs{failed} · {} skipped",
             plan.kept.len(),
             renewal.files,
-            renewal.dirs
+            renewal.dirs,
+            renewal.skipped_count
         ));
     }
     if renewal.failures > 0 {
@@ -445,7 +552,7 @@ fn report_plan(
     if plan.kept.len() > JSON_LIST_CAP || plan.skipped.len() > JSON_LIST_CAP {
         let path = dump_full_plan(plan, csv_dir, stages)?;
         out.status(&format!(
-            "full plan ({} dirs): {path}",
+            "full plan ({} paths): {path}",
             plan.kept.len() + plan.skipped.len()
         ));
     }
@@ -552,6 +659,17 @@ pub struct Renewal {
     pub files: usize,
     pub dirs: usize,
     pub failures: usize,
+    pub skipped_count: usize,
+    pub skipped: Vec<Value>,
+    pub unwritable: BTreeMap<u32, Unwritable>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Unwritable {
+    count: usize,
+    // None means emptiness is unknown; a known non-empty entry makes it false.
+    all_empty: Option<bool>,
+    sample: Vec<String>,
 }
 
 impl Renewal {
@@ -559,7 +677,105 @@ impl Renewal {
         self.files += other.files;
         self.dirs += other.dirs;
         self.failures += other.failures;
+        self.skipped_count += other.skipped_count;
+        self.skipped.extend(
+            other
+                .skipped
+                .iter()
+                .take(JSON_LIST_CAP - self.skipped.len())
+                .cloned(),
+        );
+        for (uid, group) in &other.unwritable {
+            let entry = self.unwritable.entry(*uid).or_insert_with(|| Unwritable {
+                all_empty: Some(true),
+                ..Unwritable::default()
+            });
+            entry.count += group.count;
+            entry.all_empty = combine_empty(entry.all_empty, group.all_empty);
+            entry.sample.extend(
+                group
+                    .sample
+                    .iter()
+                    .take(JSON_LIST_CAP - entry.sample.len())
+                    .cloned(),
+            );
+        }
     }
+
+    fn record_skip(&mut self, path: &str, reason: &str, out: &Out) {
+        self.skipped_count += 1;
+        if self.skipped.len() < JSON_LIST_CAP {
+            self.skipped.push(json!({"path": path, "reason": reason}));
+            out.error(&format!("SKIP {path} :: {reason}"));
+        }
+    }
+
+    fn record_unwritable(&mut self, path: &Path) {
+        let Ok(meta) = std::fs::symlink_metadata(path) else {
+            return;
+        };
+        let empty = if meta.is_dir() {
+            std::fs::read_dir(path)
+                .ok()
+                .and_then(|mut entries| match entries.next() {
+                    None => Some(true),
+                    Some(Ok(_)) => Some(false),
+                    Some(Err(_)) => None,
+                })
+        } else {
+            Some(false)
+        };
+        let group = self
+            .unwritable
+            .entry(meta.uid())
+            .or_insert_with(|| Unwritable {
+                all_empty: Some(true),
+                ..Unwritable::default()
+            });
+        group.count += 1;
+        group.all_empty = combine_empty(group.all_empty, empty);
+        if group.sample.len() < JSON_LIST_CAP {
+            group.sample.push(path.display().to_string());
+        }
+    }
+
+    fn unwritable_json(&self) -> Vec<Value> {
+        self.unwritable
+            .iter()
+            .map(|(uid, group)| {
+                json!({
+                    "owner": owner_name(*uid),
+                    "uid": uid,
+                    "count": group.count,
+                    "all_empty": group.all_empty,
+                    "sample": group.sample,
+                    "sample_truncated": group.count > JSON_LIST_CAP,
+                })
+            })
+            .collect()
+    }
+}
+
+fn combine_empty(left: Option<bool>, right: Option<bool>) -> Option<bool> {
+    match (left, right) {
+        (Some(false), _) | (_, Some(false)) => Some(false),
+        (Some(true), Some(true)) => Some(true),
+        _ => None,
+    }
+}
+
+fn owner_name(uid: u32) -> String {
+    // Resolve once per owner after workers finish; keep numeric UIDs usable
+    // when the account service or the system's id command is unavailable.
+    std::process::Command::new("id")
+        .args(["-nu", &uid.to_string()])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| uid.to_string())
 }
 
 /// The serial mode's per-directory progress line: what the directory
@@ -638,6 +854,9 @@ fn worker(state: &Mutex<PoolState>, ready: &Condvar, out: &Out) {
                 let walk = enumerate_dir(&d);
                 let mut s = state.lock().expect("pool lock");
                 let skipped = walk.msg.starts_with("skipped");
+                if skipped {
+                    s.renewal.record_skip(&d, &walk.msg, out);
+                }
                 if walk.msg != "ok" && !skipped {
                     s.renewal.failures += 1;
                     out.error(&format!("FAIL enumerate {d} :: {}", walk.msg));
@@ -655,8 +874,10 @@ fn worker(state: &Mutex<PoolState>, ready: &Condvar, out: &Out) {
                 ready.notify_all();
             }
             Task::Touch(d, batch, kind) => {
-                let (n, errs, msg) = touch_entries(&batch);
+                let mut report = Renewal::default();
+                let (n, errs, msg) = touch_entries_with_report(&batch, &mut report);
                 let mut s = state.lock().expect("pool lock");
+                s.renewal.add(&report);
                 match kind {
                     Kind::Files => s.renewal.files += n,
                     Kind::Dirs => s.renewal.dirs += n,
@@ -677,6 +898,7 @@ fn execute_serial(plan: &Plan, out: &Out) -> Renewal {
     for (_, d) in &plan.kept {
         let walk = enumerate_dir(d);
         if walk.msg.starts_with("skipped") {
+            renewal.record_skip(d, &walk.msg, out);
             continue;
         }
         let mut one = Renewal::default();
@@ -689,7 +911,7 @@ fn execute_serial(plan: &Plan, out: &Out) -> Renewal {
             .map(|b| (b, Kind::Files))
             .chain(shard(walk.dirs, BATCH).into_iter().map(|b| (b, Kind::Dirs)))
         {
-            let (n, errs, tmsg) = touch_entries(&batch);
+            let (n, errs, tmsg) = touch_entries_with_report(&batch, &mut one);
             match kind {
                 Kind::Files => one.files += n,
                 Kind::Dirs => one.dirs += n,
@@ -731,6 +953,139 @@ mod tests {
     }
 
     // ---- planning ------------------------------------------------------------
+
+    #[test]
+    fn unified_fixture_maps_all_stages_and_dedupes_legacy() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(UNIFIED_CSV),
+            include_str!("../../evals/mocks/home/sol-scratch-cleanup.csv"),
+        )
+        .unwrap();
+        write_csv(
+            &dir.path().join(stage_file("inactive")),
+            &[
+                "/scratch/sparky/my-project/runs/2025-12",
+                "/scratch/sparky/legacy-only",
+            ],
+        );
+        let rules = keep(&["/scratch/sparky"], &[]);
+        let plan = build_plan(dir.path(), &stages_all(), &rules).unwrap();
+        assert_eq!(plan.kept.len(), 4);
+        assert_eq!(plan.kept[0].0, "pending");
+        assert_eq!(
+            plan.kept[1],
+            (
+                "over90".into(),
+                "/scratch/sparky/my-project/backup.jsonl".into()
+            )
+        );
+        assert_eq!(plan.kept[2].0, "inactive");
+        for stage in STAGE_ORDER {
+            let plan = build_plan(dir.path(), &[stage.into()], &rules).unwrap();
+            assert!(plan.kept.iter().all(|(s, _)| s == stage));
+            assert_eq!(plan.kept.len(), if stage == "inactive" { 3 } else { 1 });
+        }
+    }
+
+    #[test]
+    fn unified_paths_support_quoting_bom_and_keep_excludes() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(UNIFIED_CSV),
+            concat!(
+                "\u{feff}Action,Type,Path\n",
+                "Warning,file,\"/scratch/sparky/a,b\"\n",
+                "Final Warning,directory,/scratch/sparky/.cache\n",
+            ),
+        )
+        .unwrap();
+        let plan = build_plan(
+            dir.path(),
+            &stages_all(),
+            &keep(&["/scratch/sparky"], &["**/.cache"]),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.kept,
+            [("inactive".into(), "/scratch/sparky/a,b".into())]
+        );
+        assert_eq!(plan.skipped.len(), 1);
+    }
+
+    #[test]
+    fn unified_invalid_schema_is_a_named_error() {
+        let dir = tempfile::tempdir().unwrap();
+        for text in [
+            "Action,Type\nWarning,file\n",
+            "Type,Path\nfile,/scratch/sparky/a\n",
+            "Action,Type,Path\nUnknown,file,/scratch/sparky/a\n",
+            "Action,Type,Path\nWarning,symlink,/scratch/sparky/a\n",
+        ] {
+            fs::write(dir.path().join(UNIFIED_CSV), text).unwrap();
+            let error = build_plan(dir.path(), &stages_all(), &keep(&["/scratch/sparky"], &[]))
+                .unwrap_err();
+            assert!(error.contains(UNIFIED_CSV), "{error}");
+        }
+    }
+
+    #[test]
+    fn load_csv_dirs_accepts_path_when_directory_is_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.csv");
+        fs::write(&path, "Path,Size\n/scratch/sparky/a,1\n").unwrap();
+        assert_eq!(load_csv_dirs(&path).unwrap(), ["/scratch/sparky/a"]);
+        fs::write(
+            &path,
+            "Path,Directory\n/scratch/sparky/a,/scratch/sparky/b\n",
+        )
+        .unwrap();
+        assert_eq!(load_csv_dirs(&path).unwrap(), ["/scratch/sparky/b"]);
+    }
+
+    #[test]
+    fn permission_failures_group_by_owner_and_preserve_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<_> = (0..JSON_LIST_CAP + 2)
+            .map(|i| dir.path().join(i.to_string()))
+            .collect();
+        for path in &paths {
+            fs::create_dir(path).unwrap();
+        }
+        let mut report = Renewal::default();
+        let (renewed, errors, msg) = touch_entries_using(&paths, &mut report, |_| {
+            Err(std::io::Error::from_raw_os_error(libc::EACCES))
+        });
+        assert_eq!((renewed, errors), (0, paths.len()));
+        assert!(msg.contains("and 101 more"));
+        let groups = report.unwritable_json();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0]["count"], paths.len());
+        assert_eq!(groups[0]["uid"], fs::metadata(&paths[0]).unwrap().uid());
+        assert_eq!(groups[0]["all_empty"], true);
+        assert_eq!(groups[0]["sample"].as_array().unwrap().len(), JSON_LIST_CAP);
+        assert_eq!(groups[0]["sample_truncated"], true);
+
+        fs::write(paths[0].join("child"), "x").unwrap();
+        let mut more = Renewal::default();
+        more.record_unwritable(&paths[0]);
+        report.add(&more);
+        assert_eq!(report.unwritable_json()[0]["all_empty"], false);
+        assert_eq!(report.unwritable_json()[0]["count"], paths.len() + 1);
+    }
+
+    #[test]
+    fn permission_diagnostics_do_not_assume_unreadable_dirs_are_empty() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let locked = dir.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let mut report = Renewal::default();
+        report.record_unwritable(&locked);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(report.unwritable_json()[0]["all_empty"].is_null());
+    }
 
     #[test]
     fn load_csv_dirs_reads_directory_column() {
@@ -1025,7 +1380,8 @@ mod tests {
                 &Renewal {
                     files: 1386,
                     dirs: 694,
-                    failures: 0
+                    failures: 0,
+                    ..Renewal::default()
                 },
                 "/scratch/sparky/proj"
             ),
@@ -1042,7 +1398,8 @@ mod tests {
                 &Renewal {
                     files: 0,
                     dirs: 0,
-                    failures: 1386
+                    failures: 1386,
+                    ..Renewal::default()
                 },
                 "/scratch/sparky/proj"
             ),
@@ -1070,14 +1427,10 @@ mod tests {
         };
         // Two files plus the kept directory itself; the missing dir is a
         // benign skip, not a failure.
-        assert_eq!(
-            execute(&plan, 1, &out),
-            Renewal {
-                files: 2,
-                dirs: 1,
-                failures: 0
-            }
-        );
+        let result = execute(&plan, 1, &out);
+        assert_eq!((result.files, result.dirs, result.failures), (2, 1, 0));
+        assert_eq!(result.skipped_count, 1);
+        assert_eq!(result.skipped[0]["path"], "/does/not/exist");
     }
 
     #[test]
@@ -1144,7 +1497,8 @@ mod tests {
             Renewal {
                 files: 35,
                 dirs: 5,
-                failures: 0
+                failures: 0,
+                ..Renewal::default()
             }
         );
     }

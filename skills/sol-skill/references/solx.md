@@ -170,20 +170,19 @@ laptop is harmless.
 
 ## `solx keep` - renew flagged scratch files
 
-`solx keep` reads Sol's warning CSVs from `$HOME`
-(`scratch-dirs-pending-removal.csv`, `scratch-dirs-over-90days.csv`,
-`scratch-dirs-inactive.csv`), keeps only directories that match your
-keep-list, and `touch`es them. It only ever touches directories that are
-**both** flagged by Sol **and** in your keep-list - nothing to do until
-Sol flags something, and it never walks `/scratch` wholesale.
+`solx keep` reads `sol-scratch-cleanup.csv` and the legacy
+`scratch-dirs-{pending-removal,over-90days,inactive}.csv` files from `$HOME`.
+It renews flagged paths that match your keep-list: regular files directly,
+directories recursively. Symlinks are skipped.
 
 The keep-list is the `[keep]` block in the config (`include` / `exclude`),
-matched gitignore-style. It's the only keep-list source.
+matched gitignore-style. It filters flagged rows; excludes do not prune
+subtrees inside a kept directory.
 
 ```shell
-solx keep --dry-run -v        # preview which directories would be renewed
+solx keep --dry-run -v        # preview which flagged paths would be renewed
 solx keep                     # renew them (prompts; -y to skip)
-solx keep --stage pending     # only the most-urgent CSV
+solx keep --stage pending     # only the most-urgent stage
 ```
 
 Flags: `--stage {pending,over90,inactive,all}`, `--csv-dir DIR` (default
@@ -193,6 +192,13 @@ is networked storage), `-y` / `-n` / `-v`.
 This is metadata-heavy NFS I/O, which login nodes throttle - run a big
 pass on a compute node or the DTN (`ssh soldtn`). See
 [scratch.md](scratch.md) for the CSV schema and performance notes.
+
+The renewal summary includes skipped paths and permission failures grouped
+by owner. In JSON, `unwritable` contains `owner`, `uid`, `count`, `all_empty`,
+`sample`, and `sample_truncated` for each owner. A sample contains at most
+100 paths. `all_empty` is null if directory contents could not be checked,
+unless another entry is known to be a file or non-empty directory. Failures
+still cause exit code 1; the command never replaces inaccessible entries.
 
 ## Shell completion
 
