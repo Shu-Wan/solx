@@ -474,17 +474,16 @@ Always place large data files, model caches, and outputs under
 ### Renewing the Scratch Timestamp - `solx keep`
 
 Sol deletes inactive `/scratch` files on a layered schedule and writes
-per-stage CSV warnings into `$HOME`. ASU Research Computing defines the
+`sol-scratch-cleanup.csv` into `$HOME`. ASU Research Computing defines the
 thresholds, CSV filenames, and warning cadence; their doc is
 authoritative: <https://docs.rc.asu.edu/scratch>.
 
-**Use `solx keep`.** It reads those CSVs, keeps only the directories
-that match your **keep-list**, and refreshes their timestamps with
-`touch`. It only ever touches directories that are **both** flagged by
-Sol **and** in your keep-list - so there's nothing to do until Sol
-actually flags something, and it never walks `/scratch` wholesale. That
-bound is the whole point: it's a tool to extend the life of files you
-still use, not to defeat Sol's retention policy.
+**Use `solx keep`.** It reads the unified CSV alongside the legacy per-stage
+CSVs and selects flagged paths that match your **keep-list**. It refreshes
+regular files directly and directories recursively, skipping symlinks.
+Includes and excludes filter flagged rows; they do not prune subtrees inside
+a kept directory. Permission failures are grouped by owner in the summary;
+`keep` never deletes, recreates, or changes ownership of entries.
 
 **Where the keep-list lives:** the `[keep]` block in
 `~/.config/solx/config.toml` - `include` / `exclude` gitignore-style
@@ -502,9 +501,9 @@ unless you pass `-y`; in a non-interactive session it refuses rather
 than hang.
 
 ```shell
-solx keep --dry-run -v       # preview which directories would be renewed
+solx keep --dry-run -v       # preview which flagged paths would be renewed
 solx keep                    # renew them (prompts; -y to skip the prompt)
-solx keep --stage pending    # only the most-urgent CSV
+solx keep --stage pending    # only the most-urgent stage
 solx --json keep --dry-run   # machine-readable plan (counts + a capped sample)
 ```
 

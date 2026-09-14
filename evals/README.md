@@ -124,11 +124,30 @@ dispatches on its key:
 The `l3_sbatch_test_only` check is the partition/QOS grader. A regex
 assertion checks *which* partition the agent named; this checks the
 recommendation is actually **schedulable**. It catches headers that
-read plausible but the scheduler rejects - `-p htc -q debug` (htc only
-allows `qos=public`), a `debug`-QOS job over its 15-minute wall, or a
-GPU job parked on a partition that can't grant it. It exists because a
-plausible-looking but wrong partition/QOS pairing is exactly the bug
-class regex alone misses.
+read plausible but the scheduler rejects - an invalid partition/QOS pairing,
+a `debug`-QOS job over its 15-minute wall, or a GPU job on a partition that
+cannot grant it.
+
+## Scratch renewal skill evaluations
+
+[`keep-skill-evals.json`](keep-skill-evals.json) contains four sanitized L1
+guidance scenarios for unified warning CSVs and individual files, exclusions
+beneath a kept parent, owner-grouped permission failures, and large renewals
+from login nodes. Each assertion needs evidence from the generated answer;
+matching a keyword alone does not establish a pass.
+
+Run each scenario against the current skill and a snapshot of the base branch,
+with two fresh executor sessions per version. Each session answers all four
+scenarios using only its supplied skill and references. Do not provide the
+assertions to executors. These runs measure guidance with the skill explicitly
+loaded; they do not measure automatic triggering or real filesystem renewal.
+The CLI suite provides the separate filesystem-mutation coverage.
+
+Store answers, transcripts, grading, timings, and the skill-creator benchmark
+and viewer under the gitignored `sol-skill-workspace/`. Commit the sanitized
+cases and a concise result in `docs/coverage.md`. If an executor is unavailable,
+record the execution error separately from skill grades and identify any
+replacement executor in the report.
 
 ## Privacy
 

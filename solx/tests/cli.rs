@@ -335,6 +335,189 @@ fn keep_invalid_stage_exits_2() {
 }
 
 #[test]
+fn keep_unified_renews_files_and_reports_skips_serial_and_parallel() {
+    use filetime::{set_file_times, FileTime};
+    for jobs in ["1", "4"] {
+        let sb = Sandbox::new();
+        let root = sb.home.path().join("scratch");
+        fs::create_dir(&root).unwrap();
+        let file = root.join("backup, old.jsonl");
+        let untouched = root.join("untouched.txt");
+        let directory = root.join("results");
+        fs::create_dir(&directory).unwrap();
+        fs::write(directory.join("result.txt"), "result").unwrap();
+        fs::write(&file, "backup").unwrap();
+        fs::write(&untouched, "leave alone").unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&untouched, &link).unwrap();
+        let old = FileTime::from_unix_time(1_000_000, 0);
+        for path in [&file, &untouched, &directory] {
+            set_file_times(path, old, old).unwrap();
+        }
+        sb.write_home(
+            ".config/solx/config.toml",
+            &format!(
+                "default_shell = \"bash\"\ndefault_template = \"default\"\n\
+                 [jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n\
+                 [keep]\ninclude = [\"{}\"]\nexclude = [\"**/untouched.txt\"]\n",
+                root.display()
+            ),
+        );
+        sb.write_home("sol-scratch-cleanup.csv", &format!(
+            "Action,Type,Path\nMARKED FOR REMOVAL,file,\"{}\"\nWarning,directory,{}\nWarning,file,{}\nWarning,file,{}/missing\nWarning,file,{}\n",
+            file.display(), directory.display(), link.display(), root.display(), untouched.display()
+        ));
+        let preview = sb
+            .cmd()
+            .args(["--json", "keep", "-n", "--stage", "pending"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let plan: serde_json::Value = serde_json::from_slice(&preview).unwrap();
+        assert_eq!(plan["kept_count"], 1);
+        assert_eq!(
+            FileTime::from_last_modification_time(&fs::metadata(&file).unwrap()),
+            old
+        );
+
+        let preview = sb
+            .cmd()
+            .args(["--json", "keep", "-n"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let plan: serde_json::Value = serde_json::from_slice(&preview).unwrap();
+        assert_eq!(plan["skipped_count"], 1);
+        assert_eq!(
+            plan["skipped"],
+            serde_json::json!([
+                {"stage": "inactive", "dir": untouched.display().to_string()}
+            ])
+        );
+        assert!(plan.get("runtime_skipped").is_none());
+
+        let result = sb
+            .cmd()
+            .args(["--json", "keep", "-y", "-j", jobs])
+            .assert()
+            .success()
+            .stderr(predicate::str::contains("SKIP").and(predicate::str::contains("missing path")))
+            .get_output()
+            .stdout
+            .clone();
+        let summary: serde_json::Value = serde_json::from_slice(&result).unwrap();
+        assert_eq!(summary["files_touched"], 2);
+        assert_eq!(summary["dirs_touched"], 1);
+        assert_eq!(summary["failures"], 0);
+        assert_eq!(summary["runtime_skipped_count"], 2);
+        assert_eq!(summary["runtime_skipped"].as_array().unwrap().len(), 2);
+        assert_eq!(summary["runtime_skipped_truncated"], false);
+        assert!(summary.get("skipped").is_none());
+        assert!(summary.get("skipped_count").is_none());
+        assert!(summary["runtime_skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| { entry["path"].is_string() && entry["reason"].is_string() }));
+        assert_eq!(summary["unwritable"], serde_json::json!([]));
+        assert!(FileTime::from_last_modification_time(&fs::metadata(&file).unwrap()) > old);
+        assert_eq!(
+            FileTime::from_last_modification_time(&fs::metadata(&untouched).unwrap()),
+            old
+        );
+        assert!(!root.join("missing").exists());
+    }
+}
+
+#[test]
+fn keep_unified_invalid_schema_exits_1() {
+    let sb = Sandbox::new().with_config();
+    sb.write_home(
+        "sol-scratch-cleanup.csv",
+        "Action,Type,Path\nNew action,file,/scratch/sparky/proj-a\n",
+    );
+    sb.cmd()
+        .args(["--json", "keep", "-n"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicate::str::contains("sol-scratch-cleanup.csv"));
+}
+
+#[test]
+fn keep_unified_missing_path_fails_before_renewal() {
+    use filetime::{set_file_times, FileTime};
+    let sb = Sandbox::new();
+    let file = sb.home.path().join("backup.jsonl");
+    fs::write(&file, "backup").unwrap();
+    let old = FileTime::from_unix_time(1_000_000, 0);
+    set_file_times(&file, old, old).unwrap();
+    sb.write_home(
+        ".config/solx/config.toml",
+        &SAMPLE_CONFIG.replace("/scratch/sparky/proj-a", file.to_str().unwrap()),
+    );
+
+    for row in ["Warning,file", "Warning,file,", "Warning,file,   "] {
+        sb.write_home(
+            "sol-scratch-cleanup.csv",
+            &format!("Action,Type,Path\nWarning,file,{}\n{row}\n", file.display()),
+        );
+        sb.cmd()
+            .args(["--json", "keep", "-y"])
+            .assert()
+            .code(1)
+            .stdout("")
+            .stderr(
+                predicate::str::contains("sol-scratch-cleanup.csv")
+                    .and(predicate::str::contains("missing or empty path")),
+            );
+        assert_eq!(
+            FileTime::from_last_modification_time(&fs::metadata(&file).unwrap()),
+            old
+        );
+    }
+}
+
+#[test]
+fn keep_inaccessible_flagged_path_is_a_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    for jobs in ["1", "4"] {
+        let sb = Sandbox::new();
+        let locked = sb.home.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::write(locked.join("file"), "x").unwrap();
+        sb.write_home(
+            ".config/solx/config.toml",
+            &format!(
+                "default_shell = \"bash\"\ndefault_template = \"default\"\n\
+                 [jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n\
+                 [keep]\ninclude = [\"{}\"]\n",
+                locked.display()
+            ),
+        );
+        sb.write_home(
+            "sol-scratch-cleanup.csv",
+            &format!("Action,Type,Path\nWarning,file,{}/file\n", locked.display()),
+        );
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let result = sb
+            .cmd()
+            .args(["--json", "keep", "-y", "-j", jobs])
+            .output()
+            .unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        let summary: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(summary["failures"], 1);
+        assert_eq!(summary["runtime_skipped_count"], 0);
+    }
+}
+
+#[test]
 fn keep_without_rules_exits_2() {
     let sb = Sandbox::new(); // no config
     sb.cmd()

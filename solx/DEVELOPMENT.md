@@ -48,6 +48,10 @@ Preserve these contracts when changing user-visible behavior:
   are included and symlinks are neither touched nor followed. Directories are
   included because touching a file does not refresh its parent directory's
   timestamp.
+- **CSV inputs.** Unified `sol-scratch-cleanup.csv` rows map `Action` to the
+  existing stages; legacy warning files remain supported. Paths are deduplicated
+  across sources in stage order. A flagged regular file is renewed directly.
+  Keep-list excludes filter flagged rows, without pruning directory walks.
 - **Touch.** `utimensat(AT_FDCWD, path, NULL, 0)` sets both timestamps to now
   and requires write permission rather than ownership. Explicit timestamps
   require ownership and fail with `EPERM` on writable collaborator-owned files
@@ -56,6 +60,9 @@ Preserve these contracts when changing user-visible behavior:
   timestamps. `failures` counts failed operations: one per entry that could not
   be touched and one per directory that could not be walked. Counts are per
   entry, not per shard; a batch-wide failure must not collapse to one failure.
+  Skipped roots are reported separately. Permission failures are grouped by UID
+  with capped samples and directory emptiness, then owner names are resolved
+  after workers finish. Failure counts and exit codes are unchanged by reporting.
 - **Completions.** `assets/` contains static bash, zsh, and fish scripts
   embedded with `include_str!`. Update all three when the command surface
   changes; `tests/cli.rs` checks that each script emits successfully.

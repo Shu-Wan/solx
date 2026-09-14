@@ -64,7 +64,7 @@ exit                       # back to the login node; the allocation stays alive
 
 For a quick **status**, **time-left**, or **cancel**, `solx` and the
 underlying Slurm command are interchangeable: a warm `solx job` read runs in
-≈0.12 s on Sol, vs ≈0.08 s for raw `squeue` (measured -
+about 0.12 s on Sol, vs about 0.08 s for raw `squeue` (measured -
 `evals/runner/bench_solx_latency.sh`; the residual is just the `squeue`
 subprocess `solx` spawns, and the native binary's startup doesn't degrade
 under node load or a cold NFS cache). The raw forms, for shells without
@@ -248,34 +248,43 @@ already exists - pass `-f` (or `-y`) to overwrite it.
 
 ## `solx keep` - renew flagged scratch files
 
-When `/scratch` files of yours are aging out, Sol drops warning CSVs in your
-home directory (`scratch-dirs-pending-removal.csv`,
-`scratch-dirs-over-90days.csv`, `scratch-dirs-inactive.csv`). `solx keep` reads
-those, keeps only the directories that match your **keep-list**, and refreshes
-their timestamps with `touch`. It only ever touches directories that are
-**both** flagged by Sol **and** in your keep-list - so there's nothing for it
-to do until Sol actually flags something.
+`solx keep` reads `~/sol-scratch-cleanup.csv` alongside the legacy warning
+files. It refreshes flagged files and directories that match your **keep-list**.
+The unified CSV uses `Action`, `Type` (`directory` or `file`), and `Path`.
+The parser uses `Directory` when present, otherwise `Path`.
+
+| Unified `Action` | Legacy CSV | `--stage` key |
+| --- | --- | --- |
+| `MARKED FOR REMOVAL` | `scratch-dirs-pending-removal.csv` | `pending` |
+| `Final Warning` | `scratch-dirs-over-90days.csv` | `over90` |
+| `Warning` | `scratch-dirs-inactive.csv` | `inactive` |
+
+Repeated paths across files are selected once, at the first selected stage.
+Unknown unified actions or types cause an error rather than omitting rows.
+Missing CSVs are normal and contribute no rows.
 
 Inside a kept directory it refreshes every file **and** every directory,
 including the flagged directory itself: touching a file doesn't move its
 parent's timestamp, so a directory's own stamp has to be set directly.
+A kept regular file is touched directly. Symlinks are skipped.
 Entries a collaborator owns are renewed too, as long as you can write them -
 the common case in a shared `/scratch` project tree.
 
 **The keep-list comes from the `[keep]` block** in your `solx` config
 (`include` / `exclude`). Patterns are gitignore-style: a bare path means
 that directory and everything under it, `!` carves a subtree out, `**`
-recurses.
+recurses. These patterns filter flagged rows only. Once a directory is kept,
+its walk includes subtrees that match an exclude pattern.
 
 ```shell
-solx keep --dry-run         # preview exactly which directories would be renewed
+solx keep --dry-run         # preview which flagged paths would be renewed
 solx keep                   # renew them (asks to confirm; -y to skip)
-solx keep --stage pending   # only the most-urgent CSV
+solx keep --stage pending   # only the most-urgent stage
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--stage {pending,over90,inactive,all}` | Which warning CSVs to read. Default `all`. |
+| `--stage {pending,over90,inactive,all}` | Which warning stages to select. Default `all`. |
 | `--csv-dir DIR` | Where Sol's CSVs live. Default your home directory. |
 | `-j N`, `--jobs N` | How many parallel workers. The default is small on purpose - `/scratch` is networked storage. |
 | `-y` / `-n` / `-v` | Confirm / dry-run / show the full kept and skipped lists. |
@@ -312,6 +321,22 @@ solx job list --json             # same as the line above
 than printing thousands of paths; when the list is long, the complete plan is
 written to a temp file and its path is included in the output.
 
+Plan output uses `skipped_count`, `skipped`, and `skipped_truncated` for flagged
+rows excluded by the keep-list; each list entry contains `stage` and `dir`.
+Renewal output uses `runtime_skipped_count`, `runtime_skipped`, and
+`runtime_skipped_truncated` for roots skipped during execution; each list entry
+contains `path` and `reason`. Both lists are capped at 100 entries.
+Missing paths and unsupported entry types are skipped without failing the run.
+
+`unwritable` groups permission failures by `owner` and numeric `uid`, with
+`count`, `all_empty`, `sample`, and
+`sample_truncated`. Samples contain at most 100 paths per owner. `all_empty`
+is true only when every entry is an empty directory, false when any entry is a
+file or non-empty directory, and null when emptiness could not be established.
+These failures still count toward `failures` and exit code 1. Ask the owner to
+renew the entries or grant group write permission; `keep` never replaces them.
+The existing JSON names `dir` and `dirs` also cover individually flagged files.
+
 ---
 
 ## Under the hood
@@ -345,18 +370,15 @@ Sol runs Slurm 25.x, which supports `salloc --no-shell` natively.
 If the queue stalls, `start_timeout` (CLI `--timeout` overrides) caps the wait
 so a stuck request surfaces instead of hanging forever.
 
-### `solx keep` - CSV ∩ keep-list
+### `solx keep` - CSV and keep-list intersection
 
-Sol drops warning CSVs in `$HOME` as files age out
-(`scratch-dirs-pending-removal.csv`, `scratch-dirs-over-90days.csv`,
-`scratch-dirs-inactive.csv`). `solx keep`:
+`solx keep`:
 
-1. Reads those CSVs from `--csv-dir` (default `$HOME`).
-2. Filters the flagged directories through your keep-list (the `[keep]`
+1. Reads the unified and legacy warning CSVs from `--csv-dir` (default `$HOME`).
+2. Filters the flagged paths through your keep-list (the `[keep]`
    config block), matched gitignore-style.
-3. Runs `touch -a -m -c` on the intersection - only directories that **both**
-   appear in a CSV **and** match the keep-list. It never walks `/scratch`
-   wholesale.
+3. Refreshes atime and mtime on kept files and recursively on kept directories.
+   It never walks `/scratch` wholesale.
 
 So `solx keep` can't be used to keep arbitrary files alive on a cron - there's
 nothing to do until Sol drops a warning CSV.
@@ -371,5 +393,5 @@ The `--json` summary counts what actually changed: `files_touched` and
 `dirs_touched` are entries that got fresh stamps (an entry deleted between
 the walk and the touch counts as neither), and `failures` counts failed
 operations - one per entry that couldn't be touched, plus one per directory
-that couldn't be walked. `dirs` is a different number: how many flagged
-directories the plan kept, not how many were touched. Any failure exits 1.
+that couldn't be walked. `dirs` counts the flagged paths kept by the plan,
+including individually flagged files. Any failure exits 1.

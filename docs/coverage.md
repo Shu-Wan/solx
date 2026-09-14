@@ -21,7 +21,35 @@ deterministic output, source/CLI synchronization, valid PDF structure, and
 visual layout. Current partition/QOS routes were checked against the live Sol
 scheduler. The private skill-level L1/L2 eval inputs are unavailable in this
 checkout, so those flows remain **pending re-run on Sol** and are marked 🟡
-below.
+below. The targeted scratch-renewal guidance was evaluated separately as
+described next; other pending skill flows remain unverified.
+
+## Scratch renewal evaluation
+
+On 2026-09-14, the issue #51 skill changes passed **36/36 assertions**, compared
+with **22/36** for the `main` snapshot. The
+[`keep-skill-evals.json`](../evals/keep-skill-evals.json) suite contains four
+L1 guidance scenarios, each evaluated twice per version:
+
+| Scenario | Updated skill | Main baseline |
+| --- | --- | --- |
+| Unified CSV stages, deduplication, and direct file renewal | 10/10 | 2/10 |
+| Excludes beneath a kept parent directory | 8/8 | 8/8 |
+| Owner groups, bounded samples, and unknown emptiness | 10/10 | 4/10 |
+| Preview and DTN routing for a large renewal | 8/8 | 8/8 |
+
+Execution used two fresh Codex sessions per version, each answering all four
+scenarios from its supplied skill snapshot and references. Claude Code attempts
+were rate-limited before inference and are excluded from these results. Grades
+were reviewed against the complete answers, with evidence quotes checked by a
+script. The baseline lacked unified CSV and permission-summary details; both
+versions correctly explained kept-parent exclusions and DTN routing.
+
+This is a small L1 guidance evaluation with the skill explicitly loaded. It
+does not measure automatic triggering or live collaborator-owned renewal.
+The CLI's 116 unit tests and 44 integration tests provide separate coverage.
+Transcripts, answers, grades, timings, and the HTML viewer remain local under
+the gitignored `sol-skill-workspace/`.
 
 ## Status legend
 
@@ -86,7 +114,7 @@ to the skill should mean adding a row here in the same group.
 | `solx keep` refreshes directories too, flagged directory included | 🟢 tested | `solx/tests/cli.rs::keep_renews_real_files` (`dirs_touched`) + `solx/src/keep.rs::enumerate_dir` vectors |
 | `solx keep` renews writable entries owned by another user | 🟡 documented | Needs a second uid, so it's an L3 check, not a unit test: verified for 1.0.3 on Sol (issue #47). `keep.rs` unit vectors cover the failure *counting* path |
 | Renewal failures counted per entry, not per shard | 🟢 tested | `solx/src/keep.rs::touch_entries_counts_every_failure_in_the_batch` |
-| keep-list carve-outs honored at run time (`.venv`/`__pycache__` skipped, non-kept dirs skipped) | 🟢 tested | `solx/src/keep.rs` (matcher vectors) + `solx/tests/cli.rs` (end-to-end) |
+| Keep-list excludes filter flagged rows; kept parent walks include excluded descendants | 🟢 tested | Matcher and CLI tests; L1 scenario 12 above checks the guidance |
 | File sharing procedure (`chmod` / `install` / `cp` between users) | 🟡 documented | |
 | Scratch-quota-exceeded behavior | 🔴 gap | Would need a fault-injection mock |
 | Concurrent `solx keep` runs | 🔴 gap | No locking; documented behavior is "don't" |

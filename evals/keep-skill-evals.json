@@ -1,0 +1,55 @@
+{
+  "skill_name": "sol-skill",
+  "evals": [
+    {
+      "id": 11,
+      "name": "unified-warning-file-renewal",
+      "prompt": "I'm on a Sol compute node with solx installed and identity already checked. My username is sparky. My keep include list contains /scratch/sparky/project. My home has sol-scratch-cleanup.csv with columns Action,Type,Path and these rows: MARKED FOR REMOVAL,directory,/scratch/sparky/project/results; MARKED FOR REMOVAL,file,/scratch/sparky/project/backup.jsonl; Final Warning,directory,/scratch/sparky/project/older; Warning,file,/scratch/sparky/project/note.txt. The legacy scratch-dirs-pending-removal.csv also lists the results directory. Explain what the pending-stage plan should contain, how the other two actions map to stages, and the commands to preview then renew pending entries. Do not run renewal.",
+      "expected_output": "Use the unified CSV alongside legacy files, select results and backup once each for pending, map all actions, preview before renewal, and renew the file directly.",
+      "assertions": [
+        "Uses sol-scratch-cleanup.csv directly alongside legacy files without requiring conversion.",
+        "Maps MARKED FOR REMOVAL to pending, Final Warning to over90, and Warning to inactive.",
+        "Selects results and backup.jsonl exactly once each for pending; excludes the two other stages.",
+        "Explains that backup.jsonl is renewed directly while results is renewed recursively.",
+        "Provides a pending-stage dry-run before the corresponding renewal command."
+      ]
+    },
+    {
+      "id": 12,
+      "name": "kept-parent-exclude-semantics",
+      "prompt": "I'm on a Sol compute node as sparky with solx installed. The warning CSV flags /scratch/sparky/project/results as a directory. My keep include is /scratch/sparky/project/results and exclude is **/.cache. There is a large .cache subtree beneath results. Will solx keep leave that subtree's timestamps alone? I must avoid renewing the cache. Explain a safe next step without executing anything or changing my files.",
+      "expected_output": "Explain that excludes filter flagged rows, a kept parent is walked recursively including .cache, and a narrower selection requires appropriately flagged paths rather than assuming excludes prune the walk.",
+      "assertions": [
+        "States that the kept results parent causes its .cache subtree to be renewed.",
+        "Explains that include/exclude patterns filter flagged rows rather than pruning a kept directory's walk.",
+        "Does not recommend merely adding another exclude as a fix for the selected parent.",
+        "Suggests inspecting the dry-run and selecting narrower flagged paths or declining the parent renewal."
+      ]
+    },
+    {
+      "id": 13,
+      "name": "permission-owner-summary",
+      "prompt": "On Sol, a completed solx keep run reports permission-denied touch failures in a shared project. How can I inspect the JSON summary to find which owners need to act and whether their failed entries are all empty directories? Explain how unknown directory contents are represented, whether failures still affect the exit code, and what to ask the owner to do. I do not want files or directories deleted, recreated, or taken over, and I do not want another renewal started just to inspect the summary.",
+      "expected_output": "Describe unwritable owner groups with counts, capped samples, tri-state all_empty and unchanged failure exit status, and recommend owner renewal or permissions rather than destructive adoption.",
+      "assertions": [
+        "Identifies unwritable groups with owner or uid, count, and sample fields in the completed JSON result.",
+        "Explains that all_empty is true for all-empty directories, false for known files/non-empty directories, and null for unknown emptiness.",
+        "Explains that samples are capped at 100 paths per owner and sample_truncated signals truncation.",
+        "States that permission failures still contribute to failures and exit code 1.",
+        "Recommends owner renewal or granting suitable write permission, without destructive adoption or launching another renewal."
+      ]
+    },
+    {
+      "id": 14,
+      "name": "large-renewal-login-node",
+      "prompt": "I'm logged in to a Sol login node as sparky, with no SLURM_JOB_ID. solx is installed and my keep config is ready. Sol flagged about 9000 directories, containing hundreds of thousands of files, in sol-scratch-cleanup.csv. Give me the preview and renewal commands for the pending stage and tell me where to run the heavy pass. I can use the data transfer node. Do not execute any commands.",
+      "expected_output": "Preview first, route the heavy pending-stage pass to soldtn, account for noninteractive PATH, and stay within the CSV and keep-list workflow.",
+      "assertions": [
+        "Provides a pending-stage dry-run before renewal.",
+        "Routes the heavy renewal to the DTN or a compute allocation rather than the login node.",
+        "When using ssh soldtn, accounts for ~/.local/bin in noninteractive PATH or uses an explicit binary path.",
+        "Uses solx keep with the configured keep-list and avoids a blanket scratch find/touch operation."
+      ]
+    }
+  ]
+}
