@@ -5,7 +5,7 @@ automated verification, and what's a known gap. The eval harness
 requires manual orchestration today, so this document is updated by
 hand before each release.
 
-**Version:** v1.0.4 (see [`../CHANGELOG.md`](../CHANGELOG.md))
+**Version:** v1.0.5 (see [`../CHANGELOG.md`](../CHANGELOG.md))
 **Last verified:** 2026-09-14. The `solx` CLI is covered by its own crate suite
 (`cargo test` in `solx/`: unit tests per module plus the end-to-end
 `tests/cli.rs`, including a real-touch renewal test), which runs in CI.
@@ -24,7 +24,8 @@ checkout, so those flows remain **pending re-run on Sol** and are marked 🟡
 below. The targeted scratch-renewal guidance was evaluated separately as
 described next; other pending skill flows remain unverified.
 
-For **1.0.4**, all 160 crate tests pass. A locally built static musl binary
+For **1.0.4**, all 160 crate tests pass. **1.0.5** preserves that code and skill
+guidance with a version bump to publish the binary asset. A locally built static musl binary
 passed a compute-node smoke on a temporary BeeGFS `/scratch` fixture with
 one and four workers: stage-filtered previews, direct file and recursive
 directory renewal, keep-list exclusions, missing-path and symlink skips,

@@ -11,6 +11,15 @@ version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
 and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
 tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
 
+## [1.0.5] - 2026-09-14
+
+### Fixed
+
+- Publish the static CLI binary with the release. Version 1.0.4 contains the
+  skill and source changes below, but has no binary asset: `gh skills publish`
+  finalized the immutable release before CI could upload it. Version 1.0.5
+  ships the same code and skill guidance with a synchronized version bump.
+
 ## [1.0.4] - 2026-09-14
 
 ### Fixed
@@ -638,7 +647,8 @@ agentskills.io-compatible layout (skill content under
 CSV-driven `/scratch` renewal, and shipped the original references
 (`module.md`, `scratch.md`, `sharing.md`, `slurm.md`).
 
-[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/Shu-Wan/solx/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.5
 [1.0.4]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.4
 [1.0.3]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.3
 [1.0.2]: https://github.com/Shu-Wan/solx/releases/tag/v1.0.2

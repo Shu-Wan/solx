@@ -304,6 +304,12 @@ publish the GitHub Release with it attached). Before tagging:
 6. Commit the docs on the release commit, then tag `vX.Y.Z` and push -
    CI builds and publishes the release.
 
+Validate the skill with `gh skills publish --dry-run` from a clean checkout
+before tagging. For this combined CLI and skill repository, let CI create the
+release with its binary attached. `gh skills publish --tag` creates a published
+release immediately; with immutable releases enabled, the later CI upload is
+rejected. `gh skills install` can install the skill from the CI-published tag.
+
 **CLI-only releases skip the skill eval re-run.** When a release changes
 only the `solx` crate and leaves the skill's guidance content unchanged
 (everything under `skills/sol-skill/` identical apart from the shared
