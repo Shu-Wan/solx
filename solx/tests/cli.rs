@@ -359,13 +359,13 @@ fn keep_unified_renews_files_and_reports_skips_serial_and_parallel() {
             &format!(
                 "default_shell = \"bash\"\ndefault_template = \"default\"\n\
                  [jobs.default]\npartition = \"x\"\ntime = \"1-0\"\n\
-                 [keep]\ninclude = [\"{}\"]\n",
+                 [keep]\ninclude = [\"{}\"]\nexclude = [\"**/untouched.txt\"]\n",
                 root.display()
             ),
         );
         sb.write_home("sol-scratch-cleanup.csv", &format!(
-            "Action,Type,Path\nMARKED FOR REMOVAL,file,\"{}\"\nWarning,directory,{}\nWarning,file,{}\nWarning,file,{}/missing\n",
-            file.display(), directory.display(), link.display(), root.display()
+            "Action,Type,Path\nMARKED FOR REMOVAL,file,\"{}\"\nWarning,directory,{}\nWarning,file,{}\nWarning,file,{}/missing\nWarning,file,{}\n",
+            file.display(), directory.display(), link.display(), root.display(), untouched.display()
         ));
         let preview = sb
             .cmd()
@@ -382,6 +382,24 @@ fn keep_unified_renews_files_and_reports_skips_serial_and_parallel() {
             old
         );
 
+        let preview = sb
+            .cmd()
+            .args(["--json", "keep", "-n"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let plan: serde_json::Value = serde_json::from_slice(&preview).unwrap();
+        assert_eq!(plan["skipped_count"], 1);
+        assert_eq!(
+            plan["skipped"],
+            serde_json::json!([
+                {"stage": "inactive", "dir": untouched.display().to_string()}
+            ])
+        );
+        assert!(plan.get("runtime_skipped").is_none());
+
         let result = sb
             .cmd()
             .args(["--json", "keep", "-y", "-j", jobs])
@@ -395,8 +413,16 @@ fn keep_unified_renews_files_and_reports_skips_serial_and_parallel() {
         assert_eq!(summary["files_touched"], 2);
         assert_eq!(summary["dirs_touched"], 1);
         assert_eq!(summary["failures"], 0);
-        assert_eq!(summary["skipped_count"], 2);
-        assert_eq!(summary["skipped"].as_array().unwrap().len(), 2);
+        assert_eq!(summary["runtime_skipped_count"], 2);
+        assert_eq!(summary["runtime_skipped"].as_array().unwrap().len(), 2);
+        assert_eq!(summary["runtime_skipped_truncated"], false);
+        assert!(summary.get("skipped").is_none());
+        assert!(summary.get("skipped_count").is_none());
+        assert!(summary["runtime_skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| { entry["path"].is_string() && entry["reason"].is_string() }));
         assert_eq!(summary["unwritable"], serde_json::json!([]));
         assert!(FileTime::from_last_modification_time(&fs::metadata(&file).unwrap()) > old);
         assert_eq!(
@@ -420,6 +446,40 @@ fn keep_unified_invalid_schema_exits_1() {
         .code(1)
         .stdout("")
         .stderr(predicate::str::contains("sol-scratch-cleanup.csv"));
+}
+
+#[test]
+fn keep_unified_missing_path_fails_before_renewal() {
+    use filetime::{set_file_times, FileTime};
+    let sb = Sandbox::new();
+    let file = sb.home.path().join("backup.jsonl");
+    fs::write(&file, "backup").unwrap();
+    let old = FileTime::from_unix_time(1_000_000, 0);
+    set_file_times(&file, old, old).unwrap();
+    sb.write_home(
+        ".config/solx/config.toml",
+        &SAMPLE_CONFIG.replace("/scratch/sparky/proj-a", file.to_str().unwrap()),
+    );
+
+    for row in ["Warning,file", "Warning,file,", "Warning,file,   "] {
+        sb.write_home(
+            "sol-scratch-cleanup.csv",
+            &format!("Action,Type,Path\nWarning,file,{}\n{row}\n", file.display()),
+        );
+        sb.cmd()
+            .args(["--json", "keep", "-y"])
+            .assert()
+            .code(1)
+            .stdout("")
+            .stderr(
+                predicate::str::contains("sol-scratch-cleanup.csv")
+                    .and(predicate::str::contains("missing or empty path")),
+            );
+        assert_eq!(
+            FileTime::from_last_modification_time(&fs::metadata(&file).unwrap()),
+            old
+        );
+    }
 }
 
 #[test]
@@ -453,7 +513,7 @@ fn keep_inaccessible_flagged_path_is_a_failure() {
         assert_eq!(result.status.code(), Some(1));
         let summary: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
         assert_eq!(summary["failures"], 1);
-        assert_eq!(summary["skipped_count"], 0);
+        assert_eq!(summary["runtime_skipped_count"], 0);
     }
 }
 

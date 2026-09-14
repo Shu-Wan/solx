@@ -321,10 +321,15 @@ solx job list --json             # same as the line above
 than printing thousands of paths; when the list is long, the complete plan is
 written to a temp file and its path is included in the output.
 
-Renewal output includes `skipped_count`, a capped `skipped` list of paths and
-reasons, and `skipped_truncated`. Missing paths and unsupported entry types are
-skipped without failing the run. `unwritable` groups permission failures by
-`owner` and numeric `uid`, with `count`, `all_empty`, `sample`, and
+Plan output uses `skipped_count`, `skipped`, and `skipped_truncated` for flagged
+rows excluded by the keep-list; each list entry contains `stage` and `dir`.
+Renewal output uses `runtime_skipped_count`, `runtime_skipped`, and
+`runtime_skipped_truncated` for roots skipped during execution; each list entry
+contains `path` and `reason`. Both lists are capped at 100 entries.
+Missing paths and unsupported entry types are skipped without failing the run.
+
+`unwritable` groups permission failures by `owner` and numeric `uid`, with
+`count`, `all_empty`, `sample`, and
 `sample_truncated`. Samples contain at most 100 paths per owner. `all_empty`
 is true only when every entry is an empty directory, false when any entry is a
 file or non-empty directory, and null when emptiness could not be established.
@@ -388,5 +393,5 @@ The `--json` summary counts what actually changed: `files_touched` and
 `dirs_touched` are entries that got fresh stamps (an entry deleted between
 the walk and the touch counts as neither), and `failures` counts failed
 operations - one per entry that couldn't be touched, plus one per directory
-that couldn't be walked. `dirs` is a different number: how many flagged
-directories the plan kept, not how many were touched. Any failure exits 1.
+that couldn't be walked. `dirs` counts the flagged paths kept by the plan,
+including individually flagged files. Any failure exits 1.

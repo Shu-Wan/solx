@@ -116,6 +116,8 @@ fn load_csv_rows(csv_path: &Path, unified: bool) -> Result<Vec<(String, String)>
         .from_path(csv_path)
         .map_err(|e| read_err(&e))?;
     let headers = reader.headers().map_err(|e| read_err(&e))?;
+    // csv strips a leading UTF-8 BOM before exposing headers. The has_bom
+    // check below preserves only the legacy first-column Directory behavior.
     let dir_idx = match headers
         .iter()
         .enumerate()
@@ -150,11 +152,12 @@ fn load_csv_rows(csv_path: &Path, unified: bool) -> Result<Vec<(String, String)>
         } else {
             ""
         };
-        if let Some(d) = record.get(dir_idx) {
-            let d = d.trim();
-            if !d.is_empty() {
-                dirs.push((stage.to_string(), d.to_string()));
-            }
+        let path = record.get(dir_idx).unwrap_or("").trim();
+        if unified && path.is_empty() {
+            return Err(read_err(&"missing or empty path in unified row"));
+        }
+        if !path.is_empty() {
+            dirs.push((stage.to_string(), path.to_string()));
         }
     }
     Ok(dirs)
@@ -490,9 +493,9 @@ pub fn cmd_keep(opts: &KeepOptions, out: &Out) -> i32 {
             "files_touched": renewal.files,
             "dirs_touched": renewal.dirs,
             "failures": renewal.failures,
-            "skipped_count": renewal.skipped_count,
-            "skipped": renewal.skipped,
-            "skipped_truncated": renewal.skipped_count > JSON_LIST_CAP,
+            "runtime_skipped_count": renewal.skipped_count,
+            "runtime_skipped": renewal.skipped,
+            "runtime_skipped_truncated": renewal.skipped_count > JSON_LIST_CAP,
             "unwritable": unwritable,
             "kept_truncated": kept_truncated,
             "kept": plan.kept.iter().take(JSON_LIST_CAP).map(|(_, d)| d.clone()).collect::<Vec<_>>(),
@@ -1021,6 +1024,9 @@ mod tests {
             "Type,Path\nfile,/scratch/sparky/a\n",
             "Action,Type,Path\nUnknown,file,/scratch/sparky/a\n",
             "Action,Type,Path\nWarning,symlink,/scratch/sparky/a\n",
+            "Action,Type,Path\nWarning,file\n",
+            "Action,Type,Path\nWarning,file,\n",
+            "Action,Type,Path\nWarning,file,   \n",
         ] {
             fs::write(dir.path().join(UNIFIED_CSV), text).unwrap();
             let error = build_plan(dir.path(), &stages_all(), &keep(&["/scratch/sparky"], &[]))

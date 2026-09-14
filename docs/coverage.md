@@ -47,7 +47,7 @@ versions correctly explained kept-parent exclusions and DTN routing.
 
 This is a small L1 guidance evaluation with the skill explicitly loaded. It
 does not measure automatic triggering or live collaborator-owned renewal.
-The CLI's 116 unit tests and 43 integration tests provide separate coverage.
+The CLI's 116 unit tests and 44 integration tests provide separate coverage.
 Transcripts, answers, grades, timings, and the HTML viewer remain local under
 the gitignored `sol-skill-workspace/`.
 

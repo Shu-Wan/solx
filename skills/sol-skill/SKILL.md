@@ -501,9 +501,9 @@ unless you pass `-y`; in a non-interactive session it refuses rather
 than hang.
 
 ```shell
-solx keep --dry-run -v       # preview which directories would be renewed
+solx keep --dry-run -v       # preview which flagged paths would be renewed
 solx keep                    # renew them (prompts; -y to skip the prompt)
-solx keep --stage pending    # only the most-urgent CSV
+solx keep --stage pending    # only the most-urgent stage
 solx --json keep --dry-run   # machine-readable plan (counts + a capped sample)
 ```
 
