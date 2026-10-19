@@ -38,6 +38,12 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Test
         run: cargo test --locked
+      - name: sol-agent scripts parse
+        # The scripts are embedded in the binary; a syntax error would ship.
+        run: |
+          for f in ../sol-agent/bin/* ../sol-agent/lib/*.sh ../sol-agent/tests/*.sh ../sol-agent/tests/skill_eval/*.sh; do
+            bash -n "$f" || exit 1
+          done
 
   build:
     # Build the portable release binary and attach it to the run, so a

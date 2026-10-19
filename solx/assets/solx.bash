@@ -39,6 +39,11 @@ _solx() {
             mapfile -t COMPREPLY < <(compgen -W "all pending over90 inactive" -- "$cur")
             return
             ;;
+        --dir)
+            type compopt &> /dev/null && compopt -o filenames 2> /dev/null
+            mapfile -t COMPREPLY < <(compgen -d -- "$cur")
+            return
+            ;;
         -j|--jobs|--timeout)
             return
             ;;
@@ -48,7 +53,7 @@ _solx() {
         if [[ "$cur" == -* ]]; then
             mapfile -t COMPREPLY < <(compgen -W "-h --help --version --json" -- "$cur")
         else
-            mapfile -t COMPREPLY < <(compgen -W "init keep jump job config completions cheatsheet version help" -- "$cur")
+            mapfile -t COMPREPLY < <(compgen -W "init keep jump job config agent completions cheatsheet version help" -- "$cur")
         fi
         return
     fi
@@ -97,6 +102,18 @@ _solx() {
                 stop) flags="-y --yes -f --force -n --dry-run --json -h --help" ;;
                 jump) flags="-q --quiet --json -h --help" ;;
                 time) flags="--json -h --help" ;;
+            esac
+            ;;
+        agent)
+            if [[ -z "$sub" ]]; then
+                if [[ "$cur" != -* ]]; then
+                    mapfile -t COMPREPLY < <(compgen -W "install up down resume status logs tunnel msg gc attach" -- "$cur")
+                    return
+                fi
+                flags="-h --help"
+            fi
+            case "$sub" in
+                install) flags="--dir -n --dry-run -f --force --json -h --help" ;;
             esac
             ;;
         config)

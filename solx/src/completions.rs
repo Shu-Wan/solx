@@ -44,6 +44,7 @@ mod tests {
                 "completions",
                 "cheatsheet",
                 "config",
+                "agent",
             ] {
                 assert!(script.contains(needle), "missing {needle}");
             }

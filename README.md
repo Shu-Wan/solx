@@ -84,6 +84,20 @@ gh skill install Shu-Wan/solx sol-skill
 Any [Agent Skills](https://agentskills.io/specification) installer works the
 same way.
 
+## sol-agent: an always-on Claude on Sol
+
+[`sol-agent`](docs/sol-agent.md) keeps a Claude Remote Control session running through Sol's preemption, job time limits and
+maintenance windows, and starts Sol's VS Code tunnel on demand (passing you the GitHub device code). It is a set of shell
+scripts that run as ordinary Slurm jobs (never on a login node), bundled into the `solx` binary and driven through `solx agent`:
+
+```shell
+solx agent install                      # write/update ~/.solx/agent (keeps your config.env and instructions)
+solx agent status                       # then follow docs/sol-agent.md: trust step, permission mode, `solx agent up`
+gh skill install Shu-Wan/solx sol-agent # optional: the skill that teaches Claude sessions to drive it
+```
+
+Manual: [docs/sol-agent.md](docs/sol-agent.md). Design and measurements: [sol-agent/DESIGN.md](sol-agent/DESIGN.md).
+
 ## Development
 
 - **Changelog** - [CHANGELOG.md](CHANGELOG.md); the current release is

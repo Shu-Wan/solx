@@ -27,6 +27,10 @@ Preserve these contracts when changing user-visible behavior:
 - `src/jobs.rs`: `job list`, `start`, `stop`, `jump`, and `time`.
 - `src/keep.rs`: CSV planning, enumeration, and the touch pipeline.
 - `src/init.rs`: starter config and walkthrough for `solx init`.
+- `src/agent.rs`: `solx agent install` and the forwarder to `~/.solx/agent/bin/sol-agent`.
+  It embeds `../sol-agent/{bin,lib,...}` with `include_str!` at build time, so the
+  scripts in that tree are part of the binary; a test fails when a script is added
+  there but not listed in `ASSETS`.
 - `src/output.rs`: TTY detection, JSON output, and plain-text diagnostics.
 - `src/completions.rs`: embedded static completion scripts.
 

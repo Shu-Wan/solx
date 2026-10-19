@@ -95,6 +95,47 @@ _solx_config() {
     esac
 }
 
+_solx_agent() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[Show this help message and exit.]' \
+        '1: :->subcommand' \
+        '*:: :->subargs'
+
+    case $state in
+        (subcommand)
+            local -a subcommands
+            subcommands=(
+                'install:Install or update the sol-agent scripts (default ~/.solx/agent).'
+                'up:Start the always-on session (forwarded).'
+                'down:Pause and cancel it (forwarded).'
+                'resume:Start it again (forwarded).'
+                'status:Jobs, lease, watchdog, maintenance, trust (forwarded).'
+                'logs:Last event-log lines (forwarded).'
+                'tunnel:VS Code tunnel on demand (forwarded).'
+                'msg:File mailbox for other Claude sessions (forwarded).'
+                'gc:Clean up stale jobs, sessions and test leftovers (forwarded).'
+                'attach:Attach to the active session terminal (forwarded).'
+            )
+            _describe -t commands 'solx agent command' subcommands
+            ;;
+        (subargs)
+            case $words[1] in
+                (install)
+                    _arguments \
+                        '--dir[Install here instead of $SOL_AGENT_ROOT or ~/.solx/agent.]:directory:_files -/' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Print what would change without writing.]' \
+                        '(-f --force)'{-f,--force}'[Also reset config.env and workspace/CLAUDE.md.]' \
+                        '--json[Force JSON output (machine-readable).]' \
+                        '(-h --help)'{-h,--help}'[Show this help message and exit.]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 _solx() {
     local curcontext="$curcontext" state line
     typeset -A opt_args
@@ -115,6 +156,7 @@ _solx() {
                 'jump:Drop into a shell on the job'\''s compute node (= solx job jump).'
                 'job:Manage interactive Slurm jobs on Sol (alias\: jobs).'
                 'config:Inspect and edit the solx config.'
+                'agent:Keep an always-on Claude session running on Sol (sol-agent).'
                 'completions:Emit a shell completion script (bash, zsh, or fish).'
                 'cheatsheet:Print the Sol cheat sheet (SLURM + solx quick reference) as text.'
                 'version:Show version and exit (alias of --version).'
@@ -153,6 +195,9 @@ _solx() {
                     ;;
                 (config)
                     _solx_config
+                    ;;
+                (agent)
+                    _solx_agent
                     ;;
                 (completions)
                     _arguments \

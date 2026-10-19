@@ -6,6 +6,7 @@
 //! stderr, and exit codes follow the documented contract.
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
@@ -821,4 +822,266 @@ fn solx_complete_env_exits_0_silently() {
         .success()
         .stdout("")
         .stderr("");
+}
+
+// ---------------------------------------------------------------------------
+// solx agent (sol-agent installer + passthrough)
+// ---------------------------------------------------------------------------
+
+fn agent_root(sb: &Sandbox) -> PathBuf {
+    sb.home.path().join(".solx").join("agent")
+}
+
+#[test]
+fn agent_without_subcommand_prints_group_help() {
+    let sb = Sandbox::new();
+    sb.cmd()
+        .arg("agent")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("install"));
+}
+
+#[test]
+fn agent_install_writes_tree_and_version() {
+    let sb = Sandbox::new();
+    let out = sb
+        .cmd()
+        .args(["--json", "agent", "install"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"dry_run\": false"))
+        .get_output()
+        .stdout
+        .clone();
+    let doc: serde_json::Value = serde_json::from_slice(&out).expect("json");
+    assert_eq!(doc["version"], env!("CARGO_PKG_VERSION"));
+    assert!(doc["previous"].is_null());
+
+    let root = agent_root(&sb);
+    assert_eq!(
+        fs::read_to_string(root.join(".version")).unwrap().trim(),
+        env!("CARGO_PKG_VERSION")
+    );
+    for rel in ["bin/sol-agent", "bin/sol-agent-msg", "bin/sol-agent.sbatch"] {
+        let mode = fs::metadata(root.join(rel)).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111, "{rel} not executable");
+    }
+    assert!(root.join("config.env").is_file());
+    assert!(root.join("workspace/CLAUDE.md").is_file());
+}
+
+#[test]
+fn agent_update_keeps_user_files_and_repairs_code() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    let root = agent_root(&sb);
+    fs::write(root.join("config.env"), "PERMISSION_MODE=acceptEdits\n").unwrap();
+    // the last install came from a solx that shipped other text for this file
+    fs::write(root.join(".shipped/config.env"), "# shipped by 0.0.1\n").unwrap();
+    fs::write(root.join("lib/pool.sh"), "# edited\n").unwrap();
+    fs::create_dir_all(root.join("state")).unwrap();
+    fs::write(root.join("state/lease"), "x").unwrap();
+    fs::write(root.join(".version"), "0.0.1\n").unwrap();
+
+    sb.cmd()
+        .args(["--json", "agent", "install"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"previous\": \"0.0.1\""))
+        .stdout(predicate::str::contains("\"action\": \"staged\""))
+        .stdout(predicate::str::contains(
+            "\"new_default\": \"config.env.new\"",
+        ));
+
+    assert_eq!(
+        fs::read_to_string(root.join("config.env")).unwrap(),
+        "PERMISSION_MODE=acceptEdits\n"
+    );
+    // the shipped config.env is beside the edited one, and a second install reports it as already there
+    assert!(fs::read_to_string(root.join("config.env.new"))
+        .unwrap()
+        .contains("PERMISSION_MODE"));
+    sb.cmd()
+        .args(["--json", "agent", "install"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"action\": \"kept\""))
+        .stdout(predicate::str::contains(
+            "\"new_default\": \"config.env.new\"",
+        ))
+        .stdout(predicate::str::contains("\"action\": \"staged\"").not());
+    // deleting the copy settles it: nothing is offered again until the shipped text changes
+    fs::remove_file(root.join("config.env.new")).unwrap();
+    sb.cmd()
+        .args(["--json", "agent", "install"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"action\": \"kept\""))
+        .stdout(predicate::str::contains("new_default").not());
+    assert!(!root.join("config.env.new").exists());
+    assert_ne!(
+        fs::read_to_string(root.join("lib/pool.sh")).unwrap(),
+        "# edited\n"
+    );
+    assert_eq!(fs::read_to_string(root.join("state/lease")).unwrap(), "x");
+    assert_eq!(
+        fs::read_to_string(root.join(".version")).unwrap().trim(),
+        env!("CARGO_PKG_VERSION")
+    );
+}
+
+#[test]
+fn agent_install_removes_the_new_copy_once_the_seed_matches_it() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    let root = agent_root(&sb);
+    fs::write(root.join("config.env"), "MINE=1\n").unwrap();
+    fs::write(root.join(".shipped/config.env"), "# shipped by 0.0.1\n").unwrap();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    fs::copy(root.join("config.env.new"), root.join("config.env")).unwrap();
+
+    // -n only reports; the next install removes it
+    sb.cmd()
+        .args(["--json", "agent", "install", "-n"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"config.env.new\""));
+    assert!(root.join("config.env.new").exists());
+    sb.cmd()
+        .args(["--json", "agent", "install"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"removed\": [\n    \"config.env.new\"",
+        ));
+    assert!(!root.join("config.env.new").exists());
+}
+
+#[test]
+fn agent_scripts_find_the_root_the_binary_installs_to() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    let root = agent_root(&sb);
+    assert_eq!(root, sb.home.path().join(".solx/agent"));
+    // With SOL_AGENT_ROOT unset the Bash scripts fall back to $HOME/.solx/agent. That must be where the binary wrote them.
+    Command::new(root.join("bin/sol-agent-msg"))
+        .env_remove("SOL_AGENT_ROOT")
+        .env_remove("SOL_AGENT_STATE")
+        .env_remove("SOL_AGENT_MAILBOX")
+        .env("HOME", sb.home.path())
+        .args(["send", "probe", "-s", "s", "hello"])
+        .assert()
+        .success();
+    assert!(root.join("state/mailbox/probe/new").is_dir());
+}
+
+#[test]
+fn agent_install_dry_run_writes_nothing() {
+    let sb = Sandbox::new();
+    sb.cmd()
+        .args(["agent", "install", "--dry-run"])
+        .assert()
+        .success();
+    assert!(!agent_root(&sb).exists());
+}
+
+#[test]
+fn agent_passthrough_requires_install() {
+    let sb = Sandbox::new();
+    sb.cmd()
+        .args(["agent", "status"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("solx agent install"));
+}
+
+#[test]
+fn agent_passthrough_passes_only_an_explicit_json_flag() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    let root = agent_root(&sb);
+    fs::write(
+        root.join("bin/sol-agent"),
+        "#!/bin/sh\necho \"format=${SOL_AGENT_FORMAT:-unset} args=$*\"\n",
+    )
+    .unwrap();
+    // Not forced: the scripts detect the terminal themselves, so nothing is set.
+    sb.cmd()
+        .args(["agent", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("format=unset args=status"));
+    // Global flag before `agent`: forwarded as the format switch, and the word itself is not passed on.
+    sb.cmd()
+        .args(["--json", "agent", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("format=json args=status"));
+}
+
+#[test]
+fn agent_status_through_solx_is_parseable_json() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    let out = sb
+        .cmd()
+        .args(["--json", "agent", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let doc: serde_json::Value =
+        serde_json::from_slice(&out).expect("status prints one JSON document");
+    assert_eq!(doc["name"], "sol-agent");
+    assert!(doc["jobs"].is_array());
+    assert!(doc["workspace"]["trusted"].is_boolean());
+}
+
+#[test]
+fn agent_destructive_commands_refuse_without_a_terminal() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    // `down` with no -y/-n and no terminal: refuse (exit 2) instead of hanging on a prompt.
+    sb.cmd()
+        .args(["agent", "down"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("refusing without -y"));
+    sb.cmd()
+        .args(["agent", "down", "-y", "-n"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be combined"));
+}
+
+#[test]
+fn agent_passthrough_forwards_args_and_root() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["agent", "install"]).assert().success();
+    let root = agent_root(&sb);
+    // Replace the real CLI with a stub that reports what it was given.
+    fs::write(
+        root.join("bin/sol-agent"),
+        "#!/bin/sh\necho \"args=$*\"\necho \"root=$SOL_AGENT_ROOT\"\n",
+    )
+    .unwrap();
+
+    sb.cmd()
+        .args(["agent", "tunnel", "start", "--wait", "20"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("args=tunnel start --wait 20"))
+        .stdout(predicate::str::contains(format!("root={}", root.display())))
+        .stderr("");
+
+    // A version mismatch is a one-line note on stderr, stdout stays clean.
+    fs::write(root.join(".version"), "0.0.1\n").unwrap();
+    sb.cmd()
+        .args(["agent", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("args=status"))
+        .stderr(predicate::str::contains("installed sol-agent is 0.0.1"));
 }

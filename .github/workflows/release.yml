@@ -46,16 +46,17 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: echo "tag=${INPUT_TAG:-$REF_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify the tag matches the one version line (crate + skill)
+      - name: Verify the tag matches the one version line (crate + skills)
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           want="${TAG#v}"
           crate="$(sed -nE 's/^version = "([^"]+)".*/\1/p' Cargo.toml | head -1)"
           skill="$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' ../skills/sol-skill/SKILL.md | head -1)"
-          echo "tag=$want  Cargo.toml=$crate  SKILL.md=$skill"
-          if [ "$crate" != "$want" ] || [ "$skill" != "$want" ]; then
-            echo "::error::version mismatch — tag=$want Cargo.toml=$crate SKILL.md=$skill. Bump both (and the lockfile) or retag." >&2
+          agent="$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' ../skills/sol-agent/SKILL.md | head -1)"
+          echo "tag=$want  Cargo.toml=$crate  sol-skill=$skill  sol-agent skill=$agent"
+          if [ "$crate" != "$want" ] || [ "$skill" != "$want" ] || [ "$agent" != "$want" ]; then
+            echo "::error::version mismatch — tag=$want Cargo.toml=$crate sol-skill=$skill sol-agent skill=$agent. Bump all (and the lockfile) or retag." >&2
             exit 1
           fi
 
