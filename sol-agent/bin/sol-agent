@@ -7,6 +7,7 @@
 #   wd-install [-n] | wd-remove [-y|-n]    manage the scrontab heartbeat/watchdog entry
 #   tunnel <start [--job J|--here] [--wait S] [--restart]|stop|status|attach>   Sol's VS Code tunnel (sol_$USER) + GitHub device code
 #   msg <send|read|list|watch|hook> ...                       plain-text mailbox (see sol-agent-msg)
+#   alert test             send one test message through the configured alert channels (ALERT_EMAIL, NTFY_TOPIC, NOTIFY_CMD)
 #   attach                 open the active sol-agent's tmux (bridge output) via srun --overlap (needs a terminal)
 #   logs [n]               tail the event log
 #   gc [-y|-n] [--tests] [--sessions] [--purge] [--uninstall]
@@ -19,6 +20,7 @@
 set -u
 . "${SOL_AGENT_ROOT:-$HOME/.solx/agent}/lib/common.sh"
 . "$AR/lib/pool.sh"
+. "$AR/lib/health.sh"
 COMP=ctl
 out_flags "$@"; set -- "${OUT_ARGS[@]+"${OUT_ARGS[@]}"}"
 [ "$FORMAT_EXPLICIT" = 1 ] && export SOL_AGENT_FORMAT=$FORMAT       # tunnel / msg inherit an explicit choice
@@ -29,7 +31,9 @@ usage() {   # usage [command]
   case ${1:-} in
     status) cat <<'EOF'
 sol-agent status [--json]
-  Jobs, lease, heartbeats, watchdog, maintenance plan, permission mode, workspace trust, Remote Control URL, mailbox, new shipped defaults waiting beside a changed config.env or CLAUDE.md, last events.
+  Jobs, lease, heartbeats, watchdog, pool health (ok, degraded, down, paused, hold), alert channels, model, maintenance plan,
+  permission mode, workspace trust, Remote Control URL, mailbox, new shipped defaults waiting beside a changed config.env or
+  CLAUDE.md, last events.
 EOF
     ;;
     up) cat <<'EOF'
@@ -41,6 +45,14 @@ EOF
     down) cat <<'EOF'
 sol-agent down [-y|-n]
   Pause the pool and cancel its jobs; the session is closed with /exit. Waits up to 60 s for the jobs to leave.
+EOF
+    ;;
+    alert) cat <<'EOF'
+sol-agent alert test [--json]
+  Send one test message through every configured channel: ALERT_EMAIL (Sol's `mail`), NTFY_TOPIC (ntfy.sh push) and NOTIFY_CMD.
+  Exit 0 if every channel took it, 1 if one failed or none is configured. An e-mail that Sol's mail system accepted is not yet
+  in your inbox: check it arrived. The watchdog sends the real alerts (pool down for ALERT_DOWN_MIN, no standby for
+  ALERT_DEGRADED_MIN, recovery); see docs/sol-agent.md.
 EOF
     ;;
     resume) echo "sol-agent resume [-n]    Unpause and fill the pool.";;
@@ -168,6 +180,16 @@ cmd_status() {
   # `solx agent install` leaves the shipped copy of a changed config.env / workspace/CLAUDE.md as <name>.new
   local seeds="" sf
   for sf in config.env workspace/CLAUDE.md; do [ -f "$AR/$sf.new" ] && seeds+="$sf.new"$'\n'; done
+  # pool health (live level; since / last alert only while the stored level is still the live one), alert channels, model
+  local hl hs="" ha="" sl="" ss="" sa="" chans ntfy=false cmd=false ping=false sid mfile mrun=""
+  hl=$(pool_health); [ -f "$STATE/health" ] && read -r sl ss sa < "$STATE/health"
+  if [ "${sl:-}" = "$hl" ]; then hs=$ss; ha=$sa; [ "$ha" = 0 ] && ha=""; fi
+  chans=$(notify_channels | ids_json); [ -n "$NTFY_TOPIC" ] && ntfy=true; [ -n "$NOTIFY_CMD" ] && cmd=true; [ -n "$PING_URL" ] && ping=true
+  sid=$(cat "$STATE/session_id" 2>/dev/null)
+  if [ -n "$sid" ]; then
+    mfile=$(ls -t "$HOME"/.claude/projects/*/"$sid".jsonl 2>/dev/null | head -1)
+    [ -n "$mfile" ] && mrun=$(tail -c 400000 "$mfile" | grep -ao '"model":"[^"]*"' | grep -v synthetic | tail -1 | cut -d'"' -f4)
+  fi
 
   if is_json; then
     local mailbox; mailbox=$(SOL_AGENT_FORMAT=json "$AR/bin/sol-agent-msg" list 2>/dev/null); [ -n "$mailbox" ] || mailbox='[]'
@@ -179,7 +201,9 @@ cmd_status() {
       --arg plan "$plan" --arg ms "$ms" --arg me "$me" --arg mk "$mk" --arg hold "$hold" --arg maintfile "$STATE/maint.txt" \
       --arg pm_eff "$pm_eff" --arg pm_cfg "$PERMISSION_MODE" --arg pm_shell "$pm_shell" \
       --arg wdir "$WORKDIR" --argjson trusted "$trusted" --arg url "$url" --arg latency "$latency" \
-      --argjson mailbox "$mailbox" --arg events "$events" --arg seeds "$seeds" '
+      --argjson mailbox "$mailbox" --arg events "$events" --arg seeds "$seeds" \
+      --arg hl "$hl" --arg hs "$hs" --arg ha "$ha" --argjson chans "$chans" --arg email "$ALERT_EMAIL" --argjson ntfy "$ntfy" \
+      --argjson cmd "$cmd" --argjson ping "$ping" --arg nlevel "$NOTIFY_LEVEL" --arg mcfg "$SOL_AGENT_MODEL" --arg mrun "$mrun" '
       def nul: if . == "" then null else . end;
       { time: $time, name: $name, paused: $paused,
         pool: { partition: $part, qos: $qos, max_chunk: $chunk, standby: $standby },
@@ -194,6 +218,9 @@ cmd_status() {
         remote_control_url: ($url | nul),
         queue_wait_last5: ($latency | nul),
         mailbox: $mailbox,
+        health: { level: $hl, since: ($hs | if . == "" then null else tonumber end), last_alert: ($ha | if . == "" then null else tonumber end) },
+        alerts: { channels: $chans, email: ($email | nul), ntfy: $ntfy, cmd: $cmd, ping_url: $ping, notify_level: $nlevel },
+        model: { configured: ($mcfg | nul), running: ($mrun | nul) },
         seed_updates: ($seeds | split("\n") | map(select(length > 0))),
         last_events: ($events | split("\n") | map(select(length > 0))) }'
     return 0
@@ -216,6 +243,11 @@ cmd_status() {
   echo "--- remote control: ${url:-no bridge log yet}"
   [ -n "$latency" ] && echo "--- queue wait (last 5): $latency"
   echo "--- mailbox:"; SOL_AGENT_FORMAT=text "$AR/bin/sol-agent-msg" list 2>/dev/null | sed 's/^/    /'
+  echo "--- health: $hl$( [ -n "$hs" ] && echo " (since $(date -d "@$hs" '+%F %H:%M'))" )"
+  if [ -n "$(notify_channels)" ] || [ -n "$PING_URL" ]; then
+    echo "--- alerts: $(notify_channels | paste -sd' ' -)$( [ -n "$ALERT_EMAIL" ] && echo " (email $ALERT_EMAIL)" )$( [ -n "$PING_URL" ] && echo " ping-url" )   [sol-agent alert test sends a test message]"
+  else echo "--- alerts: NONE - set ALERT_EMAIL or NTFY_TOPIC in config.env, then run: sol-agent alert test"; fi
+  echo "--- model: configured=${SOL_AGENT_MODEL:-default} running=${mrun:-unknown}"
   [ -n "$seeds" ] && echo "--- new defaults waiting (your file differs; compare, merge, delete the .new): $(printf '%s' "$seeds" | tr '\n' ' ')in $AR"
   echo "--- last events:"; printf '%s\n' "$events" | sed 's/^/    /'
 }
@@ -240,9 +272,11 @@ cmd_up() {
     return 0
   fi
   rm -f "$STATE/PAUSE"; wd_install_do; pool_ensure
+  local chans; chans=$(notify_channels | ids_json)
+  [ "$chans" = '[]' ] && warn "warning: no alert channel is set, so nobody is told if the pool goes down. Set ALERT_EMAIL or NTFY_TOPIC in $AR/config.env, then run: sol-agent alert test"
   if is_json; then
-    jq -n -c --argjson t "$trusted" --arg m "$m" --arg e "$em" --arg w "$WD_RESULT" --argjson jobs "$(sol_agent_jobs | jobs_brief)" \
-      '{action:"up",workspace_trusted:$t,permission_mode:{captured:($m|if .=="" then null else . end),effective:($e|if .=="" then null else . end)},watchdog:$w,jobs:$jobs}'
+    jq -n -c --argjson t "$trusted" --arg m "$m" --arg e "$em" --arg w "$WD_RESULT" --argjson jobs "$(sol_agent_jobs | jobs_brief)" --argjson chans "$chans" \
+      '{action:"up",workspace_trusted:$t,permission_mode:{captured:($m|if .=="" then null else . end),effective:($e|if .=="" then null else . end)},watchdog:$w,alert_channels:$chans,jobs:$jobs}'
   else cmd_status; fi
 }
 cmd_down() {
@@ -269,6 +303,28 @@ cmd_resume() {
 }
 
 # ---- logs / attach ---------------------------------------------------------------------------------------------------
+# alert test: one message through every configured channel
+cmd_alert() {
+  [ "${1:-}" = test ] && [ $# -eq 1 ] || die2 "alert: usage: alert test (sol-agent help alert)"
+  local chans f rc ch ok=0 bad=0 rows="" detail
+  chans=$(notify_channels)
+  if [ -z "$chans" ]; then
+    is_json && jq -n -c '{action:"alert_test",sent:false,channels:[],error:"no alert channel configured: set ALERT_EMAIL or NTFY_TOPIC (or NOTIFY_CMD) in config.env"}'
+    warn "error: no alert channel configured. Set ALERT_EMAIL or NTFY_TOPIC in $AR/config.env"; exit 1
+  fi
+  f=$(mktemp); NOTIFY_RESULTS=$f notify "sol-agent test message" "Sent by 'sol-agent alert test' from $(hostname -s) at $(date -Is). If you can read this, alerts reach you."
+  while IFS=$'\t' read -r ch rc; do
+    [ -n "$ch" ] || continue
+    case $ch in email) detail="to $ALERT_EMAIL";; ntfy) detail="topic set";; cmd) detail="NOTIFY_CMD";; esac
+    if [ "$rc" = 0 ]; then ok=$((ok+1)); say "$ch: accepted ($detail)"; else bad=$((bad+1)); say "$ch: FAILED rc=$rc ($detail)"; fi
+    rows+="$ch|$rc|$detail"$'\n'
+  done < "$f"; rm -f "$f"
+  is_json && printf '%s' "$rows" | jq -R -s -c --argjson ok "$ok" --argjson bad "$bad" \
+    '{action:"alert_test",sent:($bad==0 and $ok>0),channels:(split("\n")|map(select(length>0)|split("|")|{name:.[0],ok:(.[1]=="0"),exit_code:(.[1]|tonumber),detail:.[2]}))}'
+  [ "$ok" -gt 0 ] && say "an e-mail that was accepted still has to arrive: check your inbox (and spam)"
+  [ "$bad" -eq 0 ] && [ "$ok" -gt 0 ]
+}
+
 cmd_logs() {
   local n=${1:-40}; case $n in ''|*[!0-9]*) die2 "logs: N must be a number";; esac
   if stream_json; then tail -n "$n" "$STATE/events.log" 2>/dev/null | jq -R -c 'capture("^(?<ts>[^ ]+) (?<source>[^ ]+) (?<message>.*)$")? // {message: .}'
@@ -384,6 +440,7 @@ case ${1:-} in
   msg)    shift; exec "$AR/bin/sol-agent-msg" "$@";;
   attach) cmd_attach;;
   logs)   shift; cmd_logs "$@";;
+  alert)  shift; cmd_alert "$@";;
   help|-h|--help) shift; usage "${1:-}";;
   "") usage >&2; exit 2;;
   *) warn "error: unknown command '$1'"; usage >&2; exit 2;;

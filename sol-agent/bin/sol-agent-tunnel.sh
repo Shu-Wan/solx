@@ -36,7 +36,7 @@ active_jobs() { squeue --me -h -t "$1" -o '%i %j %N' | awk -v n="$JOBNAME" '$2==
 relay_code() {
   local c=$1
   printf '{"code":"%s","url":"https://github.com/login/device","ts":%s}\n' "$c" "$(now)" > "$TS/device_code.tmp" && mv -f "$TS/device_code.tmp" "$TS/device_code"
-  log "device code issued host=$(hostname -s) (the code itself goes to the state file, the user mailbox and stdout, not this log)"; notify "VS Code device code: $c" "https://github.com/login/device"
+  log "device code issued host=$(hostname -s) (the code itself goes to the state file, the user mailbox and stdout, not this log)"; notify_private "VS Code device code: $c" "https://github.com/login/device"
   "$AR/bin/sol-agent-msg" send user -f tunnel -s "VS Code device code $c" "Open https://github.com/login/device and enter $c to authorize the Sol tunnel $TNAME. The tunnel comes up by itself afterwards." >/dev/null 2>&1
 }
 
@@ -192,7 +192,7 @@ start_do() {
       say "DEVICE CODE: $code   open https://github.com/login/device and enter it ($where; code ready after $((SECONDS-t0)) s). The tunnel then starts by itself."; log "device code shown to caller after $((SECONDS-t0)) s"; shown=$code; fi
     sleep 1
   done
-  if [ -n "$url" ]; then R_STATE=up; R_URL=$url; say "tunnel up ($where): $url   (VS Code: Remote-Tunnels -> $TNAME)"; log "tunnel up $url"; notify "VS Code tunnel up" "$url"; return 0; fi
+  if [ -n "$url" ]; then R_STATE=up; R_URL=$url; say "tunnel up ($where): $url   (VS Code: Remote-Tunnels -> $TNAME)"; log "tunnel up $url"; notify_info "VS Code tunnel up" "$url"; return 0; fi
   if [ -n "$shown" ]; then R_STATE=awaiting_approval; R_CODE=$shown; say "waiting for approval of $shown; check later with: sol-agent tunnel status"; return 3; fi
   R_STATE=pending; R_NOTE="tunnel requested $where but nothing to report yet (queue or NFS delay); sol-agent tunnel status"; say "$R_NOTE"; return 1
 }

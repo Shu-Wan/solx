@@ -39,7 +39,8 @@ stricter one with `PERMISSION_MODE=acceptEdits` in `config.env`. The agent skill
 
 | | |
 |---|---|
-| `sol-agent status` / `logs [n]` | jobs, lease, heartbeats, watchdog, maintenance plan, bridge URL, permission mode |
+| `sol-agent status` / `logs [n]` | jobs, lease, heartbeats, pool health, alert channels, model, watchdog, maintenance plan, bridge URL, permission mode |
+| `sol-agent alert test` | send one test message through `ALERT_EMAIL` / `NTFY_TOPIC` / `NOTIFY_CMD`; the watchdog sends the real alerts (DOWN, STILL DOWN, recovered, no standby) |
 | `sol-agent up [-n] [--force]` · `down [-y\|-n]` · `resume` | start (and install the watchdog; refuses while the workspace is untrusted) / pause + close / continue |
 | `sol-agent tunnel start [--job J] [--wait S] [--restart]` · `stop [-y\|-n]` · `status` · `attach` | VS Code tunnel `sol_$USER` |
 | `sol-agent msg send <to> "text"` · `read` · `list` · `watch` | file mailbox (`bin/sol-agent-msg`) |

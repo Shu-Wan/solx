@@ -139,7 +139,10 @@ while [ "$STOP" -eq 0 ]; do
     # a standby that is itself near its end must not grab the lease while a longer-lived candidate exists
     if [ "$HANDOFF" -eq 1 ] && [ "$ROLE" != active ] && [ -n "$(best_successor)" ]; then can_acquire=0; fi
     if [ "$can_acquire" -eq 1 ] && lease_acquire "$JOB"; then
-      [ "$ROLE" != active ] && { ROLE=active; log "ACTIVE"; notify "sol-agent active on $(hostname -s)" "job $JOB"; fence_previous "$prev_holder"; }
+      [ "$ROLE" != active ] && { ROLE=active; log "ACTIVE"
+        if [ -n "$prev_holder" ] && [ "$prev_holder" != "$JOB" ]; then notify_info "sol-agent failover: job $JOB on $(hostname -s) took over from $prev_holder"
+        else notify_info "sol-agent active on $(hostname -s)" "job $JOB"; fi
+        fence_previous "$prev_holder"; }
       if ! bridge_up; then
         # crash-loop guard: >3 restarts in 10 min => back off 5 min and say so in the heartbeat
         [ $(( $(now) - LAST_START )) -lt 600 ] && RESTARTS=$((RESTARTS+1)) || RESTARTS=0

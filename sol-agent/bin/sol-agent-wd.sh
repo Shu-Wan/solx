@@ -5,6 +5,7 @@
 set -u
 . "${SOL_AGENT_ROOT:-$HOME/.solx/agent}/lib/common.sh"
 . "$AR/lib/pool.sh"
+. "$AR/lib/health.sh"
 COMP=${COMP:-wd}
 
 printf '{"ts":%s,"host":"%s","job":"%s","via":"%s"}\n' "$(now)" "$(hostname -s)" "${SLURM_JOB_ID:-manual}" "${1:-scron}" > "$STATE/wd.json.tmp" \
@@ -25,10 +26,18 @@ if [ ! -f "$STATE/PAUSE" ] && slurm_ok; then
   pool_ensure
 fi
 
-# 3. keep the log small
+# 3. health: alert when the pool has been down / without a standby for long enough (lib/health.sh); runs even when paused
+health_update
+
+# 4. keep the log small
 for f in "$LOGS/wd.out"; do [ -f "$f" ] && [ "$(stat -c %s "$f")" -gt 1048576 ] && tail -n 200 "$f" > "$f.tmp" && mv -f "$f.tmp" "$f"; done
 [ -f "$STATE/events.log" ] && [ "$(stat -c %s "$STATE/events.log")" -gt 2097152 ] && tail -n 5000 "$STATE/events.log" > "$STATE/events.log.tmp" && mv -f "$STATE/events.log.tmp" "$STATE/events.log"
 
-# 4. optional external dead-man's switch: if these pings stop, *you* get told (healthchecks.io-style)
-[ -n "$PING_URL" ] && curl -fsS -m 10 --retry 2 "$PING_URL" >/dev/null 2>&1
+# 5. optional external dead-man's switch (healthchecks.io-style). The one signal that works when this script cannot: stop pinging
+#    and the service tells you. It reports the pool, not just the watchdog: the base URL while the pool is fine (or paused on
+#    purpose), "<url>/fail" while a DOWN alert is standing.
+if [ -n "$PING_URL" ]; then
+  url=$PING_URL; [ "$HEALTH_ALERTING" = 1 ] && url="${PING_URL%/}/fail"
+  curl -fsS -m 10 --retry 2 "$url" >/dev/null 2>&1
+fi
 exit 0

@@ -307,8 +307,8 @@ Claude Remote Control session alive on Sol through preemption, time limits and m
 Slurm wrapper like `solx job`; it does two things:
 
 - `solx agent install [--dir D] [-n] [-f]` writes the scripts bundled in the binary to `~/.solx/agent`
-  (or `$SOL_AGENT_ROOT`). Scripts are replaced; your `config.env` and `workspace/CLAUDE.md` are kept when
-  they differ from the shipped ones; when a release changes the shipped text, the new text is written beside yours
+  (or `$SOL_AGENT_ROOT`). Scripts are replaced; your `config.env` and `workspace/CLAUDE.md` are updated if you never
+  edited them and kept when they differ from the shipped ones; when a release changes the shipped text, the new text is written beside yours
   as `<name>.new` so it can be merged (the `.new` file goes away once yours matches); `-f` replaces them instead (the old copy becomes
   `.bak`); `state/`, `logs/` and `results/` are never touched. `-n` shows what would change. With `--json` (or
   when piped) it prints the plan as JSON, including `new_default` for each kept file.

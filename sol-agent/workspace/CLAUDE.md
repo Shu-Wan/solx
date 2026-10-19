@@ -13,6 +13,8 @@ maintenance); a watchdog restarts the job and this conversation is resumed from 
 Your Bash tool pipes output, so `sol-agent status|up|down|gc|tunnel ...` and `sol-agent-msg send|read|list` print JSON: read it with
 `jq`. `--text` gives the text view. `down`, `gc`, `wd-remove` and `tunnel stop` need `-y` (or `-n` to preview) and refuse without
 either. Exit code 3 from `tunnel start` means "waiting for the user", not failure.
+`status` has `health` (ok, degraded, down, paused, hold) and `alerts`; the watchdog sends the alerts, you do not. If `alerts.channels` is
+empty, tell the user once that nobody would hear if the pool went down (`sol-agent alert test` after they set `ALERT_EMAIL` or `NTFY_TOPIC`).
 
 ## Working rules (Sol)
 - Keep context small; durable state goes in files (plans, job ids, results), not in your head - you can be restarted at any time.

@@ -70,20 +70,21 @@ macro_rules! asset {
     };
 }
 
-/// Everything `install` writes. A test checks that every file under
-/// `sol-agent/bin` and `sol-agent/lib` is listed here, so a new script
-/// cannot be forgotten.
+/// Everything `install` writes, in write order: the libraries come before the scripts, because a watchdog that starts
+/// mid-install sources `lib/` and must never find a new `bin/` script next to a library that does not exist yet. A test
+/// checks that every file under `sol-agent/bin` and `sol-agent/lib` is listed here, so a new script cannot be forgotten.
 const ASSETS: &[Asset] = &[
+    asset!("lib/common.sh", Kind::Code, false),
+    asset!("lib/health.sh", Kind::Code, false),
+    asset!("lib/maint.sh", Kind::Code, false),
+    asset!("lib/out.sh", Kind::Code, false),
+    asset!("lib/pool.sh", Kind::Code, false),
     asset!("bin/sol-agent", Kind::Code, true),
     asset!("bin/sol-agent-msg", Kind::Code, true),
     asset!("bin/sol-agent-tunnel.sh", Kind::Code, true),
     asset!("bin/sol-agent-wd.sh", Kind::Code, true),
     asset!("bin/sol-agent.sbatch", Kind::Code, true),
     asset!("bin/sol-agent-collect.sbatch", Kind::Code, true),
-    asset!("lib/common.sh", Kind::Code, false),
-    asset!("lib/maint.sh", Kind::Code, false),
-    asset!("lib/out.sh", Kind::Code, false),
-    asset!("lib/pool.sh", Kind::Code, false),
     asset!("README.md", Kind::Code, false),
     asset!("DESIGN.md", Kind::Code, false),
     asset!("config.env", Kind::Seed, false),
@@ -98,6 +99,14 @@ const SHIPPED_DIR: &str = ".shipped";
 
 fn shipped_copy(root: &Path, a: &Asset) -> PathBuf {
     root.join(SHIPPED_DIR).join(a.path)
+}
+
+/// The seed on disk is exactly what the last install recorded in `.shipped/`: the user never changed it.
+fn untouched_since_install(root: &Path, a: &Asset) -> bool {
+    match (fs::read(root.join(a.path)), fs::read(shipped_copy(root, a))) {
+        (Ok(have), Ok(shipped)) => have == shipped,
+        _ => false,
+    }
 }
 
 /// The last install already shipped exactly this text.
@@ -195,6 +204,9 @@ fn plan_one(root: &Path, a: &Asset, force: bool) -> Action {
                 Action::Unchanged
             } else if force {
                 Action::Reset
+            } else if untouched_since_install(root, a) {
+                // still byte-for-byte what the last install shipped, so nothing of the user's would be lost
+                Action::Updated
             } else if new_copy_is_current(&dest, a) || shipped_is_current(root, a) {
                 Action::Kept
             } else {
@@ -258,7 +270,7 @@ pub fn cmd_install(dir: Option<PathBuf>, dry_run: bool, force: bool, out: &Out) 
     let obsolete: Vec<&Asset> = plan
         .iter()
         .filter(|(a, action)| {
-            matches!(action, Action::Unchanged | Action::Reset)
+            matches!(action, Action::Unchanged | Action::Updated | Action::Reset)
                 && a.kind == Kind::Seed
                 && new_copy_is_current(&root.join(a.path), a)
         })
@@ -524,7 +536,7 @@ mod tests {
     #[test]
     fn shipped_text_has_no_author_specifics() {
         for a in ASSETS {
-            for bad in ["/home/swan16", "huanliu", "swan16"] {
+            for bad in ["/home/swan16", "huanliu", "swan16", "shu.wan", "abel.ai"] {
                 assert!(!a.body.contains(bad), "{} mentions {bad}", a.path);
             }
         }
@@ -728,6 +740,41 @@ mod tests {
             fs::read_to_string(root.join("config.env.new")).unwrap(),
             "something of the user's\n"
         );
+    }
+
+    #[test]
+    fn a_seed_nobody_edited_is_updated_in_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("agent");
+        assert_eq!(cmd_install(Some(root.clone()), false, false, &out()), 0);
+        let cfg = asset("config.env");
+        // an older release shipped other text and the user never touched the file
+        older_release(&root, "config.env");
+        fs::write(root.join("config.env"), "# shipped by an older solx\n").unwrap();
+        assert_eq!(plan_one(&root, cfg, false), Action::Updated);
+        // a dry run changes nothing
+        assert_eq!(cmd_install(Some(root.clone()), true, false, &out()), 0);
+        assert_eq!(
+            fs::read_to_string(root.join("config.env")).unwrap(),
+            "# shipped by an older solx\n"
+        );
+        assert_eq!(cmd_install(Some(root.clone()), false, false, &out()), 0);
+        assert_eq!(
+            fs::read_to_string(root.join("config.env")).unwrap(),
+            cfg.body
+        );
+        assert!(!root.join("config.env.new").exists());
+        assert!(!root.join("config.env.bak").exists());
+        assert!(shipped_is_current(&root, cfg));
+
+        // one changed byte and it is the user's file again: kept, new text offered
+        older_release(&root, "config.env");
+        fs::write(
+            root.join("config.env"),
+            "# shipped by an older solx\n# mine\n",
+        )
+        .unwrap();
+        assert_eq!(plan_one(&root, cfg, false), Action::Staged);
     }
 
     #[test]

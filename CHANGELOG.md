@@ -26,6 +26,14 @@ tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
   again once yours matches) unless
   `--force` (old copy saved as `.bak`), runtime data is never touched, and `.version` records the installing solx. Every other `solx agent <cmd>` is forwarded to
   `~/.solx/agent/bin/sol-agent` (and notes when the installed scripts and the binary differ).
+- sol-agent alerts: the watchdog tracks pool health (ok, degraded, down, paused, hold) and sends DOWN, STILL DOWN, recovered and
+  no-standby messages through `ALERT_EMAIL` (Sol's `mail`), `NTFY_TOPIC` (ntfy.sh push) and/or `NOTIFY_CMD`, only after a state has lasted
+  (`ALERT_DOWN_MIN` 10, `ALERT_DEGRADED_MIN` 30, repeat `ALERT_REPEAT_H` 6), so a seconds-long failover sends nothing. `sol-agent alert test`
+  checks delivery, `status` shows `health`, `alerts` and `model`, `up` warns while no channel is set. `PING_URL` now reports the pool, not just
+  the watchdog: the base URL while it is fine, `<url>/fail` while DOWN. VS Code device codes never go to ntfy.
+- sol-agent's session runs on `SOL_AGENT_MODEL`, default `sonnet` (it only waits and runs shell commands); empty keeps Claude Code's default.
+- `solx agent install` updates `config.env` and `workspace/CLAUDE.md` in place when you never edited them (they still match what the last
+  install shipped).
 - `solx agent` follows solx's own command-line contract: JSON when stdout is not a terminal (`--json`/`--text` force it),
   human text on stderr in JSON mode, `-n` previews and `-y` confirms for `down`, `gc`, `wd-remove` and `tunnel stop` (no
   terminal and neither flag: exit 2), exit codes 0/1/2 plus 3 for "waiting for you" (device code), per-command `help`, and

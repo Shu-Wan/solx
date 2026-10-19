@@ -346,6 +346,7 @@ cargo run --locked -- agent install                        # resync your own ~/.
 
 | Test | What it covers | Cost |
 |---|---|---|
+| `test_alert.sh` | pool health and alerts: the real watchdog under a fake clock (`SOL_AGENT_FAKE_NOW`) with stub `mail`, `curl`, `squeue`; one alert per lasting state, none for a failover gap, repeat, recovery, paused/hold silent, ping vs `/fail`, channels (device codes never reach ntfy), `alert test`, status fields, the model flag | offline, no Slurm jobs |
 | `test_cli_contract.sh` | the command-line contract: JSON on a pipe and text on a terminal, `--json`/`--text`, stdout vs stderr, `-n` changes nothing, `-y`/`-n`/prompt and the exit-2 refusal, exit codes, `up` needs a trusted workspace, `status` lists waiting `.new` defaults (stub Slurm, scrontab and VS Code CLI) | offline, no Slurm jobs |
 | `test_maint.sh`, `test_pool.sh`, `test_perm_msg.sh` | maintenance parsing and chunk sizing, pool/lease logic, permission-mode inheritance and the mailbox | offline, no Slurm jobs |
 | `test_safety.sh` | regressions for review findings: scrontab never rewritten when unreadable, `gc` / `gc --tests` select disjoint jobs, permission-mode capture cannot be faked, argument validation, PAUSE, private state dirs | offline (stubs) |
@@ -354,7 +355,7 @@ cargo run --locked -- agent install                        # resync your own ~/.
 | `e2e.sh` | real Slurm jobs and a stub bridge (no Remote Control environments): preemption, node loss, time limit, maintenance, standby takeover, teardown | about 15 minutes; minutes-long 1-CPU jobs on `htc`/`public` |
 | `e2e_s3.sh` | one extra scenario: natural time-limit handoff to a younger standby. Not part of `run_all.sh` | a few minutes, same kind of jobs |
 | `skill_eval/run.sh` | the skill with and without it, headless `claude -p`, read-only allow list | about $1 of API use (15 runs) |
-| `run_all.sh` | `test_maint`, `test_pool`, `test_perm_msg`, `test_safety`, `test_cli_contract`, `test_tunnel`, `e2e`, `live_tunnel` in order, then `sol-agent gc --tests` (not the skill eval, not `e2e_s3`, not the 401 test) | about 40 minutes |
+| `run_all.sh` | `test_maint`, `test_pool`, `test_perm_msg`, `test_safety`, `test_cli_contract`, `test_alert`, `test_tunnel`, `e2e`, `live_tunnel` in order, then `sol-agent gc --tests` (not the skill eval, not `e2e_s3`, not the 401 test) | about 40 minutes |
 | `live_tunnel_401.sh` | logs in with your `gh` token (shows why that fails); **run by hand only**, it is excluded from `run_all.sh` | seconds |
 
 Run the offline tests for every change, `e2e.sh` when you touch `pool.sh`, `sol-agent.sbatch`, `sol-agent-wd.sh` or

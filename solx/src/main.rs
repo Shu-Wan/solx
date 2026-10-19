@@ -135,7 +135,8 @@ Forwarded to ~/.solx/agent/bin/sol-agent:
   up [-n]              start the always-on session (and its warm standby)
   down [-y|-n]         pause and cancel it
   resume               start it again
-  status               jobs, lease, watchdog, maintenance, workspace trust
+  status               jobs, lease, health, alert channels, model, watchdog, maintenance, trust
+  alert test           send a test message through the configured alert channels
   logs [N]             last N event-log lines (text; --json for one object per line)
   tunnel start|stop|status   VS Code tunnel on demand (prints the device code)
   msg send|read|list|watch   file mailbox for talking to other Claude sessions

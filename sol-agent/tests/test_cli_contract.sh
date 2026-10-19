@@ -50,7 +50,7 @@ export PATH=$T/bin:$PATH
 
 echo "## format selection: JSON on a pipe, text on a terminal, flags and env override"
 ok "status on a pipe is one JSON document" yes "$("$SA" status 2>/dev/null | jq -e . >/dev/null && echo yes || echo no)"
-ok "status has the documented keys (missing: 0)" 0 "$("$SA" status 2>/dev/null | jq -r '(["jobs","lease","maintenance","name","paused","permission_mode","pool","watchdog","workspace"] - keys)|length')"
+ok "status has the documented keys (missing: 0)" 0 "$("$SA" status 2>/dev/null | jq -r '(["alerts","health","jobs","lease","maintenance","model","name","paused","permission_mode","pool","watchdog","workspace"] - keys)|length')"
 ok "status lists the two pool jobs" "101 102" "$("$SA" status 2>/dev/null | jq -r '[.jobs[].id]|join(" ")')"
 ok "status --text on a pipe is text" yes "$("$SA" status --text 2>/dev/null | grep -q '^--- jobs' && echo yes || echo no)"
 ok "--json before the command works" sol-agent "$("$SA" --json status 2>/dev/null | jq -r .name)"

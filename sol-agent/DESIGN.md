@@ -70,9 +70,10 @@ The login node is not used.
 | `state/hb/<job>.json` (role, bridge up, left_s, eff_s, handoff) | every sol-agent job / 20 s | standby (promotes), watchdog, `sol-agent status` | > 180 s: lease can be taken; RUNNING and > 600 s: watchdog `scancel`s the job |
 | `state/lease` | holder, on change | all sol-agents | holder not RUNNING or hb stale: standby acquires |
 | `state/wd.json` | scrontab watchdog / 5 min | **active sol-agent** (backup watchdog), `sol-agent status` | > 15 min: the active sol-agent runs the watchdog itself and reinstalls the scrontab entry if it vanished |
-| optional `PING_URL` (healthchecks-style dead-man's switch) | watchdog / 5 min | an external service you choose | the service alerts the owner; off by default |
+| `state/health` (level, since, last alert) | watchdog / 5 min (`lib/health.sh`) | `ALERT_EMAIL` / `NTFY_TOPIC` / `NOTIFY_CMD`, `sol-agent status` | DOWN after `ALERT_DOWN_MIN` without an alive active session, no-standby after `ALERT_DEGRADED_MIN`; one recovery message; DOWN repeats every `ALERT_REPEAT_H` |
+| optional `PING_URL` (healthchecks-style dead-man's switch) | watchdog / 5 min | an external service you choose | base URL while the pool is fine or paused on purpose, `/fail` while a DOWN alert stands; silence means the watchdog is gone. Off by default |
 
-Mutual supervision: watchdog supervises sol-agents, sol-agents supervise the watchdog. The remaining hole (both gone *and* the scrontab entry gone) is what the optional external ping is for.
+Mutual supervision: watchdog supervises sol-agents, sol-agents supervise the watchdog. The remaining hole (both gone *and* the scrontab entry gone, or Sol unreachable) is what the optional external ping is for: it reports the pool as well as the watchdog, so the one service covers both. The internal alerts cover everything else and need no account (Sol's `mail`); ntfy is the phone-push alternative. A failover takes seconds, so a level must last before it alerts: the watchdog samples every 5 minutes and a single sample inside a failover would otherwise page for nothing. Device codes (secrets) are never sent to ntfy, whose topics are readable by anyone who knows the name.
 
 ## 5. Failure matrix (times from the e2e event logs unless noted)
 

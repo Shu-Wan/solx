@@ -26,7 +26,14 @@ AR=${SOL_AGENT_ROOT:-$HOME/.solx/agent}
 : "${BRIDGE_CMD:=}"                 # test hook: replaces `claude remote-control ...`
 : "${PING_URL:=}"                   # optional dead-man's-switch URL (healthchecks-style), off by default
 : "${PERMISSION_MODE:=inherit}"      # inherit = copy the mode of the Claude session that ran `sol-agent up`; or an explicit mode
-: "${NOTIFY_CMD:=}"                 # optional: command receiving "<subject>" "<body>" (e.g. ntfy/mail wrapper)
+: "${NOTIFY_CMD:=}"                 # optional: command receiving "<subject>" "<body>" (any script that can reach you)
+: "${ALERT_EMAIL:=}"               # optional: e-mail address for alerts (sent with Sol's `mail`)
+: "${NTFY_TOPIC:=}"                # optional: ntfy.sh topic (or a full URL of your own ntfy server) for phone push
+: "${NOTIFY_LEVEL:=alerts}"         # alerts = trouble only | all = also failovers, starts and tunnel-up notices
+: "${ALERT_DOWN_MIN:=10}"           # no active session for this long -> DOWN alert (shorter gaps are normal failovers)
+: "${ALERT_DEGRADED_MIN:=30}"       # no warm standby for this long -> DEGRADED alert
+: "${ALERT_REPEAT_H:=6}"            # a DOWN that persists is repeated at this interval
+: "${SOL_AGENT_MODEL:=}"            # model for the always-on session (alias like sonnet, or a model id); empty = Claude Code's default
 
 STATE=${SOL_AGENT_STATE:-$AR/state}
 HB=$STATE/hb; LOGS=$AR/logs
@@ -40,9 +47,44 @@ scrub_claude_env() {
   for v in $(env | grep -oE '^(CLAUDECODE|CLAUDE_CODE_[A-Z_]+|CLAUDE_PID|CLAUDE_EFFORT)'); do unset "$v"; done
 }
 
-now() { date +%s; }
+now() { echo "${SOL_AGENT_FAKE_NOW:-$(date +%s)}"; }       # SOL_AGENT_FAKE_NOW: test hook
 log() { printf '%s %s[%s] %s\n' "$(date -Is)" "${COMP:-sol-agent}" "${SLURM_JOB_ID:-$$}" "$*" >> "$STATE/events.log"; }
-notify() { [ -n "$NOTIFY_CMD" ] && $NOTIFY_CMD "$1" "${2:-}" >/dev/null 2>&1 || true; }
+
+# ---- notifications ------------------------------------------------------------------------------------------------
+#   notify <subject> [body] [priority]   trouble: every configured channel (priority: default | high | urgent)
+#   notify_info <subject> [body]         routine news (takeover, start, tunnel up): only with NOTIFY_LEVEL=all
+#   notify_private <subject> [body]      secrets (a VS Code device code): NOTIFY_CMD and e-mail only, never ntfy, whose
+#                                        topics are readable by anyone who knows the name
+# Delivery is best effort: a dead channel never fails the caller, every attempt is logged, and NOTIFY_RESULTS (a file),
+# when set, collects "<channel><TAB><exit code>" for `sol-agent alert test`.
+notify_channels() { # [private]
+  [ -n "$ALERT_EMAIL" ] && echo email
+  [ -n "$NTFY_TOPIC" ] && [ "${1:-}" != private ] && echo ntfy
+  [ -n "$NOTIFY_CMD" ] && echo cmd
+  return 0
+}
+_notify_send() { # channel subject body priority
+  local url
+  case $1 in
+    email) printf '%s\n' "$3" | timeout 20 mail -s "$2" "$ALERT_EMAIL";;
+    ntfy)  case $NTFY_TOPIC in http://*|https://*) url=$NTFY_TOPIC;; *) url=https://ntfy.sh/$NTFY_TOPIC;; esac
+           printf '%s' "$3" | curl -fsS -m 10 -H "Title: $2" -H "Priority: $4" -H "Tags: robot" --data-binary @- "$url";;
+    cmd)   timeout 30 $NOTIFY_CMD "$2" "$3";;
+  esac
+}
+notify_to() { # mode(all|private) subject [body] [priority]
+  local mode=$1 subj=${2//$'\n'/ } body=${3:-} prio=${4:-default} ch rc
+  body=$(printf '%s' "$body" | head -c 2000)
+  for ch in $(notify_channels "$mode"); do
+    _notify_send "$ch" "$subj" "$body" "$prio" >/dev/null 2>&1; rc=$?
+    log "notify $ch rc=$rc: $subj"
+    [ -n "${NOTIFY_RESULTS:-}" ] && printf '%s\t%s\n' "$ch" "$rc" >> "$NOTIFY_RESULTS"
+  done
+  return 0
+}
+notify()         { notify_to all "$@"; }
+notify_private() { notify_to private "$@"; }
+notify_info()    { [ "$NOTIFY_LEVEL" = all ] && notify_to all "$@"; return 0; }
 
 # D-HH:MM:SS | HH:MM:SS | MM:SS | UNLIMITED  -> seconds
 dur_to_s() {
