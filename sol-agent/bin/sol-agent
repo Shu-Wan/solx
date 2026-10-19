@@ -156,7 +156,13 @@ cmd_status() {
   local pm_eff pm_shell trusted=false url latency="" events
   pm_eff=$(effective_permission_mode || true); pm_shell=$(detect_permission_mode 2>/dev/null || echo n/a)
   trust_ok && trusted=true
-  url=$(ls -t "$LOGS"/bridge-*.log 2>/dev/null | head -1 | xargs -r cat | strip | grep -oE 'https://claude\.ai/code\?environment=[A-Za-z0-9_]+' | tail -1)
+  # Remote Control link: `claude.ai/code/session_<id>` in current Claude Code, `claude.ai/code?environment=<id>` in older ones. The log is the
+  # terminal capture, so the link sits inside OSC 8 hyperlink codes (ESC/BEL end it, which keeps the match from running on). Newest log with a link wins.
+  local rcre='https://claude\.ai/code(/session_[A-Za-z0-9_-]+|\?environment=[A-Za-z0-9_]+)' blog
+  url=""
+  for blog in $(ls -t "$LOGS"/bridge-*.log 2>/dev/null | head -5); do
+    url=$(strip < "$blog" | grep -aoE "$rcre" | tail -1); [ -n "$url" ] && break
+  done
   [ -f "$STATE/latency.log" ] && latency=$(tail -5 "$STATE/latency.log" | sed -E 's/.*queue_wait_s=([0-9]+).*/\1s/' | tr '\n' ' ')
   events=$(tail -n 5 "$STATE/events.log" 2>/dev/null | cut -c1-140)
   # `solx agent install` leaves the shipped copy of a changed config.env / workspace/CLAUDE.md as <name>.new

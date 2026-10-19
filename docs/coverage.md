@@ -215,7 +215,7 @@ to the skill should mean adding a row here in the same group.
 | Tier | Result |
 |---|---|
 | Offline: maintenance parsing, pool/lease, permission mode + mailbox, review regressions | 17/17, 25/25, 23/23, 25/25 |
-| Command-line contract: JSON on a pipe / text on a terminal, `-y`/`-n`/prompt, exit codes, stdout vs stderr (stubs) | 69/69 |
+| Command-line contract: JSON on a pipe / text on a terminal, `-y`/`-n`/prompt, exit codes, stdout vs stderr (stubs) | 73/73 |
 | Tunnel wrapper against a stub `code` CLI (incl. the JSON device-code flow) | 28/28 (first run 26/28: queue delay inside a 25 s wait; passes with 60 s) |
 | Sol's real `code tunnel`, throwaway data dir, code never approved | 8/8 |
 | Failure injection on real Slurm jobs, stub bridge (preemption, node loss, time limit, maintenance, standby takeover, teardown) | 25/25 (960 s) |

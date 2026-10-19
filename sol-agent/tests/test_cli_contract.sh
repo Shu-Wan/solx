@@ -164,6 +164,17 @@ ok "status lists each .new file" '["config.env.new","workspace/CLAUDE.md.new"]' 
 ok "status text names them" yes "$(SOL_AGENT_ROOT=$R "$R/bin/sol-agent" status --text 2>/dev/null | grep -q 'new defaults waiting.*config.env.new' && echo yes || echo no)"
 ok "status text is quiet without them" no "$("$SA" status --text 2>/dev/null | grep -q 'new defaults waiting' && echo yes || echo no)"
 
+echo "## Remote Control link in status (read from the bridge log, which holds terminal codes)"
+mkdir -p "$R/logs"
+printf 'x\033]8;;https://claude.ai/code/session_014Eqhi7wimPcGdDbDvVd2eh?from=cli/rc\aSee https://claude.ai/code/session_014Eqhi7wimPcGdDbDvVd2eh\033]8;;\a\033[K\r\n' > "$R/logs/bridge-1.log"
+ok "status finds a claude.ai/code/session_ link" "https://claude.ai/code/session_014Eqhi7wimPcGdDbDvVd2eh" "$(SOL_AGENT_ROOT=$R "$R/bin/sol-agent" status 2>/dev/null | jq -r .remote_control_url)"
+sleep 1; printf '\033[1mhttps://claude.ai/code?environment=env_01ABC\033[0m\n' > "$R/logs/bridge-2.log"
+ok "newest log wins, older ?environment= form still read" "https://claude.ai/code?environment=env_01ABC" "$(SOL_AGENT_ROOT=$R "$R/bin/sol-agent" status 2>/dev/null | jq -r .remote_control_url)"
+sleep 1; echo "bridge down, no link yet" > "$R/logs/bridge-3.log"
+ok "a newer log without a link does not hide an older one" "https://claude.ai/code?environment=env_01ABC" "$(SOL_AGENT_ROOT=$R "$R/bin/sol-agent" status 2>/dev/null | jq -r .remote_control_url)"
+rm -f "$R/logs"/bridge-*.log
+ok "no bridge log: null" null "$(SOL_AGENT_ROOT=$R "$R/bin/sol-agent" status 2>/dev/null | jq -r .remote_control_url)"
+
 echo "contract: $pass passed, $fail failed"
 rm -rf "$T"
 [ "$fail" -eq 0 ]
