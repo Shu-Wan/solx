@@ -33,3 +33,8 @@ evals/mocks/.module_loaded
 # Zipapp build tree and artifacts (solx/scripts/build-pyz.sh)
 solx/build/
 solx/dist/
+
+# sol-agent runtime state (created in the install directory)
+sol-agent/state*
+sol-agent/logs/
+sol-agent/results/
