@@ -33,6 +33,7 @@ tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
   the watchdog: the base URL while it is fine, `<url>/fail` while DOWN. VS Code device codes go to `NOTIFY_CMD` only.
 - The scrontab watchdog moved from `htc`/`public` to `general`/`private`: at peak it waited over an hour on `htc` (re-run `sol-agent wd-install` or `up` to move an existing entry). `up` and `resume` print one JSON document again (the submitted job id went to stdout first).
 - sol-agent's session runs on `SOL_AGENT_MODEL`, default `sonnet` (it only waits and runs shell commands); empty keeps Claude Code's default.
+- `solx agent install` makes the install directory mode 700 (it can hold an ntfy topic, which works like a password, and home directories on Sol are group-readable).
 - `solx agent install` updates `config.env` and `workspace/CLAUDE.md` in place when you never edited them (they still match what the last
   install shipped).
 - `solx agent` follows solx's own command-line contract: JSON when stdout is not a terminal (`--json`/`--text` force it),

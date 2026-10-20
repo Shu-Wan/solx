@@ -154,7 +154,8 @@ solx agent gc -y               # do it
 ```
 
 `state/`, `logs/` and the mailbox are created mode 700: they hold message text, device codes and the session's
-terminal log, and home directories on Sol are group-readable.
+terminal log, and home directories on Sol are group-readable. `solx agent install` also makes the install directory itself
+mode 700, because `config.env` can hold an ntfy topic, which works like a password.
 
 ## Update
 

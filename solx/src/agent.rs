@@ -331,6 +331,15 @@ pub fn cmd_install(dir: Option<PathBuf>, dry_run: bool, force: bool, out: &Out) 
                 return 1;
             }
         }
+        // config.env can hold an ntfy topic (a password in all but name), and state/ holds the mailbox and device codes: the install
+        // directory is private to the user even where the home directory is readable by the group
+        if let Err(e) = fs::set_permissions(&root, fs::Permissions::from_mode(0o700)) {
+            out.error(&format!(
+                "error: unable to make {} private: {e}",
+                root.display()
+            ));
+            return 1;
+        }
         for a in &obsolete {
             let stale = new_copy(&root.join(a.path));
             if let Err(e) = fs::remove_file(&stale) {
@@ -792,6 +801,19 @@ mod tests {
         let new = root.join("config.env.new");
         assert!(!fs::symlink_metadata(&new).unwrap().file_type().is_symlink());
         assert_eq!(fs::read_to_string(&new).unwrap(), asset("config.env").body);
+    }
+
+    #[test]
+    fn the_install_directory_is_private() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("agent");
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(cmd_install(Some(root.clone()), false, false, &out()), 0);
+        assert_eq!(
+            fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
     }
 
     #[test]

@@ -220,7 +220,7 @@ to the skill should mean adding a row here in the same group.
 | Tunnel wrapper against a stub `code` CLI (incl. the JSON device-code flow) | 28/28 (first run 26/28: queue delay inside a 25 s wait; passes with 60 s) |
 | Sol's real `code tunnel`, throwaway data dir, code never approved | 8/8 |
 | Failure injection on real Slurm jobs, stub bridge (preemption, node loss, time limit, maintenance, standby takeover, teardown) | 25/25 (960 s) |
-| `solx agent` installer and forwarder (`cargo test`) | 132 unit + 55 integration, in CI |
+| `solx agent` installer and forwarder (`cargo test`) | 133 unit + 55 integration, in CI |
 | Skill with vs without it, headless `claude -p`, 6 task prompts + 3 negatives | 28/28 vs 9-11/25 (latest 28/28 vs 10/25); no false triggers (n=1 per case, regex graders: indicative) |
 
 **Not verified in the field:** multi-day runs (OAuth refresh, context growth), scrontab across a real
