@@ -41,3 +41,4 @@ scancel -n "$NAME"; wait_for 40 'test "$(nalive)" -eq 0'
 
 scancel -n "$NAME"; sleep 2
 say ""; say "e2e_s3: $pass passed, $fail failed"; echo done >> "$OUT"
+[ "$fail" -eq 0 ]

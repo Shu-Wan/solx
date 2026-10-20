@@ -27,10 +27,11 @@ tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
   `--force` (old copy saved as `.bak`), runtime data is never touched, and `.version` records the installing solx. Every other `solx agent <cmd>` is forwarded to
   `~/.solx/agent/bin/sol-agent` (and notes when the installed scripts and the binary differ).
 - sol-agent alerts: the watchdog tracks pool health (ok, degraded, down, paused, hold) and sends DOWN, STILL DOWN, recovered and
-  no-standby messages through `ALERT_EMAIL` (Sol's `mail`), `NTFY_TOPIC` (ntfy.sh push) and/or `NOTIFY_CMD`, only after a state has lasted
+  no-standby messages through `ALERT_EMAIL` (Slurm's job mail, shown as the "Job Name" line: compute nodes cannot send mail, and it waits in the queue like any job), `NTFY_TOPIC` (ntfy.sh push) and/or `NOTIFY_CMD`, only after a state has lasted
   (`ALERT_DOWN_MIN` 10, `ALERT_DEGRADED_MIN` 30, repeat `ALERT_REPEAT_H` 6), so a seconds-long failover sends nothing. `sol-agent alert test`
   checks delivery, `status` shows `health`, `alerts` and `model`, `up` warns while no channel is set. `PING_URL` now reports the pool, not just
-  the watchdog: the base URL while it is fine, `<url>/fail` while DOWN. VS Code device codes never go to ntfy.
+  the watchdog: the base URL while it is fine, `<url>/fail` while DOWN. VS Code device codes go to `NOTIFY_CMD` only.
+- The scrontab watchdog moved from `htc`/`public` to `general`/`private`: at peak it waited over an hour on `htc` (re-run `sol-agent wd-install` or `up` to move an existing entry). `up` and `resume` print one JSON document again (the submitted job id went to stdout first).
 - sol-agent's session runs on `SOL_AGENT_MODEL`, default `sonnet` (it only waits and runs shell commands); empty keeps Claude Code's default.
 - `solx agent install` updates `config.env` and `workspace/CLAUDE.md` in place when you never edited them (they still match what the last
   install shipped).

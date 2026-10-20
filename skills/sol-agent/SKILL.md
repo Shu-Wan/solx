@@ -37,8 +37,8 @@ as `<name>.new` for the user to merge; it never touches running jobs). If `~/.so
 
 `solx agent status` shows `health.level` (ok, degraded, down, paused, hold) and `alerts.channels`. If no channel is set, say so once and offer to
 set `ALERT_EMAIL` or `NTFY_TOPIC` in `~/.solx/agent/config.env`, then run `solx agent alert test` (exit 0 = every channel took it; an accepted
-e-mail still has to arrive, so ask the user to confirm). The watchdog sends DOWN / recovered / no-standby messages; never put a VS Code device
-code into an ntfy message. The agent session runs on `SOL_AGENT_MODEL` (default `sonnet`); changing it takes effect after `down` then `up`.
+e-mail still has to arrive, so ask the user to confirm; it is Slurm job mail, subject only). The watchdog sends DOWN / recovered / no-standby messages; never put a VS Code device
+code into an ntfy message or an e-mail (job names are visible to every user on Sol). The agent session runs on `SOL_AGENT_MODEL` (default `sonnet`); changing it takes effect after `down` then `up`.
 
 ## Output and safety contract (same rules as `solx`)
 

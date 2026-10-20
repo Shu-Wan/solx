@@ -49,9 +49,9 @@ EOF
     ;;
     alert) cat <<'EOF'
 sol-agent alert test [--json]
-  Send one test message through every configured channel: ALERT_EMAIL (Sol's `mail`), NTFY_TOPIC (ntfy.sh push) and NOTIFY_CMD.
-  Exit 0 if every channel took it, 1 if one failed or none is configured. An e-mail that Sol's mail system accepted is not yet
-  in your inbox: check it arrived. The watchdog sends the real alerts (pool down for ALERT_DOWN_MIN, no standby for
+  Send one test message through every configured channel: ALERT_EMAIL (Slurm job mail, subject only: Sol's compute nodes cannot
+  send mail themselves), NTFY_TOPIC (ntfy.sh push) and NOTIFY_CMD. Exit 0 if every channel took it, 1 if one failed or none is
+  configured. "Took it" is not "arrived": the e-mail comes when its 1-minute job ends, so check your inbox. The watchdog sends the real alerts (pool down for ALERT_DOWN_MIN, no standby for
   ALERT_DEGRADED_MIN, recovery); see docs/sol-agent.md.
 EOF
     ;;
@@ -79,8 +79,8 @@ EOF
 
 wd_block() { cat <<EOF
 $BEGIN
-#SCRON -p htc
-#SCRON -q public
+#SCRON -p general
+#SCRON -q private
 #SCRON -t 00:03:00
 #SCRON -c 1
 #SCRON --mem=2G
@@ -116,7 +116,7 @@ wd_install_do() {
   scron_read || { warn "error: could not read your scrontab; leaving it unchanged"; WD_RESULT=failed; return 1; }
   local f; f=$(mktemp)
   { scron_without_block; wd_block; } > "$f"
-  if scrontab "$f"; then say "watchdog installed (every 5 min, htc/public, 3 min cap)"; WD_RESULT=installed; else WD_RESULT=failed; fi
+  if scrontab "$f"; then say "watchdog installed (every 5 min, general/private, 3 min cap)"; WD_RESULT=installed; else WD_RESULT=failed; fi
   rm -f "$f"; [ "$WD_RESULT" = installed ]
 }
 wd_remove_do() {
@@ -315,13 +315,13 @@ cmd_alert() {
   f=$(mktemp); NOTIFY_RESULTS=$f notify "sol-agent test message" "Sent by 'sol-agent alert test' from $(hostname -s) at $(date -Is). If you can read this, alerts reach you."
   while IFS=$'\t' read -r ch rc; do
     [ -n "$ch" ] || continue
-    case $ch in email) detail="to $ALERT_EMAIL";; ntfy) detail="topic set";; cmd) detail="NOTIFY_CMD";; esac
+    case $ch in email) detail="Slurm job mail to $ALERT_EMAIL, subject only";; ntfy) detail="topic set";; cmd) detail="NOTIFY_CMD";; esac
     if [ "$rc" = 0 ]; then ok=$((ok+1)); say "$ch: accepted ($detail)"; else bad=$((bad+1)); say "$ch: FAILED rc=$rc ($detail)"; fi
     rows+="$ch|$rc|$detail"$'\n'
   done < "$f"; rm -f "$f"
   is_json && printf '%s' "$rows" | jq -R -s -c --argjson ok "$ok" --argjson bad "$bad" \
     '{action:"alert_test",sent:($bad==0 and $ok>0),channels:(split("\n")|map(select(length>0)|split("|")|{name:.[0],ok:(.[1]=="0"),exit_code:(.[1]|tonumber),detail:.[2]}))}'
-  [ "$ok" -gt 0 ] && say "an e-mail that was accepted still has to arrive: check your inbox (and spam)"
+  case $chans in *email*) [ "$ok" -gt 0 ] && say "e-mail: Slurm sends it when the 1-minute mail job ends, so check your inbox (and spam) in a couple of minutes";; esac
   [ "$bad" -eq 0 ] && [ "$ok" -gt 0 ]
 }
 

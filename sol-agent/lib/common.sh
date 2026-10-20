@@ -27,7 +27,7 @@ AR=${SOL_AGENT_ROOT:-$HOME/.solx/agent}
 : "${PING_URL:=}"                   # optional dead-man's-switch URL (healthchecks-style), off by default
 : "${PERMISSION_MODE:=inherit}"      # inherit = copy the mode of the Claude session that ran `sol-agent up`; or an explicit mode
 : "${NOTIFY_CMD:=}"                 # optional: command receiving "<subject>" "<body>" (any script that can reach you)
-: "${ALERT_EMAIL:=}"               # optional: e-mail address for alerts (sent with Sol's `mail`)
+: "${ALERT_EMAIL:=}"               # optional: e-mail address for alerts (delivered by Slurm's own job mail; see _notify_send)
 : "${NTFY_TOPIC:=}"                # optional: ntfy.sh topic (or a full URL of your own ntfy server) for phone push
 : "${NOTIFY_LEVEL:=alerts}"         # alerts = trouble only | all = also failovers, starts and tunnel-up notices
 : "${ALERT_DOWN_MIN:=10}"           # no active session for this long -> DOWN alert (shorter gaps are normal failovers)
@@ -53,12 +53,13 @@ log() { printf '%s %s[%s] %s\n' "$(date -Is)" "${COMP:-sol-agent}" "${SLURM_JOB_
 # ---- notifications ------------------------------------------------------------------------------------------------
 #   notify <subject> [body] [priority]   trouble: every configured channel (priority: default | high | urgent)
 #   notify_info <subject> [body]         routine news (takeover, start, tunnel up): only with NOTIFY_LEVEL=all
-#   notify_private <subject> [body]      secrets (a VS Code device code): NOTIFY_CMD and e-mail only, never ntfy, whose
-#                                        topics are readable by anyone who knows the name
+#   notify_private <subject> [body]      secrets (a VS Code device code): NOTIFY_CMD only. Never ntfy, whose topics anyone who
+#                                        knows the name can read, and never e-mail, which rides in a job name that every user
+#                                        on Sol can list with squeue
 # Delivery is best effort: a dead channel never fails the caller, every attempt is logged, and NOTIFY_RESULTS (a file),
 # when set, collects "<channel><TAB><exit code>" for `sol-agent alert test`.
 notify_channels() { # [private]
-  [ -n "$ALERT_EMAIL" ] && echo email
+  [ -n "$ALERT_EMAIL" ] && [ "${1:-}" != private ] && echo email
   [ -n "$NTFY_TOPIC" ] && [ "${1:-}" != private ] && echo ntfy
   [ -n "$NOTIFY_CMD" ] && echo cmd
   return 0
@@ -66,7 +67,13 @@ notify_channels() { # [private]
 _notify_send() { # channel subject body priority
   local url
   case $1 in
-    email) printf '%s\n' "$3" | timeout 20 mail -s "$2" "$ALERT_EMAIL";;
+    # Sol's compute nodes cannot send mail themselves (their sendmail relays to 127.0.0.1, where nothing listens: `mail` reports
+    # success and the message sits in a local queue that is lost with the node). The one mail path the cluster supports is
+    # Slurm's job mail, sent by the controller. So an alert is a throwaway 1-second job that e-mails when it ends, and the
+    # text is the job name: the e-mail is Slurm's "Job N Ended" with a "Job Name : <subject>" line (verified). No body. It leaves
+    # when the job has run, so it waits in the queue like any job (general/private: the quickest queue measured at peak).
+    email) timeout 30 sbatch --parsable -J "${2:0:150}" -p general -q private -t 1 -c 1 --mem=2G --mail-type=END,FAIL \
+             --mail-user="$ALERT_EMAIL" -o /dev/null --wrap true;;
     ntfy)  case $NTFY_TOPIC in http://*|https://*) url=$NTFY_TOPIC;; *) url=https://ntfy.sh/$NTFY_TOPIC;; esac
            printf '%s' "$3" | curl -fsS -m 10 -H "Title: $2" -H "Priority: $4" -H "Tags: robot" --data-binary @- "$url";;
     cmd)   timeout 30 $NOTIFY_CMD "$2" "$3";;

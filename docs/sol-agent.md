@@ -67,11 +67,17 @@ gh skill install Shu-Wan/solx sol-agent
    `PERMISSION_MODE=acceptEdits` in `config.env`.
 3. **Set up alerts.** Nothing else tells you when the pool is down, so give the watchdog a way to reach you. In `config.env`:
    ```shell
-   ALERT_EMAIL=you@example.com     # Sol's `mail`; ASU addresses are <asurite>@asu.edu
+   ALERT_EMAIL=you@example.com     # Slurm's own job mail, subject only; ASU addresses are <asurite>@asu.edu
    NTFY_TOPIC=<long-random-name>   # or phone push through ntfy.sh (free app, no account); anyone who knows the name can read it
    ```
-   then `solx agent alert test` sends one message through every channel and says which took it. An e-mail that
-   Sol's mail system accepted still has to arrive, so check your inbox. `solx agent up` warns while no channel is set.
+   then `solx agent alert test` sends one message through every channel and says which took it. "Took it" is not "arrived":
+   the e-mail comes when its 1-minute job ends, so check your inbox (and spam). `solx agent up` warns while no channel is set.
+   Why Slurm job mail: Sol's compute nodes cannot send mail themselves (their `sendmail` relays to `127.0.0.1`, where nothing
+   listens, so `mail` reports success and the message dies in a local queue). The controller can, so an alert is a throwaway
+   1-second job on `general`/`private` that e-mails when it ends. The e-mail is Slurm's "Job N Ended" message and the alert
+   is its `Job Name :` line (`sol-agent DOWN: no active session for 12 min`); nothing else. Because it is a job it waits in
+   the queue like any job: seconds when Sol is quiet, several minutes at peak. ntfy and `NOTIFY_CMD` are sent straight from the
+   running process, so they are immediate and also carry the pool summary. Use ntfy if you want the alert the moment it happens.
    What you get (the watchdog checks every 5 minutes): **DOWN** when no session has been active for `ALERT_DOWN_MIN`
    (10), **STILL DOWN** every `ALERT_REPEAT_H` (6) hours, **recovered** when it is back, and **no standby** after
    `ALERT_DEGRADED_MIN` (30). A normal failover takes seconds and sends nothing (set `NOTIFY_LEVEL=all` to hear about
@@ -224,9 +230,9 @@ Do not use `gh auth token` as a login - the tunnel service answers 401. Never ru
 | `PERMISSION_MODE` | `inherit` | Mode of the session that ran `up`, or pin one (`acceptEdits`, ...). |
 | `MAINT_MARGIN_MIN` | `30` | Leave / avoid this long before a maintenance window. |
 | `SOL_AGENT_MODEL` | `sonnet` | Model for the always-on session: an alias (`sonnet`, `opus`, `haiku`) or a model id. Empty uses Claude Code's own default, often Opus. The agent mostly waits and runs shell commands, so Sonnet is enough. Applies when a pool job starts, so `down` then `up` to change a running agent. |
-| `ALERT_EMAIL`, `NTFY_TOPIC`, `NOTIFY_CMD` | off | Alert channels: e-mail through Sol's `mail`, ntfy.sh push, or your own script (`NOTIFY_CMD "<subject>" "<body>"`). |
+| `ALERT_EMAIL`, `NTFY_TOPIC`, `NOTIFY_CMD` | off | Alert channels: e-mail through Slurm's job mail (subject only), ntfy.sh push, or your own script (`NOTIFY_CMD "<subject>" "<body>"`). |
 | `ALERT_DOWN_MIN`, `ALERT_DEGRADED_MIN`, `ALERT_REPEAT_H` | `10`, `30`, `6` | How long a state must last before the first alert, and the repeat interval for DOWN. |
-| `NOTIFY_LEVEL` | `alerts` | `all` also sends failovers, starts and tunnel-up notices. VS Code device codes never go to ntfy. |
+| `NOTIFY_LEVEL` | `alerts` | `all` also sends failovers, starts and tunnel-up notices. VS Code device codes go to `NOTIFY_CMD` only: ntfy topics and job names (which `squeue` shows to every user) are not private. |
 | `PING_URL` | off | Dead-man's switch (healthchecks.io style): pinged while the pool is fine, `<url>/fail` while DOWN. |
 | `WORKDIR` | `$AR/workspace` | The trusted workspace (do not change after the first start). |
 
@@ -238,6 +244,7 @@ Do not use `gh auth token` as a login - the tunnel service answers 401. Never ru
 | Jobs stay PENDING | `squeue --me -t PD -O "JobID,Reason:50,StartTime"`; do not resubmit - the replacement inherits the same priority. |
 | No `sol-agent` in Remote Control | `solx agent logs 30`; `tmux` session `bridge` on the active node (`solx agent attach`). |
 | Watchdog entry `MISSING` | `solx agent up` or `~/.solx/agent/bin/sol-agent wd-install`. |
+| `status` shows the watchdog `via` `--from-sol-agent` and a growing age | The scrontab job is stuck in the queue. The active session runs the watchdog itself every 15 minutes meanwhile. Entries written before 2026-10-19 use `htc`/`public`, which starved for over an hour at peak: run `solx agent wd-install` to move it to `general`/`private`. |
 | Device code expired | `solx agent tunnel start` again for a fresh one. |
 | A peer session's `SendMessage` is held | Modes differ; use `solx agent msg send` (the agent's instructions already say so). |
 

@@ -97,7 +97,9 @@ pool_ensure() {
     esac
   fi
   if [ -n "$why" ]; then
-    if [ "$why" = standby ]; then pool_submit "$why" "${STAGGER_PCT:-60}"; else pool_submit "$why"; fi
+    # pool_submit prints the new job id (or the DRY: line) on stdout for direct callers; here it is only a log line, and `up` / `resume`
+    # print one JSON document on stdout after this returns
+    if [ "$why" = standby ]; then pool_submit "$why" "${STAGGER_PCT:-60}" >&2; else pool_submit "$why" >&2; fi
   fi
   if [ "$total" -gt 2 ]; then   # over-provisioned (races): drop the newest pending one
     id=$(sol_agent_jobs | awk -F'|' '$2!="RUNNING"{print $4" "$1}' | sort | tail -1 | awk '{print $2}')
