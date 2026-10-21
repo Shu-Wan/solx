@@ -8,7 +8,9 @@
 # number of this pool's jobs that ended PREEMPTED in the last PREEMPT_WINDOW_H hours (test hook: SOL_AGENT_PREEMPT_COUNT)
 preempted_recently() {
   [ -n "${SOL_AGENT_PREEMPT_COUNT:-}" ] && { echo "$SOL_AGENT_PREEMPT_COUNT"; return; }
-  sacct -u "$USER" -n -P -X -S "now-${PREEMPT_WINDOW_H:-12}hours" -s PREEMPTED --name "$NAME" -o JobID 2>/dev/null | wc -l
+  # -E now is required: with a state filter and no end time, sacct reports only jobs that are in that state *at this moment*, so a
+  # job that was preempted an hour ago is invisible and the count is always 0 (found 2026-10-21; the storm fallback never fired)
+  sacct -u "$USER" -n -P -X -S "now-${PREEMPT_WINDOW_H:-12}hours" -E now -s PREEMPTED --name "$NAME" -o JobID 2>/dev/null | wc -l
 }
 
 # pool_submit <reason> [percent]: queue one sol-agent chunk, sized to end before the next maintenance window.

@@ -7,6 +7,18 @@ mkdir -p "$SOL_AGENT_STATE"; : > "$SOL_AGENT_RESV_FILE"
 pass=0; fail=0; ok() { if [ "$2" = "$3" ]; then pass=$((pass+1)); echo "PASS $1"; else fail=$((fail+1)); echo "FAIL $1: expected [$2] got [$3]"; fi; }
 has() { grep -qE -e "$1" <<<"$2" && echo yes || echo no; }
 
+echo "## preemption counter (a sacct stub that behaves like the real one: a state filter without -E sees only jobs in that state right now)"
+SB=$T/sbin; mkdir -p "$SB"
+cat > "$SB/sacct" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in *" -E now "*) printf '%s\n' 66001 66002;; *" -s PREEMPTED "*) ;; esac   # no -E: the real sacct returns nothing for jobs that already ended
+EOF
+chmod +x "$SB/sacct"
+ok "two preempted pool jobs in the window are counted" 2 "$(PATH=$SB:$PATH preempted_recently | tr -d ' ')"
+ok "the window follows PREEMPT_WINDOW_H" 2 "$(PATH=$SB:$PATH PREEMPT_WINDOW_H=24 preempted_recently | tr -d ' ')"
+ok "enough counted preemptions send the next submission to the fallback queue" yes "$(has '-p public -q public' "$(PATH=$SB:$PATH PARTITION=general QOS=private SOL_AGENT_FAKE_NODES="" PREEMPT_STORM=2 pool_submit t)")"
+: > "$STATE/events.log"      # the log-count checks further down start from an empty log
+
 echo "## placement"
 PARTITION=general QOS=private MAX_TIME=7-00:00:00 SOL_AGENT_FAKE_NODES="" SOL_AGENT_PREEMPT_COUNT=0 ; out=$(pool_submit t)
 ok "private pool stays private with no storm"          yes "$(has '-p general -q private' "$out")"

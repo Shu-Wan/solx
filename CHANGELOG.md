@@ -31,6 +31,7 @@ tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
   (`ALERT_DOWN_MIN` 10, `ALERT_DEGRADED_MIN` 30, repeat `ALERT_REPEAT_H` 6), so a seconds-long failover sends nothing. `sol-agent alert test`
   checks delivery, `status` shows `health`, `alerts` and `model`, `up` warns while no channel is set. `PING_URL` now reports the pool, not just
   the watchdog: the base URL while it is fine, `<url>/fail` while DOWN. VS Code device codes go to `NOTIFY_CMD` only.
+- The preemption-storm fallback to `public` could never trigger: the counter's `sacct` call lacked `-E now`, so it never saw jobs that had already ended and always returned 0 (seven pool and session jobs were preempted in two days without it noticing). Fixed, with a regression test whose `sacct` stub behaves like the real one.
 - The scrontab watchdog moved from `htc`/`public` to `general`/`private`: at peak it waited over an hour on `htc` (re-run `sol-agent wd-install` or `up` to move an existing entry). `up` and `resume` print one JSON document again (the submitted job id went to stdout first).
 - sol-agent's session runs on `SOL_AGENT_MODEL`, default `sonnet` (it only waits and runs shell commands); empty keeps Claude Code's default.
 - `solx agent install` makes the install directory mode 700 (it can hold an ntfy topic, which works like a password, and home directories on Sol are group-readable).
