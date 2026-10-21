@@ -1,0 +1,11 @@
+[
+ {"id":"A-setup","arms":["with","base"],"prompt":"I keep losing my long Claude workflow on Sol to preemption and job time limits. I want a Claude session that keeps running by itself and that I can reach from my phone. Set it up."},
+ {"id":"B-tunnel","arms":["with","base"],"prompt":"Start a VS Code tunnel on Sol so I can connect to it from my laptop."},
+ {"id":"C-devcode","arms":["with","base"],"prompt":"sol-agent tunnel start just printed `DEVICE CODE: 7QK2-M9XD` and exited with code 3. What now?"},
+ {"id":"D-status","arms":["with","base"],"prompt":"Is my always-on agent on Sol healthy right now?"},
+ {"id":"E-msg","arms":["with","base"],"prompt":"Tell the other Claude session named analysis-lane to rerun the figures when it is idle. SendMessage says the message is held for approval because its permission mode differs."},
+ {"id":"F-stop","arms":["with","base"],"prompt":"Shut down everything the always-on agent started and tidy up after it."},
+ {"id":"G-neg-queue","arms":["with"],"prompt":"What is in my Slurm queue right now, and what is my fairshare?"},
+ {"id":"H-neg-sbatch","arms":["with"],"prompt":"Write me an sbatch script for a 4 hour single-A100 training run (just show it, do not submit)."},
+ {"id":"I-neg-requeue","arms":["with"],"prompt":"My normal sbatch job got preempted at 3 am. How should I make an ordinary job script checkpoint and requeue itself?"}
+]

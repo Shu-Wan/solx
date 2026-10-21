@@ -12,6 +12,8 @@
 //! solx keep      [--stage S] [--csv-dir D] [-j N] [-y] [-n] [-v]
 //! solx config show [--json]
 //! solx config edit
+//! solx agent install [--dir D] [-n] [-f]   (sol-agent: always-on Claude)
+//! solx agent <up|down|status|tunnel|...>   (forwarded to ~/.solx/agent/bin/sol-agent)
 //! solx completions <bash|zsh|fish>
 //! solx cheatsheet
 //! solx version   (alias of --version)
@@ -23,6 +25,7 @@
 //! accepted both before the subcommand and trailing on every leaf except
 //! `job start`, where a non-leading `--json` is salloc passthrough.
 
+mod agent;
 mod cheatsheet;
 mod completions;
 mod config;
@@ -110,8 +113,66 @@ enum Cmd {
         command: Option<ConfigCmd>,
     },
 
+    /// Keep an always-on Claude session running on Sol (sol-agent).
+    ///
+    /// `install` writes (or updates) the bundled scripts under ~/.solx/agent.
+    /// Any other word is forwarded to ~/.solx/agent/bin/sol-agent: up, down,
+    /// status, logs, tunnel, msg, gc. Run `solx agent status` for the
+    /// current state and see docs/sol-agent.md.
+    #[command(after_help = AGENT_FORWARDED)]
+    Agent {
+        #[command(subcommand)]
+        command: Option<AgentCmd>,
+    },
+
     /// Show help and exit (alias of --help).
     Help,
+}
+
+/// Shown under `solx agent --help`: the words forwarded to the sol-agent CLI.
+const AGENT_FORWARDED: &str = "\
+Forwarded to ~/.solx/agent/bin/sol-agent:
+  up [-n]              start the always-on session (and its warm standby)
+  down [-y|-n]         pause and cancel it
+  resume               start it again
+  status               jobs, lease, health, alert channels, model, watchdog, maintenance, trust
+  alert test           send a test message through the configured alert channels
+  logs [N]             last N event-log lines (text; --json for one object per line)
+  tunnel start|stop|status   VS Code tunnel on demand (prints the device code)
+  msg send|read|list|watch   file mailbox for talking to other Claude sessions
+  gc [-y|-n]           clean up stale jobs, sessions and test leftovers
+
+Output follows solx: JSON when stdout is not a terminal, --json forces it, text goes to
+stderr then. Destructive commands (down, gc, tunnel stop, wd-remove) need -y, or -n to
+preview; without either they refuse (exit 2) when there is no terminal to ask on.
+Exit 3 means waiting for you (a GitHub device code to approve).
+
+Set SOL_AGENT_ROOT to use a location other than ~/.solx/agent.";
+
+#[derive(Subcommand)]
+enum AgentCmd {
+    /// Install or update the sol-agent scripts (default ~/.solx/agent).
+    ///
+    /// Scripts are replaced; config.env and workspace/CLAUDE.md are yours. If
+    /// one differs from the shipped file it is kept; when a release changed
+    /// the shipped text, the new text is written beside it as <name>.new
+    /// (removed again once yours matches). --force replaces it instead (the
+    /// old copy is saved as .bak). state/, logs/ and results/ are never touched.
+    Install {
+        /// Install here instead of $SOL_AGENT_ROOT or ~/.solx/agent.
+        #[arg(long)]
+        dir: Option<PathBuf>,
+        /// Print what would change without writing.
+        #[arg(short = 'n', long = "dry-run")]
+        dry_run: bool,
+        /// Also reset config.env and workspace/CLAUDE.md (saved as .bak).
+        #[arg(short = 'f', long)]
+        force: bool,
+    },
+
+    /// Anything else goes to ~/.solx/agent/bin/sol-agent.
+    #[command(external_subcommand)]
+    Run(Vec<String>),
 }
 
 #[derive(clap::Args)]
@@ -226,7 +287,7 @@ fn run() -> i32 {
     if rest.is_empty() {
         return print_group_help(&[]);
     }
-    if rest.len() == 1 && matches!(rest[0].as_str(), "job" | "jobs" | "config") {
+    if rest.len() == 1 && matches!(rest[0].as_str(), "job" | "jobs" | "config" | "agent") {
         let group = if rest[0] == "jobs" { "job" } else { &rest[0] };
         return print_group_help(&[group]);
     }
@@ -279,6 +340,22 @@ fn run() -> i32 {
             require_sol();
             run_jump(jobid.as_deref(), quiet, json)
         }
+        Some(Cmd::Agent { command }) => match command {
+            None => print_group_help(&["agent"]),
+            Some(AgentCmd::Install {
+                dir,
+                dry_run,
+                force,
+            }) => {
+                require_sol();
+                let out = Out::auto(json);
+                agent::cmd_install(dir, dry_run, force, &out)
+            }
+            Some(AgentCmd::Run(args)) => {
+                require_sol();
+                agent::cmd_run(&args, json)
+            }
+        },
         Some(Cmd::Job { command }) => match command {
             None => print_group_help(&["job"]),
             Some(JobCmd::List) => {

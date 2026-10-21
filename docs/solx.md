@@ -41,6 +41,8 @@ solx init        # writes ~/.config/solx/config.toml
 | `solx job jump [JOBID]` | Open a shell on the job's compute node. Also `solx jump`. |
 | `solx job time [JOBID]` | Print the time remaining on a job. |
 | `solx keep` | Renew `/scratch` files Sol flagged for deletion. |
+| `solx agent install` | Install or update [sol-agent](sol-agent.md) (an always-on Claude session) under `~/.solx/agent`. |
+| `solx agent <cmd>` | Forward `up`, `down`, `status`, `logs`, `tunnel`, `msg`, `gc` to `~/.solx/agent/bin/sol-agent`. |
 | `solx config show` / `edit` | Show or edit your config. |
 | `solx completions <bash\|zsh\|fish>` | Print a shell-completion script. |
 | `solx cheatsheet` | Print the Sol quick reference (SLURM + solx) as text. |
@@ -298,6 +300,26 @@ to `solx config edit`.
 
 ---
 
+## `solx agent` - the always-on Claude session
+
+`solx agent` is the front door to [sol-agent](sol-agent.md), a set of Bash scripts that keeps one
+Claude Remote Control session alive on Sol through preemption, time limits and maintenance. It is not a
+Slurm wrapper like `solx job`; it does two things:
+
+- `solx agent install [--dir D] [-n] [-f]` writes the scripts bundled in the binary to `~/.solx/agent`
+  (or `$SOL_AGENT_ROOT`). Scripts are replaced; your `config.env` and `workspace/CLAUDE.md` are updated if you never
+  edited them and kept when they differ from the shipped ones; when a release changes the shipped text, the new text is written beside yours
+  as `<name>.new` so it can be merged (the `.new` file goes away once yours matches); `-f` replaces them instead (the old copy becomes
+  `.bak`); `state/`, `logs/` and `results/` are never touched. `-n` shows what would change. With `--json` (or
+  when piped) it prints the plan as JSON, including `new_default` for each kept file.
+- `solx agent <anything else>` runs `~/.solx/agent/bin/sol-agent <anything else>`, exit code included, and
+  prints one stderr line when the installed scripts and the binary are different versions.
+
+Update the scripts by updating `solx`, then `solx agent install` again. The full walk-through (trust
+step, permission mode, starting, stopping, VS Code tunnel) is in [sol-agent.md](sol-agent.md).
+
+---
+
 ## Output for scripts
 
 On a terminal, `solx` prints readable tables. If you **pipe** the output or
@@ -307,7 +329,8 @@ post-process with `jq`. `--json` works before the subcommand
 exception: after `job start`, anything following the command is passed
 through to `salloc`, so put `--json` before it there. (`config edit`,
 `completions`, `version`, and `help` print one fixed text and take no
-trailing `--json`.) The actual result goes
+trailing `--json`. `solx agent ...` follows the same rule: JSON when piped, `--json` to force it,
+`--text` for text; its `logs` and `msg watch` streams stay text.) The actual result goes
 to standard output and all messages go to standard error, so a value pipes
 cleanly on its own:
 

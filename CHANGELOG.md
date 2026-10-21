@@ -11,6 +11,39 @@ version matches the `version` field in [`solx/Cargo.toml`](solx/Cargo.toml)
 and in [`skills/sol-skill/SKILL.md`](skills/sol-skill/SKILL.md), and the git
 tag, and a pushed `vX.Y.Z` tag builds and publishes the release.
 
+## [Unreleased]
+
+### Added
+
+- `sol-agent/`: an always-on Claude Remote Control session for Sol that survives preemption, job time limits and
+  maintenance windows (two 1-CPU jobs with a lease and heartbeats, a scrontab watchdog, graceful close and collection),
+  an on-demand VS Code tunnel with GitHub device-code relay, and a plain-text agent mailbox for sessions in different
+  permission modes. Shell scripts plus tests; the design, measurements and unverified items are in `sol-agent/DESIGN.md`.
+- `skills/sol-agent/`: the agent skill that drives it (evaluated with `sol-agent/tests/skill_eval/`).
+- `solx agent install` writes or updates the sol-agent scripts (embedded in the binary) under `~/.solx/agent`; scripts are
+  replaced atomically, `config.env` and `workspace/CLAUDE.md` are kept when they differ from the shipped ones (when a
+  release changes the shipped text, the new text is written beside them as `<name>.new` so it can be merged, and removed
+  again once yours matches) unless
+  `--force` (old copy saved as `.bak`), runtime data is never touched, and `.version` records the installing solx. Every other `solx agent <cmd>` is forwarded to
+  `~/.solx/agent/bin/sol-agent` (and notes when the installed scripts and the binary differ).
+- sol-agent alerts: the watchdog tracks pool health (ok, degraded, down, paused, hold) and sends DOWN, STILL DOWN, recovered and
+  no-standby messages through `ALERT_EMAIL` (Slurm's job mail, shown as the "Job Name" line: compute nodes cannot send mail, and it waits in the queue like any job), `NTFY_TOPIC` (ntfy.sh push) and/or `NOTIFY_CMD`, only after a state has lasted
+  (`ALERT_DOWN_MIN` 10, `ALERT_DEGRADED_MIN` 30, repeat `ALERT_REPEAT_H` 6), so a seconds-long failover sends nothing. `sol-agent alert test`
+  checks delivery, `status` shows `health`, `alerts` and `model`, `up` warns while no channel is set. `PING_URL` now reports the pool, not just
+  the watchdog: the base URL while it is fine, `<url>/fail` while DOWN. VS Code device codes go to `NOTIFY_CMD` only.
+- The preemption-storm fallback to `public` could never trigger: the counter's `sacct` call lacked `-E now`, so it never saw jobs that had already ended and always returned 0 (seven pool and session jobs were preempted in two days without it noticing). Fixed, with a regression test whose `sacct` stub behaves like the real one.
+- The scrontab watchdog moved from `htc`/`public` to `general`/`private`: at peak it waited over an hour on `htc` (re-run `sol-agent wd-install` or `up` to move an existing entry). `up` and `resume` print one JSON document again (the submitted job id went to stdout first).
+- sol-agent's session runs on `SOL_AGENT_MODEL`, default `sonnet` (it only waits and runs shell commands); empty keeps Claude Code's default.
+- `solx agent install` makes the install directory mode 700 (it can hold an ntfy topic, which works like a password, and home directories on Sol are group-readable).
+- `solx agent install` updates `config.env` and `workspace/CLAUDE.md` in place when you never edited them (they still match what the last
+  install shipped).
+- `solx agent` follows solx's own command-line contract: JSON when stdout is not a terminal (`--json`/`--text` force it),
+  human text on stderr in JSON mode, `-n` previews and `-y` confirms for `down`, `gc`, `wd-remove` and `tunnel stop` (no
+  terminal and neither flag: exit 2), exit codes 0/1/2 plus 3 for "waiting for you" (device code), per-command `help`, and
+  `up` refuses while the workspace is untrusted. `status`, `gc`, `msg` and `tunnel` return structured results; `logs` and
+  `msg watch` stream text.
+- `docs/sol-agent.md` (user manual) and a sol-agent section in `DEVELOPMENT.md` (layout, test tiers, guidelines, release).
+
 ## [1.0.5] - 2026-09-14
 
 ### Fixed

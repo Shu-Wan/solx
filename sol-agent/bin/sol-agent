@@ -1,0 +1,447 @@
+#!/usr/bin/env bash
+# sol-agent: one entry point for the always-on Claude sol-agent on Sol. `sol-agent help [command]` for details.
+#   status                 jobs, lease, heartbeats, watchdog, maintenance plan, bridge URL, permission mode
+#   up [-n] [--force]      capture this session's permission mode, install the scrontab watchdog, fill the pool now
+#   down [-y|-n]           pause + cancel everything (the watchdog stays installed but idle)
+#   resume [-n]            unpause
+#   wd-install [-n] | wd-remove [-y|-n]    manage the scrontab heartbeat/watchdog entry
+#   tunnel <start [--job J|--here] [--wait S] [--restart]|stop|status|attach>   Sol's VS Code tunnel (sol_$USER) + GitHub device code
+#   msg <send|read|list|watch|hook> ...                       plain-text mailbox (see sol-agent-msg)
+#   alert test             send one test message through the configured alert channels (ALERT_EMAIL, NTFY_TOPIC, NOTIFY_CMD)
+#   attach                 open the active sol-agent's tmux (bridge output) via srun --overlap (needs a terminal)
+#   logs [n]               tail the event log
+#   gc [-y|-n] [--tests] [--sessions] [--purge] [--uninstall]
+#                          close what the sol-agent opened: jobs (graceful /exit via TERM), tmux servers, lingering
+#                          "offline" sessions (--sessions: resume + clean exit), test state dirs (--purge), scrontab (--uninstall).
+#                          --tests widens the job-name filter to the e2e/probe/live test names.
+# Output: JSON on stdout when stdout is not a terminal (--json forces it, --text forces text); text goes to stderr in JSON mode.
+# Destructive commands (down, wd-remove, tunnel stop, gc): -n previews, -y does it, neither refuses (exit 2) without a terminal.
+# Exit codes: 0 done · 1 failed · 2 usage error or unconfirmed · 3 waiting for you (device code). Details: lib/out.sh.
+set -u
+. "${SOL_AGENT_ROOT:-$HOME/.solx/agent}/lib/common.sh"
+. "$AR/lib/pool.sh"
+. "$AR/lib/health.sh"
+COMP=ctl
+out_flags "$@"; set -- "${OUT_ARGS[@]+"${OUT_ARGS[@]}"}"
+[ "$FORMAT_EXPLICIT" = 1 ] && export SOL_AGENT_FORMAT=$FORMAT       # tunnel / msg inherit an explicit choice
+strip() { sed -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
+BEGIN='# >>> sol-agent >>>'; END='# <<< sol-agent <<<'
+
+usage() {   # usage [command]
+  case ${1:-} in
+    status) cat <<'EOF'
+sol-agent status [--json]
+  Jobs, lease, heartbeats, watchdog, pool health (ok, degraded, down, paused, hold), alert channels, model, maintenance plan,
+  permission mode, workspace trust, Remote Control URL, mailbox, new shipped defaults waiting beside a changed config.env or
+  CLAUDE.md, last events.
+EOF
+    ;;
+    up) cat <<'EOF'
+sol-agent up [-n] [--force]
+  Capture this Claude session's permission mode, install the scrontab watchdog and fill the pool. Refuses (exit 2) while the
+  workspace is not trusted, because the session could not start; --force queues the jobs anyway. -n previews.
+EOF
+    ;;
+    down) cat <<'EOF'
+sol-agent down [-y|-n]
+  Pause the pool and cancel its jobs; the session is closed with /exit. Waits up to 60 s for the jobs to leave.
+EOF
+    ;;
+    alert) cat <<'EOF'
+sol-agent alert test [--json]
+  Send one test message through every configured channel: ALERT_EMAIL (Slurm job mail, subject only: Sol's compute nodes cannot
+  send mail themselves), NTFY_TOPIC (ntfy.sh push) and NOTIFY_CMD. Exit 0 if every channel took it, 1 if one failed or none is
+  configured. "Took it" is not "arrived": the e-mail comes when its 1-minute job ends, so check your inbox. The watchdog sends the real alerts (pool down for ALERT_DOWN_MIN, no standby for
+  ALERT_DEGRADED_MIN, recovery); see docs/sol-agent.md.
+EOF
+    ;;
+    resume) echo "sol-agent resume [-n]    Unpause and fill the pool.";;
+    wd-install) echo "sol-agent wd-install [-n]    Add the sol-agent block to your scrontab (your other entries are kept).";;
+    wd-remove) echo "sol-agent wd-remove [-y|-n]    Remove only the sol-agent block from your scrontab.";;
+    logs) cat <<'EOF'
+sol-agent logs [N] [--json]
+  Last N event-log lines (default 40). Text unless --json is given; then one {ts, source, message} object per line.
+EOF
+    ;;
+    attach) echo "sol-agent attach    Open the active session's tmux (interactive; needs a terminal, exit 2 otherwise).";;
+    gc) cat <<'EOF'
+sol-agent gc [-y|-n] [--tests] [--sessions] [--purge] [--uninstall]
+  Collect what sol-agent opened. Default: its jobs and tunnel job. --tests: only test leftovers. --sessions: resume and cleanly
+  exit lingering offline sessions. --purge: test state dirs. --uninstall: also remove the scrontab block.
+  -n shows the plan, -y does it; with neither it asks on a terminal and refuses (exit 2) without one.
+EOF
+    ;;
+    tunnel) echo "sol-agent tunnel <start [--job J|--here] [--wait S] [--restart] | stop [-y|-n] | status | attach>    (sol-agent-tunnel.sh)";;
+    msg) echo "sol-agent msg <send <to> [-s subj] [body|-] | read <name> [--keep] | list | watch <name> | hook <name>>    (sol-agent-msg)";;
+    *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//';;
+  esac
+}
+
+wd_block() { cat <<EOF
+$BEGIN
+#SCRON -p general
+#SCRON -q private
+#SCRON -t 00:03:00
+#SCRON -c 1
+#SCRON --mem=2G
+#SCRON -J sol-agent-wd
+#SCRON --open-mode=append
+#SCRON -o $LOGS/wd.out
+*/5 * * * * $AR/bin/sol-agent-wd.sh
+$END
+EOF
+}
+trust_ok() { jq -e --arg d "$WORKDIR" '.projects[$d].hasTrustDialogAccepted == true' "$HOME/.claude.json" >/dev/null 2>&1; }
+trust_msg() { trust_ok && echo "OK ($WORKDIR)" || echo "NOT TRUSTED - run once:  cd $WORKDIR && claude   (accept the trust prompt, then /exit)"; }
+# Read the scrontab into SCRON_TEXT. Returns 0 when the table was read (or there is none: `scrontab -l` then exits 1 with
+# "no crontab for <user>", measured), 1 when the state is unknown. The table is the user's whole schedule, so callers must
+# never write or remove it on an unknown state.
+scron_read() {
+  local out rc; out=$(scrontab -l 2>&1); rc=$?
+  if [ "$rc" -eq 0 ]; then SCRON_TEXT=$out; return 0; fi
+  case $out in "no crontab for "*) SCRON_TEXT=""; return 0;; esac
+  return 1
+}
+scron_without_block() { [ -n "$SCRON_TEXT" ] && printf '%s\n' "$SCRON_TEXT" | awk -v b="$BEGIN" -v e="$END" '$0==b{s=1} !s{print} $0==e{s=0}'; true; }
+wd_installed() { scron_read && grep -qF "$BEGIN" <<<"$SCRON_TEXT"; }
+
+# ---- JSON helpers --------------------------------------------------------------------------------------------------
+# sol_agent_jobs lines "id|state|left|submitted|reason" -> [{id,state,time_left,reason}]
+jobs_brief() { jq -R -s -c 'split("\n")|map(select(length>0)|split("|")|{id:.[0],state:.[1],time_left:.[2],reason:.[4]})'; }
+
+# ---- watchdog (scrontab) ---------------------------------------------------------------------------------------------
+WD_RESULT=""
+wd_install_do() {
+  [ -n "${SOL_AGENT_NO_SCRON:-}" ] && { say "scrontab disabled by SOL_AGENT_NO_SCRON"; WD_RESULT=disabled; return 0; }
+  scron_read || { warn "error: could not read your scrontab; leaving it unchanged"; WD_RESULT=failed; return 1; }
+  local f; f=$(mktemp)
+  { scron_without_block; wd_block; } > "$f"
+  if scrontab "$f"; then say "watchdog installed (every 5 min, general/private, 3 min cap)"; WD_RESULT=installed; else WD_RESULT=failed; fi
+  rm -f "$f"; [ "$WD_RESULT" = installed ]
+}
+wd_remove_do() {
+  scron_read || { warn "error: could not read your scrontab; leaving it unchanged"; WD_RESULT=failed; return 1; }
+  local f had=0; f=$(mktemp)
+  grep -qF "$BEGIN" <<<"$SCRON_TEXT" && had=1
+  scron_without_block > "$f"
+  if [ -s "$f" ]; then scrontab "$f"; elif [ -n "$SCRON_TEXT" ]; then scrontab -r; fi; rm -f "$f"
+  if [ "$had" = 1 ]; then WD_RESULT=removed; say "watchdog removed"; else WD_RESULT=absent; say "watchdog was not installed"; fi
+}
+cmd_wd_install() {
+  parse_yn "$@"; [ "${#REST[@]}" -eq 0 ] || die2 "wd-install: unexpected argument ${REST[0]}"
+  if [ "$DRY" = 1 ]; then
+    say "would add this block to your scrontab:"; say "$(wd_block)"
+    is_json && jq -n -c '{action:"wd-install",dry_run:true}'; return 0; fi
+  wd_install_do; local rc=$?
+  is_json && jq -n -c --arg w "$WD_RESULT" '{action:"wd-install",watchdog:$w}'
+  return $rc
+}
+cmd_wd_remove() {
+  parse_yn "$@"; [ "${#REST[@]}" -eq 0 ] || die2 "wd-remove: unexpected argument ${REST[0]}"
+  gate "remove the sol-agent block from your scrontab (your other entries stay)"
+  if [ $? -eq 1 ]; then say "(dry run: nothing changed)"; is_json && jq -n -c '{action:"wd-remove",dry_run:true}'; return 0; fi
+  wd_remove_do; local rc=$?
+  is_json && jq -n -c --arg w "$WD_RESULT" '{action:"wd-remove",watchdog:$w}'
+  return $rc
+}
+
+# ---- status ----------------------------------------------------------------------------------------------------------
+cmd_status() {
+  local now_s; now_s=$(now)
+  local paused=false; [ -f "$STATE/PAUSE" ] && paused=true
+  local rows="" id st left sub rsn node role br age
+  while IFS='|' read -r id st left sub rsn; do
+    [ -n "$id" ] || continue
+    node=$(squeue -h -j "$id" -o %N 2>/dev/null); role=$(jq -r '.role // "-"' "$HB/$id.json" 2>/dev/null || echo -); br=$(jq -r '.bridge // "-"' "$HB/$id.json" 2>/dev/null || echo -)
+    age=$( [ "$st" = RUNNING ] && hb_age "$id" || echo - )
+    rows+="$id|$st|$left|${node:--}|${role:--}|$age|${br:--}"$'\n'
+  done < <(sol_agent_jobs)
+  local holder lage="" wdage wdvia scr
+  holder=$(lease_holder || true)
+  [ -f "$STATE/lease" ] && lage=$(( now_s - $(awk '{print $2}' "$STATE/lease") ))
+  wdage=""; [ -f "$STATE/wd.json" ] && wdage=$(( now_s - $(stat -c %Y "$STATE/wd.json") ))
+  wdvia=$(jq -r .via "$STATE/wd.json" 2>/dev/null || echo never)
+  if ! scron_read; then scr=unknown; elif grep -qF "$BEGIN" <<<"$SCRON_TEXT"; then scr=installed; else scr=missing; fi
+  local plan ms="" me="" mk="" hold=""
+  plan=$(maint_plan); read -r ms me mk < <(maint_next) || true
+  [ -f "$STATE/hold" ] && hold=$(cat "$STATE/hold")
+  local pm_eff pm_shell trusted=false url latency="" events
+  pm_eff=$(effective_permission_mode || true); pm_shell=$(detect_permission_mode 2>/dev/null || echo n/a)
+  trust_ok && trusted=true
+  # Remote Control link: `claude.ai/code/session_<id>` in current Claude Code, `claude.ai/code?environment=<id>` in older ones. The log is the
+  # terminal capture, so the link sits inside OSC 8 hyperlink codes (ESC/BEL end it, which keeps the match from running on). Newest log with a link wins.
+  local rcre='https://claude\.ai/code(/session_[A-Za-z0-9_-]+|\?environment=[A-Za-z0-9_]+)' blog
+  url=""
+  for blog in $(ls -t "$LOGS"/bridge-*.log 2>/dev/null | head -5); do
+    url=$(strip < "$blog" | grep -aoE "$rcre" | tail -1); [ -n "$url" ] && break
+  done
+  [ -f "$STATE/latency.log" ] && latency=$(tail -5 "$STATE/latency.log" | sed -E 's/.*queue_wait_s=([0-9]+).*/\1s/' | tr '\n' ' ')
+  events=$(tail -n 5 "$STATE/events.log" 2>/dev/null | cut -c1-140)
+  # `solx agent install` leaves the shipped copy of a changed config.env / workspace/CLAUDE.md as <name>.new
+  local seeds="" sf
+  for sf in config.env workspace/CLAUDE.md; do [ -f "$AR/$sf.new" ] && seeds+="$sf.new"$'\n'; done
+  # pool health (live level; since / last alert only while the stored level is still the live one), alert channels, model
+  local hl hs="" ha="" sl="" ss="" sa="" chans ntfy=false cmd=false ping=false sid mfile mrun=""
+  hl=$(pool_health); [ -f "$STATE/health" ] && read -r sl ss sa < "$STATE/health"
+  if [ "${sl:-}" = "$hl" ]; then hs=$ss; ha=$sa; [ "$ha" = 0 ] && ha=""; fi
+  chans=$(notify_channels | ids_json); [ -n "$NTFY_TOPIC" ] && ntfy=true; [ -n "$NOTIFY_CMD" ] && cmd=true; [ -n "$PING_URL" ] && ping=true
+  sid=$(cat "$STATE/session_id" 2>/dev/null)
+  if [ -n "$sid" ]; then
+    mfile=$(ls -t "$HOME"/.claude/projects/*/"$sid".jsonl 2>/dev/null | head -1)
+    [ -n "$mfile" ] && mrun=$(tail -c 400000 "$mfile" | grep -ao '"model":"[^"]*"' | grep -v synthetic | tail -1 | cut -d'"' -f4)
+  fi
+
+  if is_json; then
+    local mailbox; mailbox=$(SOL_AGENT_FORMAT=json "$AR/bin/sol-agent-msg" list 2>/dev/null); [ -n "$mailbox" ] || mailbox='[]'
+    local jobs_json; jobs_json=$(printf '%s' "$rows" | jq -R -s -c 'split("\n")|map(select(length>0)|split("|")|{id:.[0],state:.[1],time_left:.[2],node:(if .[3]=="-" then null else .[3] end),role:(if .[4]=="-" then null else .[4] end),heartbeat_age_s:(.[5]|tonumber? // null),bridge:(if .[6]=="-" then null else .[6] end)})')
+    jq -n \
+      --arg time "$(date -Is)" --arg name "$NAME" --arg part "$PARTITION" --arg qos "$QOS" --arg chunk "$MAX_TIME" --arg standby "$STANDBY" \
+      --argjson paused "$paused" --argjson jobs "$jobs_json" --arg holder "$holder" --arg lage "$lage" \
+      --arg wdage "$wdage" --arg wdvia "$wdvia" --arg scr "$scr" \
+      --arg plan "$plan" --arg ms "$ms" --arg me "$me" --arg mk "$mk" --arg hold "$hold" --arg maintfile "$STATE/maint.txt" \
+      --arg pm_eff "$pm_eff" --arg pm_cfg "$PERMISSION_MODE" --arg pm_shell "$pm_shell" \
+      --arg wdir "$WORKDIR" --argjson trusted "$trusted" --arg url "$url" --arg latency "$latency" \
+      --argjson mailbox "$mailbox" --arg events "$events" --arg seeds "$seeds" \
+      --arg hl "$hl" --arg hs "$hs" --arg ha "$ha" --argjson chans "$chans" --arg email "$ALERT_EMAIL" --argjson ntfy "$ntfy" \
+      --argjson cmd "$cmd" --argjson ping "$ping" --arg nlevel "$NOTIFY_LEVEL" --arg mcfg "$SOL_AGENT_MODEL" --arg mrun "$mrun" '
+      def nul: if . == "" then null else . end;
+      { time: $time, name: $name, paused: $paused,
+        pool: { partition: $part, qos: $qos, max_chunk: $chunk, standby: $standby },
+        jobs: $jobs,
+        lease: { holder: ($holder | nul), age_s: ($lage | if . == "" then null else tonumber end) },
+        watchdog: { last_run_age_s: ($wdage | if . == "" then null else tonumber end), via: $wdvia, scrontab: $scr },
+        maintenance: { plan: $plan,
+                       next_window: (if $ms == "" then null else {start_epoch: ($ms|tonumber), end_epoch: ($me|tonumber), kind: $mk} end),
+                       hold: ($hold | nul), manual_file: $maintfile },
+        permission_mode: { effective: ($pm_eff | nul), configured: $pm_cfg, this_shell: $pm_shell },
+        workspace: { path: $wdir, trusted: $trusted },
+        remote_control_url: ($url | nul),
+        queue_wait_last5: ($latency | nul),
+        mailbox: $mailbox,
+        health: { level: $hl, since: ($hs | if . == "" then null else tonumber end), last_alert: ($ha | if . == "" then null else tonumber end) },
+        alerts: { channels: $chans, email: ($email | nul), ntfy: $ntfy, cmd: $cmd, ping_url: $ping, notify_level: $nlevel },
+        model: { configured: ($mcfg | nul), running: ($mrun | nul) },
+        seed_updates: ($seeds | split("\n") | map(select(length > 0))),
+        last_events: ($events | split("\n") | map(select(length > 0))) }'
+    return 0
+  fi
+
+  echo "sol-agent @ $(date -Is)   name=$NAME  pool: $PARTITION/$QOS  max_chunk=$MAX_TIME  standby=$STANDBY"
+  [ "$paused" = true ] && echo "*** PAUSED (sol-agent resume) ***"
+  echo "--- jobs"; printf '%-10s %-9s %-12s %-9s %-8s %-6s %s\n' JOB STATE LEFT NODE ROLE HB_AGE BRIDGE
+  while IFS='|' read -r id st left node role age br; do
+    [ -n "$id" ] || continue
+    printf '%-10s %-9s %-12s %-9s %-8s %-6s %s\n' "$id" "$st" "$left" "$node" "$role" "$age" "$br"
+  done <<<"$rows"
+  echo "--- lease: holder=$holder $( [ -n "$lage" ] && echo "age=${lage}s" )"
+  echo "--- watchdog: $( [ -n "$wdage" ] && echo "last run ${wdage}s ago ($wdvia)" || echo "never ran" ); scrontab entry: $( [ "$scr" = installed ] && echo installed || { [ "$scr" = unknown ] && echo UNKNOWN || echo MISSING; } )"
+  local nw="none announced"; [ -n "$ms" ] && nw="$(date -d "@$ms" '+%F %H:%M') -> $(date -d "@$me" '+%F %H:%M') ($mk)"
+  echo "--- maintenance: $plan  next-window: $nw  (manual: $STATE/maint.txt)"
+  [ -n "$hold" ] && echo "    HOLD active: $hold"
+  echo "--- permission mode: $pm_eff (PERMISSION_MODE=$PERMISSION_MODE; this shell: $pm_shell)"
+  echo "--- workspace trust: $(trust_msg)"
+  echo "--- remote control: ${url:-no bridge log yet}"
+  [ -n "$latency" ] && echo "--- queue wait (last 5): $latency"
+  echo "--- mailbox:"; SOL_AGENT_FORMAT=text "$AR/bin/sol-agent-msg" list 2>/dev/null | sed 's/^/    /'
+  echo "--- health: $hl$( [ -n "$hs" ] && echo " (since $(date -d "@$hs" '+%F %H:%M'))" )"
+  if [ -n "$(notify_channels)" ] || [ -n "$PING_URL" ]; then
+    echo "--- alerts: $(notify_channels | paste -sd' ' -)$( [ -n "$ALERT_EMAIL" ] && echo " (email $ALERT_EMAIL)" )$( [ -n "$PING_URL" ] && echo " ping-url" )   [sol-agent alert test sends a test message]"
+  else echo "--- alerts: NONE - set ALERT_EMAIL or NTFY_TOPIC in config.env, then run: sol-agent alert test"; fi
+  echo "--- model: configured=${SOL_AGENT_MODEL:-default} running=${mrun:-unknown}"
+  [ -n "$seeds" ] && echo "--- new defaults waiting (your file differs; compare, merge, delete the .new): $(printf '%s' "$seeds" | tr '\n' ' ')in $AR"
+  echo "--- last events:"; printf '%s\n' "$events" | sed 's/^/    /'
+}
+
+# ---- up / down / resume ----------------------------------------------------------------------------------------------
+cmd_up() {
+  local force=0 a m="" em trusted=true
+  for a in "$@"; do case $a in -n|--dry-run) DRY=1;; --force) force=1;; *) die2 "up: unknown option $a (sol-agent help up)";; esac; done
+  trust_ok || trusted=false
+  if [ "$DRY" = 1 ]; then m=$(detect_permission_mode 2>/dev/null || true); else m=$(capture_permission_mode || true); fi
+  em=$(effective_permission_mode)
+  if [ "$trusted" = false ] && [ "$force" = 0 ]; then
+    warn "error: the workspace is not trusted, so the session could not start. Run once:  cd $WORKDIR && claude   (accept the trust prompt, then /exit)"
+    warn "(sol-agent up --force queues the jobs anyway)"; exit 2
+  fi
+  if [ -n "$m" ]; then say "permission mode $( [ "$DRY" = 1 ] && echo detected || echo captured ) from this session: $m"
+  else say "not inside a Claude session: nothing captured. The agent will use: ${em:-the Claude Code default} (PERMISSION_MODE=${PERMISSION_MODE}); run 'up' from a Claude session, or pin PERMISSION_MODE in config.env, to choose"; fi
+  [ "$trusted" = false ] && warn "WARNING: workspace not trusted - the session cannot start until you run:  cd $WORKDIR && claude  (accept, /exit)"
+  if [ "$DRY" = 1 ]; then
+    say "would: clear PAUSE, install the watchdog, fill the pool ($STANDBY standby)"
+    is_json && jq -n -c --argjson t "$trusted" --arg m "$m" --arg e "$em" '{action:"up",dry_run:true,workspace_trusted:$t,permission_mode:{detected:($m|if .=="" then null else . end),effective:($e|if .=="" then null else . end)}}'
+    return 0
+  fi
+  rm -f "$STATE/PAUSE"; wd_install_do; pool_ensure
+  local chans; chans=$(notify_channels | ids_json)
+  [ "$chans" = '[]' ] && warn "warning: no alert channel is set, so nobody is told if the pool goes down. Set ALERT_EMAIL or NTFY_TOPIC in $AR/config.env, then run: sol-agent alert test"
+  if is_json; then
+    jq -n -c --argjson t "$trusted" --arg m "$m" --arg e "$em" --arg w "$WD_RESULT" --argjson jobs "$(sol_agent_jobs | jobs_brief)" --argjson chans "$chans" \
+      '{action:"up",workspace_trusted:$t,permission_mode:{captured:($m|if .=="" then null else . end),effective:($e|if .=="" then null else . end)},watchdog:$w,alert_channels:$chans,jobs:$jobs}'
+  else cmd_status; fi
+}
+cmd_down() {
+  parse_yn "$@"; [ "${#REST[@]}" -eq 0 ] || die2 "down: unexpected argument ${REST[0]}"
+  local ids; ids=$(squeue --me -h -n "$NAME" -o %i 2>/dev/null | tr '\n' ' ')
+  gate "pause the sol-agent and cancel its jobs: ${ids:-none}"
+  if [ $? -eq 1 ]; then
+    say "(dry run: would pause and cancel: ${ids:-none})"
+    is_json && printf '%s' "$ids" | tr ' ' '\n' | ids_json | jq -c '{action:"down",dry_run:true,would_cancel:.}'; return 0; fi
+  touch "$STATE/PAUSE"; scancel -n "$NAME" 2>/dev/null
+  local left _; for _ in $(seq 1 30); do [ -z "$(squeue --me -h -n "$NAME" -o %i 2>/dev/null)" ] && break; sleep 2; done   # graceful close takes a few seconds
+  left=$(squeue --me -h -n "$NAME" -o %i 2>/dev/null | wc -l)
+  if [ "$left" -eq 0 ]; then say "paused and cancelled (sol-agent resume to restart)"
+  else say "paused; $left job(s) still shutting down (check 'squeue --me'); do not start again until they are gone"; fi
+  is_json && printf '%s' "$ids" | tr ' ' '\n' | ids_json | jq -c --argjson left "$left" '{action:"down",paused:true,cancelled:.,still_listed:$left}'
+  return 0
+}
+cmd_resume() {
+  parse_yn "$@"; [ "${#REST[@]}" -eq 0 ] || die2 "resume: unexpected argument ${REST[0]}"
+  if [ "$DRY" = 1 ]; then say "(dry run: would clear PAUSE and fill the pool)"; is_json && jq -n -c '{action:"resume",dry_run:true}'; return 0; fi
+  rm -f "$STATE/PAUSE"; pool_ensure; say resumed
+  is_json && jq -n -c --argjson jobs "$(sol_agent_jobs | jobs_brief)" '{action:"resume",paused:false,jobs:$jobs}'
+  return 0
+}
+
+# ---- logs / attach ---------------------------------------------------------------------------------------------------
+# alert test: one message through every configured channel
+cmd_alert() {
+  [ "${1:-}" = test ] && [ $# -eq 1 ] || die2 "alert: usage: alert test (sol-agent help alert)"
+  local chans f rc ch ok=0 bad=0 rows="" detail
+  chans=$(notify_channels)
+  if [ -z "$chans" ]; then
+    is_json && jq -n -c '{action:"alert_test",sent:false,channels:[],error:"no alert channel configured: set ALERT_EMAIL or NTFY_TOPIC (or NOTIFY_CMD) in config.env"}'
+    warn "error: no alert channel configured. Set ALERT_EMAIL or NTFY_TOPIC in $AR/config.env"; exit 1
+  fi
+  f=$(mktemp); NOTIFY_RESULTS=$f notify "sol-agent test message" "Sent by 'sol-agent alert test' from $(hostname -s) at $(date -Is). If you can read this, alerts reach you."
+  while IFS=$'\t' read -r ch rc; do
+    [ -n "$ch" ] || continue
+    case $ch in email) detail="Slurm job mail to $ALERT_EMAIL, subject only";; ntfy) detail="topic set";; cmd) detail="NOTIFY_CMD";; esac
+    if [ "$rc" = 0 ]; then ok=$((ok+1)); say "$ch: accepted ($detail)"; else bad=$((bad+1)); say "$ch: FAILED rc=$rc ($detail)"; fi
+    rows+="$ch|$rc|$detail"$'\n'
+  done < "$f"; rm -f "$f"
+  is_json && printf '%s' "$rows" | jq -R -s -c --argjson ok "$ok" --argjson bad "$bad" \
+    '{action:"alert_test",sent:($bad==0 and $ok>0),channels:(split("\n")|map(select(length>0)|split("|")|{name:.[0],ok:(.[1]=="0"),exit_code:(.[1]|tonumber),detail:.[2]}))}'
+  case $chans in *email*) [ "$ok" -gt 0 ] && say "e-mail: Slurm sends it when the 1-minute mail job ends, so check your inbox (and spam) in a couple of minutes";; esac
+  [ "$bad" -eq 0 ] && [ "$ok" -gt 0 ]
+}
+
+cmd_logs() {
+  local n=${1:-40}; case $n in ''|*[!0-9]*) die2 "logs: N must be a number";; esac
+  if stream_json; then tail -n "$n" "$STATE/events.log" 2>/dev/null | jq -R -c 'capture("^(?<ts>[^ ]+) (?<source>[^ ]+) (?<message>.*)$")? // {message: .}'
+  else tail -n "$n" "$STATE/events.log" 2>/dev/null; fi
+  return 0
+}
+cmd_attach() {
+  [ -t 0 ] && [ -t 1 ] || die2 "attach opens an interactive tmux and needs a terminal; use 'sol-agent logs' or 'sol-agent status' instead"
+  local j; j=$(lease_holder); [ -n "$j" ] || { warn "no active sol-agent"; exit 1; }
+  exec srun --jobid="$j" --overlap --cpu-bind=none -N1 -n1 --mem=0 --pty tmux -L "$NAME-$j" attach -t bridge
+}
+
+# ---- gc --------------------------------------------------------------------------------------------------------------
+cmd_gc() {
+  local tests=0 sessions=0 purge=0 uninstall=0 a
+  for a in "$@"; do case $a in -n|--dry-run) DRY=1;; -y|--yes) YES=1;; --tests) tests=1;; --sessions) sessions=1;; --purge) purge=1;; --uninstall) uninstall=1;; *) die2 "gc: unknown option $a (sol-agent help gc)";; esac; done
+  yn_check
+  # default: the agent this config manages (its jobs and its VS Code tunnel job). --tests: ONLY what the shipped tests leave
+  # behind; it never matches the live agent, so a test run (tests/run_all.sh ends with `gc --tests`) cannot cancel it.
+  local re="^(${NAME}|${NAME}-vscode)$"
+  [ "$tests" -eq 1 ] && re="^(sol-agent-e2e|sol-agent-tt.*|sol-agent-lt.*|sol-agent-l4.*|sol-agent-collect)$"
+  # ---- 1. what there is to collect (nothing is changed here)
+  local jobs_t="" ids=() id jn st
+  while IFS='|' read -r id jn st; do [ -n "$id" ] || continue; jobs_t+="$id|$jn|$st"$'\n'; ids+=("$id"); done \
+    < <(squeue --me -h -o '%i|%j|%T' 2>/dev/null | awk -F'|' -v re="$re" '$2 ~ re')
+  local tmux_t="" sock mine
+  for sock in /tmp/tmux-$(id -u)/*; do
+    [ -S "$sock" ] || continue; sock=$(basename "$sock"); mine=0
+    if [ "$tests" -eq 1 ]; then case $sock in sol-agent-e2e-*|sol-agent-tt-*|sol-agent-lt-*|sol-agent-l4-*|sol-agent-collect-*) mine=1;; esac
+    else case $sock in "$NAME"-[0-9]*|"$NAME"-tunnel|"$NAME"-tunnel-run-*|sol-agent-collect-*) mine=1;; esac; fi
+    [ "$mine" = 1 ] || continue
+    if tmux -L "$sock" ls >/dev/null 2>&1; then tmux_t+="$sock|live"$'\n'; else tmux_t+="$sock|stale"$'\n'; fi
+  done
+  local procs; procs=$(ps -u "$(id -u)" -o pid=,args= | awk '/claude/ && /--(remote-control|name) (sol-agent|sol-agent-|peer-)/ && !/awk/ {print $0}' | cut -c1-150)
+  local sess_t="" f u sn ts wd
+  if [ "$sessions" -eq 1 ]; then
+    for f in "$AR"/state/sessions.log "$AR"/state-*/sessions.log; do
+      [ -f "$f" ] || continue
+      while read -r u sn ts wd; do
+        [ -n "$u" ] && [ "$sn" != collected ] || continue
+        grep -q "^$u collected" "$f" && continue
+        sess_t+="$f|$u|$sn|$wd"$'\n'
+      done < "$f"
+    done
+  fi
+  local purge_t="" d
+  if [ "$purge" -eq 1 ]; then
+    for d in "$AR"/state-e2e "$AR"/state-e2e-s3 "$AR"/state-tt "$AR"/state-lt "$AR"/state-l4 "$AR"/state-e2e.resv "$AR"/state-e2e-s3.resv; do [ -e "$d" ] && purge_t+="$d"$'\n'; done
+  fi
+  local nj=${#ids[@]} nt ns np
+  nt=$(printf '%s' "$tmux_t" | grep -c .); ns=$(printf '%s' "$sess_t" | grep -c .); np=$(printf '%s' "$purge_t" | grep -c .)
+  # ---- 2. show the plan
+  if ! is_json; then
+    echo "== jobs matching /$re/"; while IFS='|' read -r id jn st; do [ -n "$id" ] && echo "   $id $jn $st"; done <<<"$jobs_t"
+    echo "== tmux servers on this node"
+    while IFS='|' read -r sock st; do [ -n "$sock" ] && echo "   $sock ($( [ "$st" = live ] && echo 'live server' || echo 'stale socket, no server'))"; done <<<"$tmux_t"
+    echo "== claude processes started for sol-agents on this node"; [ -n "$procs" ] && printf '%s\n' "$procs" | sed 's/^/   /'
+    if [ "$sessions" -eq 1 ]; then echo "== lingering sessions to collect (resume + clean exit, one tiny job each)"
+      while IFS='|' read -r f u sn wd; do [ -n "$u" ] && echo "   $sn $u ($wd)"; done <<<"$sess_t"; fi
+    if [ "$purge" -eq 1 ]; then echo "== purge test state dirs under $AR"; printf '%s' "$purge_t" | sed 's/^/   /'; fi
+    [ "$uninstall" -eq 1 ] && { echo "== scrontab"; echo "   remove the sol-agent block"; }
+  fi
+  # ---- 3. confirm (only when there is something to change)
+  local todo=$(( nj + nt + ns + np + uninstall )) dry_run=false
+  [ "$DRY" = 1 ] && dry_run=true
+  if [ "$todo" -gt 0 ]; then
+    gate "collect: $nj job(s), $nt tmux socket(s), $ns session(s), $np test path(s)$( [ "$uninstall" -eq 1 ] && echo ', the scrontab block' )"
+    [ $? -eq 1 ] && dry_run=true
+  fi
+  # ---- 4. do it
+  local still=0 collected_sessions=0 removed_wd=false
+  if [ "$dry_run" = false ] && [ "$todo" -gt 0 ]; then
+    if [ "$nj" -gt 0 ]; then
+      scancel "${ids[@]}"      # TERM -> trap -> graceful /exit, lease release
+      local i csv; csv=$(IFS=,; echo "${ids[*]}")
+      for i in $(seq 1 30); do [ -z "$(squeue --me -h -o '%i' -j "$csv" 2>/dev/null)" ] && break; sleep 2; done
+      still=$(squeue --me -h -o '%i' -j "$csv" 2>/dev/null | wc -l); say "   still listed after wait: $still"
+    fi
+    while IFS='|' read -r sock st; do
+      [ -n "$sock" ] || continue
+      if [ "$st" = live ]; then tmux -L "$sock" kill-server; else rm -f -- "/tmp/tmux-$(id -u)/$sock"; fi
+    done <<<"$tmux_t"
+    while IFS='|' read -r f u sn wd; do
+      [ -n "$u" ] || continue
+      if sbatch --parsable -o "$LOGS/collect-%j.out" "$AR/bin/sol-agent-collect.sbatch" "$u" "$sn" "$wd" >/dev/null; then echo "$u collected $(date -Is)" >> "$f"; collected_sessions=$((collected_sessions+1)); fi
+    done <<<"$sess_t"
+    if [ "$uninstall" -eq 1 ]; then wd_remove_do && removed_wd=true; fi
+    while read -r d; do [ -n "$d" ] && rm -r -f -- "$d"; done <<<"$purge_t"
+  fi
+  if [ "$todo" -eq 0 ]; then say "(nothing to collect)"; elif [ "$dry_run" = true ]; then say "(dry run: nothing changed)"; fi
+  if is_json; then
+    jq -n -c --argjson dry "$dry_run" --arg re "$re" --argjson still "$still" --argjson nsess "$collected_sessions" --argjson wd "$removed_wd" \
+      --argjson jobs "$(printf '%s' "$jobs_t" | jq -R -s -c 'split("\n")|map(select(length>0)|split("|")|{id:.[0],name:.[1],state:.[2]})')" \
+      --argjson tmux "$(printf '%s' "$tmux_t" | jq -R -s -c 'split("\n")|map(select(length>0)|split("|")|{socket:.[0],live:(.[1]=="live")})')" \
+      --argjson procs "$(printf '%s\n' "$procs" | jq -R -s -c 'split("\n")|map(select(length>0))')" \
+      --argjson sess "$(printf '%s' "$sess_t" | jq -R -s -c 'split("\n")|map(select(length>0)|split("|")|{session_id:.[1],name:.[2],workdir:.[3]})')" \
+      --argjson purge "$(printf '%s' "$purge_t" | ids_json)" \
+      '{action:"gc",dry_run:$dry,job_filter:$re,jobs:$jobs,tmux:$tmux,claude_processes:$procs,sessions:$sess,purge:$purge,
+        result:(if $dry then null else {jobs_still_listed:$still,sessions_collected:$nsess,scrontab_block_removed:$wd} end)}'
+  fi
+  return 0
+}
+
+case ${1:-} in
+  gc) shift; cmd_gc "$@";;
+  status) shift; [ $# -eq 0 ] || die2 "status takes no arguments"; cmd_status;;
+  up) shift; cmd_up "$@";;
+  down) shift; cmd_down "$@";;
+  resume) shift; cmd_resume "$@";;
+  wd-install) shift; cmd_wd_install "$@";;
+  wd-remove) shift; cmd_wd_remove "$@";;
+  tunnel) shift; exec "$AR/bin/sol-agent-tunnel.sh" "$@";;
+  msg)    shift; exec "$AR/bin/sol-agent-msg" "$@";;
+  attach) cmd_attach;;
+  logs)   shift; cmd_logs "$@";;
+  alert)  shift; cmd_alert "$@";;
+  help|-h|--help) shift; usage "${1:-}";;
+  "") usage >&2; exit 2;;
+  *) warn "error: unknown command '$1'"; usage >&2; exit 2;;
+esac

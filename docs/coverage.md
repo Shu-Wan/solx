@@ -206,6 +206,27 @@ to the skill should mean adding a row here in the same group.
 |---|---|---|
 | Behavior on non-Sol HPC clusters (Phoenix, others) | 🔴 gap | Skill is scoped to Sol; near-miss prompts should *not* trigger this skill |
 
+## sol-agent
+
+`sol-agent` (the always-on Claude on Sol, driven through `solx agent`) has its own suite under
+`sol-agent/tests/`; the tiers, costs and when to run each are in
+[`../DEVELOPMENT.md`](../DEVELOPMENT.md#sol-agent). Last full pass (2026-10-18, run from a fresh install under a hidden `~/.solx/agent`-style path):
+
+| Tier | Result |
+|---|---|
+| Offline: maintenance parsing, pool/lease, permission mode + mailbox, review regressions | 17/17, 25/25, 23/23, 25/25 |
+| Command-line contract: JSON on a pipe / text on a terminal, `-y`/`-n`/prompt, exit codes, stdout vs stderr (stubs) | 73/73 |
+| Alerts and pool health with the real watchdog, fake clock, stub `mail`/`curl`/`squeue`: lasting-state alerts, repeat, recovery, paused/hold silent, ping vs `/fail`, channels, `alert test`, status fields, model flag | 62/62 |
+| Tunnel wrapper against a stub `code` CLI (incl. the JSON device-code flow) | 28/28 (first run 26/28: queue delay inside a 25 s wait; passes with 60 s) |
+| Sol's real `code tunnel`, throwaway data dir, code never approved | 8/8 |
+| Failure injection on real Slurm jobs, stub bridge (preemption, node loss, time limit, maintenance, standby takeover, teardown) | 25/25 (960 s) |
+| `solx agent` installer and forwarder (`cargo test`) | 133 unit + 55 integration, in CI |
+| Skill with vs without it, headless `claude -p`, 6 task prompts + 3 negatives | 28/28 vs 9-11/25 (latest 28/28 vs 10/25); no false triggers (n=1 per case, regex graders: indicative) |
+
+**Not verified in the field:** multi-day runs (OAuth refresh, context growth), scrontab across a real
+maintenance window, a real `private` preemption, a tunnel held for a full day, desktop-editor connections to
+the tunnel, and `solx agent install` over a live agent (mixed-version window; documented, not automated).
+
 ## How this is tested
 
 See [`../DEVELOPMENT.md`](../DEVELOPMENT.md) for the harness, the
